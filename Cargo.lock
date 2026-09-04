@@ -59,7 +59,6 @@ version = "0.1.0"
 dependencies = [
  "matchlab-analysis",
  "matchlab-experiments",
- "serde_json",
 ]
 
 [[package]]
@@ -67,9 +66,11 @@ name = "matchlab-analysis"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-experiments",
  "matchlab-metrics",
  "serde",
  "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]

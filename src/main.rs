@@ -38,31 +38,36 @@ fn run(manifest_args: &[String]) -> ExitCode {
     };
 
     let dir = &config.experiment.output.directory;
-    if let Err(e) = fs::create_dir_all(dir) {
-        eprintln!("cannot create output directory {dir}: {e}");
+
+    if let Err(e) = matchlab_analysis::export::write_result_json(&result, dir) {
+        eprintln!("cannot write metrics JSON: {e}");
         return ExitCode::from(1);
     }
 
-    let out_path = Path::new(dir).join(format!("{}.json", result.name));
-    let json = match serde_json::to_string_pretty(&result) {
-        Ok(j) => j,
-        Err(e) => {
-            eprintln!("serialize error: {e}");
+    if config.experiment.output.report {
+        let report = matchlab_analysis::report::generate_report(&result);
+        let report_path = Path::new(dir).join(format!("{}.md", result.name));
+        if let Err(e) = fs::write(&report_path, report) {
+            eprintln!("cannot write {}: {e}", report_path.display());
             return ExitCode::from(1);
         }
-    };
-
-    if let Err(e) = fs::write(&out_path, json) {
-        eprintln!("cannot write {}: {e}", out_path.display());
-        return ExitCode::from(1);
+        println!(
+            "{}: {} matches in {:.1}s → report: {}",
+            result.name,
+            result.matches_completed,
+            result.simulated_time_secs,
+            report_path.display()
+        );
+    } else {
+        println!(
+            "{}: {} matches in {:.1}s → {}",
+            result.name,
+            result.matches_completed,
+            result.simulated_time_secs,
+            Path::new(dir)
+                .join(format!("{}.json", result.name))
+                .display()
+        );
     }
-
-    println!(
-        "{}: {} matches in {:.1}s → {}",
-        result.name,
-        result.matches_completed,
-        result.simulated_time_secs,
-        out_path.display()
-    );
     ExitCode::SUCCESS
 }

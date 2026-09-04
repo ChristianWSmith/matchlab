@@ -1,3 +1,9 @@
-//! matchlab-analysis: statistics, Pareto frontier, cohorts, reports.
-//!
-//! (v0.1 stub — implementation lands in ticket 11.)
+//! matchlab-analysis: statistics, reporting, and raw-data export.
+
+pub mod export;
+pub mod report;
+pub mod stats;
+
+pub use export::{ExportFormat, RawDataExporter};
+pub use report::{ReportConfig, ReportFormat, generate_report};
+pub use stats::{Summary, summary, summary_to_result};

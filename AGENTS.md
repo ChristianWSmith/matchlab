@@ -68,7 +68,7 @@ matchlab-core          ← no internal deps
 
 matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
-matchlab-analysis      (depends on core + metrics + objective)
+matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
 matchlab (binary)      (depends on experiments + analysis)
 ```
 
@@ -133,8 +133,9 @@ The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
 the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
 batch matchmaker (v0.1 **Ticket 07**), the event-handler loop (v0.1
-**Ticket 08**), the metric collectors (v0.1 **Ticket 09**), and the config +
-runner + CLI (v0.1 **Ticket 10**) are complete.
+**Ticket 08**), the metric collectors (v0.1 **Ticket 09**), the config +
+runner + CLI (v0.1 **Ticket 10**), and the analysis + output (v0.1
+**Ticket 11**) are complete.
 The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
 
 ```
@@ -320,8 +321,10 @@ besides the simulation):
   `finalize()`, `results() -> &HashMap<String, MetricResult>`.
 - `stats.rs` — `Summary { n, mean, median, p75, p90, p95, p99, stddev }`,
   `summary(&[f64])` (nearest-rank percentile by truncation per §14.1), and
-  `summary_to_result(&[f64])` (empty sample → `Scalar(0.0)`). Duplicated from
-  `matchlab-analysis` on purpose to keep the dependency boundary metrics-only-core.
+  `summary_to_result(&[f64])` (empty sample → `Scalar(0.0)`). This is the
+  canonical statistics implementation; `matchlab-analysis` re-exports it
+  (`matchlab_analysis::stats`) and it lives here to keep collectors on the
+  metrics-only-core boundary.
 - `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
   `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
   summarized (spec §11.3; participant-sampled rather than whole-population
@@ -369,19 +372,46 @@ inequality/ndcg/correlation/convergence/etc. are out).
   `ExperimentResult { experiment_id = "{name}-{config_hash}", name,
   config_hash, git_commit, timestamp, matches_completed, matches_formed,
   simulated_time_secs, metrics }`; the timestamp is a hand-rolled ISO-8601 UTC
-  string (no chrono dep). 6 unit tests include a same-seed determinism check
-  (identical metrics) and a sim-time bound check. `lib.rs` re-exports the public API.
+  string (no chrono dep). `metrics` is a `BTreeMap` (not `HashMap`) so JSON
+  serialization key order is deterministic across processes. 6 unit tests
+  include a same-seed determinism check (identical metrics) and a sim-time
+  bound check. `lib.rs` re-exports the public API.
 - Binary `src/main.rs` — `matchlab run <manifest.yaml>` (exit 0/1/2): loads via
-  `inherit::load`, runs, writes the result as JSON to
-  `<output.directory>/<experiment.name>.json` (via `serde_json`, added to the
-  binary's deps in the root `Cargo.toml`), and prints a summary.
+  `inherit::load`, runs, and delegates output to `matchlab-analysis` — writes
+  the result as pretty JSON to `<output.directory>/<experiment.name>.json`
+  (`export::write_result_json`) and, when `output.report: true`, a Markdown
+  report to `<name>.md` (`report::generate_report`) with config hash, git
+  commit, and the metrics table.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
   players, team size 5, flat skill, no detection/ranking/objective/cohorts,
   capped by `max_time: 604800`).
 
-The only remaining stub is `matchlab-analysis`; no algorithms are implemented
-there yet. Individually-consistent tickets from `tickets/` drive the remaining
-v0.1 build order (next: Ticket 11, Analysis + Output).
+**`matchlab-analysis` is implemented with the v0.1 reporting/export layer:**
+- `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
+  `Summary`/`summary_to_result` API (spec §14.1). The canonical implementation
+  stays in `matchlab-metrics` to keep the metrics-only-core boundary.
+- `report.rs` — spec §14.4: `ReportConfig { include_plots, include_raw_data,
+  format }` and `ReportFormat { Json, Markdown }` (HTML out of scope, despite
+  the spec's enum). `generate_report(&ExperimentResult) -> String` (single
+  Markdown report) and `generate_comparison_report(&[ExperimentResult],
+  &ReportConfig) -> String` (Markdown or JSON). Markdown includes name, config
+  hash, git commit, matches completed, simulated time, and a metric table.
+- `export.rs` — spec §14.5: `ExportedMatch`/`ExportedObservation`
+  (serde `Serialize` + `Deserialize`), `ExportFormat` (implements
+  `FromStr`; parquet parses but `write()` returns `ErrorKind::Unsupported`
+  for v0.1), and `RawDataExporter` accumulating per-match + per-observation
+  traces (`record_observations` sorts by `PlayerId` for deterministic JSON)
+  writing `matches.json`/`observations.json`. `write_result_json(&result,
+  &dir)` writes the metrics JSON under `OutputSpec.directory`.
+  `RawDataExporter` is a standalone utility in v0.1 — per-match loop wiring is
+  left to a later ticket.
+- Determined output: `ExperimentResult.metrics` is a `BTreeMap` and the
+  exporter sorts observations, so two runs with identical seed produce
+  byte-identical files (the wall-clock `timestamp` field is the only thing
+  that legitimately differs).
+
+Individually-consistent tickets from `tickets/` drive the remaining v0.1
+build order (next: Ticket 12, v0.1 acceptance).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
@@ -400,7 +430,11 @@ v0.1 build order (next: Ticket 11, Analysis + Output).
 9. **Config + Runner** — `matchlab-experiments`: YAML parsing, config inheritance, ExperimentRunner, CLI
 10. **Analysis + Output** — `matchlab-analysis`: summary stats, JSON export
 
-**v0.1 exit criteria:**
+**v0.1 exit criteria:** (Ticket 12 is the formal acceptance pass; note the
+"match quality > 0.85" target is not met by the naive FIFO batch matchmaker on
+the std-250 population — random 5v5 pairing caps it near 0.68 and Elo
+over-dispersion lowers the observed mean to ~0.60, so that criterion belongs to
+a quality-aware matchmaker in a later ticket.)
 - `cargo run -- run experiments/v0_1_basic.yaml` completes
 - Produces `results/` with metrics JSON
 - Elo ratings converge (MAE decreases over time)

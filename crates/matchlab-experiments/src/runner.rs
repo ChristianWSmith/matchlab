@@ -5,7 +5,7 @@
 //! matchmaker, run the discrete-event simulation, and fold the registered
 //! metric collectors into an `ExperimentResult`.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use matchlab_core::player::{PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
@@ -40,7 +40,7 @@ pub struct ExperimentResult {
     pub matches_completed: u64,
     pub matches_formed: u64,
     pub simulated_time_secs: f64,
-    pub metrics: HashMap<String, MetricResult>,
+    pub metrics: BTreeMap<String, MetricResult>,
 }
 
 impl ExperimentRunner {
@@ -84,6 +84,7 @@ impl ExperimentRunner {
             )
         };
         let metrics = loop_.finalize_metrics();
+        let metrics: BTreeMap<String, MetricResult> = metrics.into_iter().collect();
 
         let result = ExperimentResult {
             experiment_id: format!("{}-{}", config.experiment.name, config_hash),
