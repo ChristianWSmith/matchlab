@@ -126,7 +126,47 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The project is at **pre-implementation**. The workspace `Cargo.toml` exists but contains only a single package stub. No crates under `crates/` have been created yet.
+The workspace foundation (v0.1 **Ticket 01**) and the core types (v0.1
+**Ticket 02**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+
+```
+crates/
+├── matchlab-core/
+├── matchlab-players/
+├── matchlab-game/
+├── matchlab-matchmaking/
+├── matchlab-rating/
+├── matchlab-metrics/
+├── matchlab-experiments/
+└── matchlab-analysis/
+```
+
+- `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`,
+  `rand 0.8`, `rand_chacha 0.3`; `[workspace.package]` sets `edition = "2024"`.
+- `src/main.rs` is the `match-lab` binary with a `matchlab run <manifest>`
+  CLI skeleton (prints "not yet implemented" until Ticket 10); it depends on
+  `matchlab-experiments` and `matchlab-analysis`.
+- `experiments/base/` exists (empty, for inherited base configs).
+- `.github/workflows/ci.yml` runs build + test + check + clippy + fmt.
+- `/results` is gitignored.
+- `cargo build --workspace`, `cargo test --workspace`, and
+  `cargo check --workspace` all pass.
+
+**`matchlab-core` is implemented with the v0.1 core types:**
+- `time.rs` — `SimTime` (nanosecond `u64`), `ZERO`, `from_secs`/`from_millis`,
+  `as_secs_f64`, `duration_since` (saturating), `ticks`.
+- `rng.rs` — `SimRng` deterministic wrapper (`SmallRng` seeded from `u64`) with
+  `gen_range`, `gen_bool`, `sample_normal` (Box-Muller), `gen_u64`. Requires the
+  `small_rng` feature of `rand`; note `rand::Rng::gen` must be written
+  `r#gen` in edition 2024.
+- `player.rs` — `PlayerId`, `Region`, `SkillVector`, `VisibleRank`,
+  `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
+- `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
+  `PlayerPerformance`, `MatchConfig`.
+
+The other seven crates are still stubs; no engine, algorithms, or population
+logic are implemented yet. Individually-consistent tickets from `tickets/`
+drive the remaining v0.1 build order (next: Ticket 03, event engine + World).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
