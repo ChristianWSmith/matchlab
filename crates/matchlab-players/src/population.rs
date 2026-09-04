@@ -1,9 +1,17 @@
 //! Population generation from archetype configs (spec §5.8).
 //!
 //! Each player is drawn from an archetype's skill distribution; the true skill
-//! feeds `PlayerReality`, while the visible rating (`PlayerObservation.rating`)
-//! is the archetype's `initial_rating` if set, else the sampled skill. This
-//! initial-rating override is the seed of the smurf-like mismatch — the two
+//! feeds `PlayerReality` and, via the observation binding, the simulation's
+//! visibility of ground truth:
+//!
+//! - `PlayerObservation.rating` is the archetype's `initial_rating` if set,
+//!   else the sampled skill — the only field rating/matchmaking systems read.
+//! - `PlayerObservation.skill_vector` and `hidden_mmr` carry the *true* skill
+//!   so the outcome model (the simulator of reality) can decide match winners
+//!   from ground truth even after ratings diverge. Algorithms must not read
+//!   these fields.
+//!
+//! The `initial_rating` override seeds the smurf-like mismatch — the two
 //! representations diverge exactly as the design intends.
 
 use matchlab_core::player::{
@@ -62,7 +70,7 @@ impl PopulationGenerator {
                 observations.push(PlayerObservation {
                     id,
                     rating,
-                    hidden_mmr: rating,
+                    hidden_mmr: true_skill,
                     visible_rank: VisibleRank {
                         tier: "unranked".to_string(),
                         division: 1,
@@ -79,7 +87,7 @@ impl PopulationGenerator {
                     quit_history: VecDeque::new(),
                     tilt_level: 0.0,
                     game_mode: "ranked".to_string(),
-                    skill_vector: SkillVector::one_dimensional(rating),
+                    skill_vector: SkillVector::one_dimensional(true_skill),
                     detection_flags: Vec::<DetectionFlag>::new(),
                 });
             }
@@ -218,6 +226,27 @@ mod tests {
                 "true skill should be sampled around the distribution mean"
             );
             assert!(obs.rating != reality.skill.overall());
+            // skill_vector / hidden_mmr carry ground truth so the outcome
+            // model simulates reality: equal to the true skill, distinct from
+            // the visible rating.
+            assert_eq!(obs.skill_vector.overall(), reality.skill.overall());
+            assert_eq!(obs.hidden_mmr, reality.skill.overall());
+            assert_ne!(obs.skill_vector.overall(), obs.rating);
+        }
+    }
+
+    #[test]
+    fn skill_vector_mirrors_true_skill_when_no_initial_rating() {
+        let config = PopulationConfig {
+            size: 300,
+            archetypes: vec![stable_archetype()],
+        };
+        let mut rng = SimRng::from_seed(21);
+        let (realities, observations) = PopulationGenerator::generate(&config, &mut rng);
+        for (reality, obs) in realities.iter().zip(observations.iter()) {
+            assert_eq!(obs.skill_vector.overall(), reality.skill.overall());
+            assert_eq!(obs.hidden_mmr, reality.skill.overall());
+            assert_eq!(obs.rating, reality.skill.overall());
         }
     }
 

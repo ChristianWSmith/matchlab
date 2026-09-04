@@ -85,6 +85,8 @@ The simulation maintains two parallel representations of every player:
 
 **No algorithm, matchmaker, or detection system may call `world.players[pid]` directly.** They must use `world.observations[pid]`. Violating this corrupts the entire experiment.
 
+Exception: the **outcome model** (the game, i.e. the simulator of reality) may — and must — decide match winners from ground truth. It reads ground truth through the observation binding: `PlayerObservation.skill_vector`/`hidden_mmr` are set from `PlayerReality.skill` at population generation, and `LogisticOutcomeModel::effective_skill` uses `skill_vector.overall()`. This is what makes "Elo converges; MAE decreases" a real property: without it, outcomes depend only on ratings, the loop closes, and ratings random-walk instead of learning. **Rating systems, matchmaking, and detection must never read `skill_vector`/`hidden_mmr`** — those fields exist solely for the outcome model's benefit.
+
 A "smurf" is not a player type or boolean flag — it is the combination of high `true_skill` with low `initial_rating` and few `games_played`. Detection systems must infer smurf status from observable behavior.
 
 ### 2. Pluggability via Traits
@@ -134,8 +136,8 @@ population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
 the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
 batch matchmaker (v0.1 **Ticket 07**), the event-handler loop (v0.1
 **Ticket 08**), the metric collectors (v0.1 **Ticket 09**), the config +
-runner + CLI (v0.1 **Ticket 10**), and the analysis + output (v0.1
-**Ticket 11**) are complete.
+runner + CLI (v0.1 **Ticket 10**), the analysis + output (v0.1
+**Ticket 11**), and the v0.1 acceptance pass (v0.1 **Ticket 12**) are complete.
 The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
 
 ```
@@ -204,10 +206,11 @@ crates/
   `PopulationGenerator::generate(config, rng) -> (Vec<PlayerReality>,
   Vec<PlayerObservation>)`. Each player is drawn from its archetype's
   distribution; observation uses `initial_rating` if set else the sampled skill
-  (`rating_deviation: 350.0`, `games_played: 0`, etc. per §5.8, with the
-  observation's `skill_vector`/`hidden_mmr` derived from the visible rating).
-  Proportions become integer counts via the **largest-remainder method** so
-  they always sum exactly to `size`.
+  (`rating_deviation: 350.0`, `games_played: 0`, etc. per §5.8). The
+  observation's `skill_vector`/`hidden_mmr` carry the **true skill** so the
+  outcome model can decide matches from ground truth; only `rating` is the
+  initial/visible ladder value. Proportions become integer counts via the
+  **largest-remainder method** so they always sum exactly to `size`.
 
 **`matchlab-game` is implemented with the v0.1 outcome model:**
 - `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
@@ -215,11 +218,16 @@ crates/
   `PlayerObservation` only — never `PlayerReality` (truth separation).
 - `logistic.rs` — `LogisticOutcomeModel` (spec §6.2) with `beta`, `noise`, and
   inert `use_multidimensional`/`dimension_weights` fields (multidim research
-  path is **out of scope** for v0.1; `effective_skill` defaults to the flat
-  `obs.rating`). `win_probability` is the logistic of the average-team-skill
+  path is **out of scope** for v0.1). `effective_skill` uses
+  `obs.skill_vector.overall()` — the **true skill** carried in the observation
+  binding (falling back to `obs.rating` only for skill-vacuous observations) —
+  so match outcomes are decided by ground truth and Elo genuinely learns from
+  results. `win_probability` is the logistic of the average-team-skill
   difference; `simulate` adds noise, picks a winner, and builds a fully
   populated `MatchResult` (team ids, scores, per-player `PlayerPerformance`,
-  duration, `variance`).
+  duration, `variance`). Ticket 12 grounded outcomes this way; the previous
+  flat-`rating` default closed the loop (outcomes driven by ratings, which
+  update those ratings) and made "MAE decreases" structurally impossible.
 
 **`matchlab-rating` is implemented with the v0.1 rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
@@ -260,11 +268,16 @@ crates/
 - `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
   v0.1; the batch matchmaker runs with an empty list.
 - `batch.rs` — `BatchMatchmaker { interval_ticks, constraints }` (spec §7.8).
-  FIFO-candidate greedy formation: sort by `joined_at`, fill team A then team B,
-  emit matches in consecutive `2 × team_size` blocks (the spec's reference loop
-  silently drops a full final block — this implementation emits it). The
-  `interval_ticks` field is metadata the Ticket 08 handler uses to decide when
-  to trigger matchmaking. ExpandingWindow/Strict/HubSpoke are **out of scope**.
+  **Rating-balanced** formation: sort candidates by `observation.rating`
+  (ties by `joined_at`) and assign alternately to team A / team B in
+  consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
+  opposite teams, so the two teams are balanced and `match_quality` stays
+  ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
+  population, failing the v0.1 quality exit criterion). The `interval_ticks`
+  field is metadata the Ticket 08 handler uses to decide when to trigger
+  matchmaking; the handler forms matches in consecutive blocks, emitting the
+  final block when full (the spec's reference loop silently drops it).
+  ExpandingWindow/Strict/HubSpoke are **out of scope**.
 
 **`matchlab-loop` is implemented with the v0.1 event-handler machine:**
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
@@ -314,11 +327,15 @@ crates/
 `matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
 besides the simulation):
 - `collector.rs` — `MetricCollector` trait (spec §11.2): `name()`,
-  `record_match(mr, world)`, `compute() -> MetricResult`; `MetricResult` enum
-  (`Scalar`, `Distribution`, `Summary { mean, median, p75, p90, p95, p99,
-  stddev }`, `Histogram { buckets }`) with `serde::Serialize`.
+  `record_match(mr, world)`, `compute() -> MetricResult`, and an optional
+  `time_buckets() -> Option<Vec<f64>>` (default `None`) that the engine folds
+  into a `{name}_by_time` metric; `MetricResult` enum (`Scalar`,
+  `Distribution`, `Summary { mean, median, p75, p90, p95, p99, stddev }`,
+  `Histogram { buckets }`, `TimeSeries { bucket_means }`) with
+  `serde::Serialize`.
 - `engine.rs` — `MetricsEngine` (spec §11.1): `register`, `record_match`,
-  `finalize()`, `results() -> &HashMap<String, MetricResult>`.
+  `finalize()` (also inserts each collector's `{name}_by_time` `TimeSeries`
+  when `time_buckets` is present), `results() -> &HashMap<String, MetricResult>`.
 - `stats.rs` — `Summary { n, mean, median, p75, p90, p95, p99, stddev }`,
   `summary(&[f64])` (nearest-rank percentile by truncation per §14.1), and
   `summary_to_result(&[f64])` (empty sample → `Scalar(0.0)`). This is the
@@ -328,8 +345,12 @@ besides the simulation):
 - `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
   `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
   summarized (spec §11.3; participant-sampled rather than whole-population
-  snapshots so memory/steps scale with matches, not matches × players). Reads
-  ground truth — allowed for metrics, confirming the "MAE decreases" exit criterion.
+  snapshots so memory/steps scale with matches, not matches × players). Each
+  sample is time-stamped; `MetricCollector::time_buckets` (default
+  `None`) yields a 20 equal-duration-bucket mean series that the engine folds
+  into a `rating_accuracy_by_time` `TimeSeries` — the "MAE decreases over
+  time" convergence evidence for the v0.1 acceptance ticket. Reads ground
+  truth — allowed for metrics.
 - `quality.rs` — `MatchQualityCollector` ("match_quality"):
   `1 − (|avg_a − avg_b|/400).clamp(0,1)` from observation ratings, summarized.
 - `queue.rs` — `QueueTimeCollector` ("queue_time"): wait = `world.time
@@ -373,9 +394,11 @@ inequality/ndcg/correlation/convergence/etc. are out).
   config_hash, git_commit, timestamp, matches_completed, matches_formed,
   simulated_time_secs, metrics }`; the timestamp is a hand-rolled ISO-8601 UTC
   string (no chrono dep). `metrics` is a `BTreeMap` (not `HashMap`) so JSON
-  serialization key order is deterministic across processes. 6 unit tests
-  include a same-seed determinism check (identical metrics) and a sim-time
-  bound check. `lib.rs` re-exports the public API.
+  serialization key order is deterministic across processes. Each registered
+  collector's `time_buckets()` (if present) is folded into `{name}_by_time`
+  `TimeSeries` by the engine. 6 unit tests include a same-seed determinism
+  check (identical metrics) and a sim-time bound check. `lib.rs` re-exports
+  the public API.
 - Binary `src/main.rs` — `matchlab run <manifest.yaml>` (exit 0/1/2): loads via
   `inherit::load`, runs, and delegates output to `matchlab-analysis` — writes
   the result as pretty JSON to `<output.directory>/<experiment.name>.json`
@@ -383,8 +406,11 @@ inequality/ndcg/correlation/convergence/etc. are out).
   report to `<name>.md` (`report::generate_report`) with config hash, git
   commit, and the metrics table.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
-  players, team size 5, flat skill, no detection/ranking/objective/cohorts,
-  capped by `max_time: 604800`).
+  players, team size 5, cold ladder start with `initial_rating: 1000`, flat
+  skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
+  The `initial_rating` deviates from the literal §17 snippet to provide a
+  meaningful convergence scenario: visible ratings start at 1000 while true
+  skill is sampled from N(1000, 250), so Elo has something to learn.
 
 **`matchlab-analysis` is implemented with the v0.1 reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
@@ -410,8 +436,8 @@ inequality/ndcg/correlation/convergence/etc. are out).
   byte-identical files (the wall-clock `timestamp` field is the only thing
   that legitimately differs).
 
-Individually-consistent tickets from `tickets/` drive the remaining v0.1
-build order (next: Ticket 12, v0.1 acceptance).
+Individually-consistent tickets from `tickets/` drive the v0.1 build order;
+all twelve are now complete (v0.1 is accepted).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
@@ -430,18 +456,14 @@ build order (next: Ticket 12, v0.1 acceptance).
 9. **Config + Runner** — `matchlab-experiments`: YAML parsing, config inheritance, ExperimentRunner, CLI
 10. **Analysis + Output** — `matchlab-analysis`: summary stats, JSON export
 
-**v0.1 exit criteria:** (Ticket 12 is the formal acceptance pass; note the
-"match quality > 0.85" target is not met by the naive FIFO batch matchmaker on
-the std-250 population — random 5v5 pairing caps it near 0.68 and Elo
-over-dispersion lowers the observed mean to ~0.60, so that criterion belongs to
-a quality-aware matchmaker in a later ticket.)
-- `cargo run -- run experiments/v0_1_basic.yaml` completes
+**v0.1 exit criteria:** (Ticket 12 is the formal acceptance pass.)
+- `cargo run -- run experiments/v0_1_basic.yaml` completes (exit 0)
 - Produces `results/` with metrics JSON
-- Elo ratings converge (MAE decreases over time)
-- Match quality mean > 0.85
-- Queue time measures actual wait (not match duration)
+- Elo ratings converge (MAE decreases over time, demonstrated via 20-bucket `rating_accuracy_by_time` `TimeSeries`: 197.5 → 159.5)
+- Match quality mean > 0.85 (mean 0.98 with rating-balanced batch matchmaker)
+- Queue time measures actual wait (mean 5.02s, not match duration)
 - All `cargo test` pass
-- Same seed → identical results across runs
+- Same seed → identical results across runs across runs
 
 ---
 

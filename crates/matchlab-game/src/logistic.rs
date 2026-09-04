@@ -3,6 +3,14 @@
 //! Computes a team win probability as the logistic of the average-skill
 //! difference and simulates the match by adding noise, picking a winner, and
 //! building a fully-populated `MatchResult`.
+//!
+//! The win probability derives from each player's `skill_vector` — the true
+//! skill carried in the observation binding (set from `PlayerReality` at
+//! population generation) — so match outcomes reflect ground truth. This makes
+//! the game a genuine simulator of reality: rating systems can learn true skill
+//! from results instead of chasing their own ratings in a closed loop. Only the
+//! flat `rating` scalar is used as a fallback when no skill vector is present;
+//! matchmaking and rating systems still read `obs.rating`, never `skill_vector`.
 
 use matchlab_core::match_::{MatchId, MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation};
@@ -15,8 +23,9 @@ pub struct LogisticOutcomeModel {
     pub beta: f64,
     pub noise: f64,
     /// Present but inert in v0.1. When enabled, win probability is computed
-    /// from each player's `SkillVector` (`weighted_overall`) rather than the
-    /// flat `rating` scalar — the multidimensional-skill research path (§6.3).
+    /// from each player's `SkillVector` via per-dimension `weighted_overall`
+    /// rather than the plain unweighted `overall` — the multidimensional-skill
+    /// research path (§6.3).
     pub use_multidimensional: bool,
     pub dimension_weights: std::collections::HashMap<String, f64>,
 }
@@ -31,11 +40,20 @@ impl LogisticOutcomeModel {
         }
     }
 
+    /// True skill used to decide match outcomes. The observation's
+    /// `skill_vector` carries ground truth (set from reality at population
+    /// generation); the flat `rating` is only a fallback for observations
+    /// built without a skill vector.
     fn effective_skill(&self, obs: &PlayerObservation) -> f64 {
         if self.use_multidimensional {
             obs.skill_vector.weighted_overall(&self.dimension_weights)
         } else {
-            obs.rating
+            let overall = obs.skill_vector.overall();
+            if obs.skill_vector.dimensions.is_empty() {
+                obs.rating
+            } else {
+                overall
+            }
         }
     }
 }
@@ -170,6 +188,35 @@ mod tests {
         // The mirror matchup favors the other side equally.
         let p_reverse = model.win_probability(&weak_b, &strong_a);
         assert!((p + p_reverse - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn outcome_follows_skill_vector_ground_truth_not_visible_rating() {
+        let model = LogisticOutcomeModel::new(400.0, 0.05);
+        // Team A: rating 900 but true skill 1700. Team B: rating 1600 but true
+        // skill 950. If outcomes used ratings A would be the underdog; using
+        // the ground-truth skill_vector, A is the favorite.
+        let hidden_a = vec![SkillVector::one_dimensional(1700.0)];
+        let visible_b = [SkillVector::one_dimensional(950.0)];
+        let obs_a: Vec<PlayerObservation> = hidden_a
+            .into_iter()
+            .map(|sv| {
+                let mut o = obs(1, 900.0);
+                o.skill_vector = sv;
+                o
+            })
+            .collect();
+        let obs_b: Vec<PlayerObservation> = visible_b
+            .into_iter()
+            .map(|sv| {
+                let mut o = obs(4, 1600.0);
+                o.skill_vector = sv;
+                o
+            })
+            .collect();
+
+        let p = model.win_probability(&obs_a, &obs_b);
+        assert!(p > 0.8, "higher-skill team should be favored: {p}");
     }
 
     #[test]

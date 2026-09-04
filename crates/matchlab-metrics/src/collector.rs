@@ -7,6 +7,12 @@ pub trait MetricCollector: Send + Sync {
     fn name(&self) -> &str;
     fn record_match(&mut self, match_result: &MatchResult, world: &World);
     fn compute(&self) -> MetricResult;
+    /// Optional per-time-bucket series over the run's duration (e.g. bucketed
+    /// MAE to show rating convergence). When present, the engine folds it into
+    /// a `{name}_by_time` metric.
+    fn time_buckets(&self) -> Option<Vec<f64>> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -24,5 +30,10 @@ pub enum MetricResult {
     },
     Histogram {
         buckets: Vec<(f64, u64)>,
+    },
+    /// Equal-duration bucket means sampled over the run, e.g. MAE by time
+    /// window for demonstrating rating convergence.
+    TimeSeries {
+        bucket_means: Vec<f64>,
     },
 }

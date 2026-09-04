@@ -15,6 +15,7 @@ experiment:
         play_frequency: 0.8
         session_length: 1800.0
         quit_probability: 0.0
+        initial_rating: 1000.0
 
   game:
     team_size: 5

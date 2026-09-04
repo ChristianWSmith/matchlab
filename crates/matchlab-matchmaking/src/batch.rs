@@ -7,8 +7,14 @@ use crate::constraint::Constraint;
 use crate::matchmaker::{Matchmaker, ProposedMatch};
 use crate::queue::Queue;
 
-/// v0.1 matchmaker: process the whole queue periodically, FIFO by join time,
-/// filling team A then team B in consecutive blocks of `2 × team_size`.
+/// v0.1 matchmaker: process the whole queue periodically, teaming the queue by
+/// visible rating so each pair of teams has nearly equal average rating.
+///
+/// Candidates are sorted by `observation.rating` (ties by `joined_at`) and
+/// assigned alternately to team A / team B in consecutive `2 × team_size`
+/// blocks. Adjacent-by-rating players end up on opposite teams, so the two
+/// teams are balanced and `match_quality` stays high — the naive FIFO pairing
+/// can never exceed ~0.68 quality on the standard population.
 ///
 /// `interval_ticks` is metadata the event handler (Ticket 08) reads to decide
 /// *when* to trigger matchmaking; the handler issues the `MatchFormed` events.
@@ -36,11 +42,18 @@ impl Matchmaker for BatchMatchmaker {
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
         let mut candidates: Vec<_> = queue.entries().iter().collect();
-        candidates.sort_by_key(|a| a.joined_at);
+        candidates.sort_by(|a, b| {
+            a.observation
+                .rating
+                .partial_cmp(&b.observation.rating)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.joined_at.cmp(&b.joined_at))
+        });
 
         let mut matches: Vec<ProposedMatch> = Vec::new();
         let mut team_a: Vec<PlayerId> = Vec::new();
         let mut team_b: Vec<PlayerId> = Vec::new();
+        let mut alternate = false;
 
         let mut emit = |team_a: &mut Vec<PlayerId>, team_b: &mut Vec<PlayerId>| {
             if team_a.len() != team_size || team_b.len() != team_size {
@@ -64,14 +77,16 @@ impl Matchmaker for BatchMatchmaker {
         };
 
         for entry in candidates {
-            if team_a.len() < team_size {
-                team_a.push(entry.player_id);
-            } else if team_b.len() < team_size {
+            if team_a.len() == team_size && team_b.len() == team_size {
+                emit(&mut team_a, &mut team_b);
+                alternate = false;
+            }
+            if alternate {
                 team_b.push(entry.player_id);
             } else {
-                emit(&mut team_a, &mut team_b);
                 team_a.push(entry.player_id);
             }
+            alternate = !alternate;
         }
         emit(&mut team_a, &mut team_b);
 
@@ -135,9 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn ten_players_team_size_five_forms_one_match_fifo() {
+    fn ten_players_team_size_five_forms_one_balanced_match() {
         let mut queue = Queue::default();
-        // Join times deliberately out of enqueue order to prove FIFO sorting.
+        // Join times deliberately out of enqueue order: with equal ratings the
+        // rating sort defers to joined_at (FIFO), proving the tie-break.
         for (id, t) in [
             (10, 100.0),
             (9, 90.0),
@@ -171,24 +187,26 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
-        // FIFO: the five longest-waiting players (1..5) form team A.
+        // Ratings equal → FIFO tie-break; alternating assignment puts the
+        // longest-waiting players on alternating teams, keeping the averages
+        // balanced (all-1000 → quality 1.0).
         assert_eq!(
             m.team_a,
             vec![
                 PlayerId(1),
-                PlayerId(2),
                 PlayerId(3),
-                PlayerId(4),
-                PlayerId(5)
+                PlayerId(5),
+                PlayerId(7),
+                PlayerId(9)
             ]
         );
         assert_eq!(
             m.team_b,
             vec![
+                PlayerId(2),
+                PlayerId(4),
                 PlayerId(6),
-                PlayerId(7),
                 PlayerId(8),
-                PlayerId(9),
                 PlayerId(10)
             ]
         );
@@ -232,26 +250,102 @@ mod tests {
         let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
 
         assert_eq!(matches.len(), 2);
+        // Equal ratings → FIFO order with alternating teams per block.
         assert_eq!(
             matches[0].team_a,
             vec![
                 PlayerId(1),
-                PlayerId(2),
                 PlayerId(3),
+                PlayerId(5),
+                PlayerId(7),
+                PlayerId(9)
+            ]
+        );
+        assert_eq!(
+            matches[0].team_b,
+            vec![
+                PlayerId(2),
                 PlayerId(4),
-                PlayerId(5)
+                PlayerId(6),
+                PlayerId(8),
+                PlayerId(10)
             ]
         );
         assert_eq!(
             matches[1].team_b,
             vec![
+                PlayerId(12),
+                PlayerId(14),
                 PlayerId(16),
-                PlayerId(17),
                 PlayerId(18),
-                PlayerId(19),
                 PlayerId(20)
             ]
         );
+    }
+
+    #[test]
+    fn alternating_assignment_balances_team_ratings() {
+        let mut queue = Queue::default();
+        // Ten players spread from 800 to 1700 (ascending by rating, which the
+        // sort key uses). Alternating assignment puts adjacent ratings on
+        // opposite teams so both averages land mid-range instead of
+        // underdog-vs-favorite.
+        for (id, rating) in [
+            (1, 800.0),
+            (2, 900.0),
+            (3, 1000.0),
+            (4, 1100.0),
+            (5, 1200.0),
+            (6, 1300.0),
+            (7, 1400.0),
+            (8, 1500.0),
+            (9, 1600.0),
+            (10, 1700.0),
+        ] {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), rating));
+        }
+        let world = build_world(&[
+            (1, 800.0),
+            (2, 900.0),
+            (3, 1000.0),
+            (4, 1100.0),
+            (5, 1200.0),
+            (6, 1300.0),
+            (7, 1400.0),
+            (8, 1500.0),
+            (9, 1600.0),
+            (10, 1700.0),
+        ]);
+
+        let mm = BatchMatchmaker::new(1);
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(
+            m.team_a,
+            vec![
+                PlayerId(1),
+                PlayerId(3),
+                PlayerId(5),
+                PlayerId(7),
+                PlayerId(9)
+            ]
+        );
+        assert_eq!(
+            m.team_b,
+            vec![
+                PlayerId(2),
+                PlayerId(4),
+                PlayerId(6),
+                PlayerId(8),
+                PlayerId(10)
+            ]
+        );
+        // avg_a = 1200 vs avg_b = 1300 → |diff|/400 = 0.25 → quality 0.75;
+        // the FIFO pairing (bottom five vs top five) would be quality 0.0.
+        assert_eq!(m.quality_score, 0.75);
     }
 
     #[test]
@@ -278,8 +372,14 @@ mod tests {
         let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
 
         assert_eq!(matches.len(), 1);
-        // avg_a=1500 vs avg_b=900 → diff=600 → clamped to 1.0 → quality 0.0
-        assert_eq!(matches[0].quality_score, 0.0);
+        // Balanced pairing: sorted [900×5, 1500×5] alternated → 3×900+2×1500
+        // vs 2×900+3×1500 (avg 1140 vs 1260) → quality 0.7, far better than
+        // the 0.0 of a 900-vs-1500 FIFO split.
+        assert!(
+            matches[0].quality_score >= 0.7,
+            "quality was {}",
+            matches[0].quality_score
+        );
     }
 
     #[test]

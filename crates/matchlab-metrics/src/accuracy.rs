@@ -13,13 +13,21 @@ use crate::stats::summary_to_result;
 /// collectors) keeps accuracy bounded: a whole-population snapshot per match
 /// would store `matches × players` floats and slow the loop by orders of
 /// magnitude at manifest scale.
+///
+/// Each sample is time-stamped so the collector can also emit a `{name}_by_time`
+/// `TimeSeries` of equal-duration bucket means — the "MAE decreases over time"
+/// convergence evidence for the v0.1 acceptance ticket.
 pub struct RatingAccuracyCollector {
-    errors: Vec<f64>,
+    samples: Vec<(u64, f64)>,
 }
+
+const TIME_BUCKETS: usize = 20;
 
 impl RatingAccuracyCollector {
     pub fn new() -> Self {
-        Self { errors: Vec::new() }
+        Self {
+            samples: Vec::new(),
+        }
     }
 }
 
@@ -35,18 +43,50 @@ impl MetricCollector for RatingAccuracyCollector {
     }
 
     fn record_match(&mut self, mr: &MatchResult, world: &World) {
+        let tick = world.time.ticks();
         for pid in mr.team_a.iter().chain(mr.team_b.iter()) {
             if let Some(obs) = world.observations.get(pid) {
                 if let Some(reality) = world.players.get(pid) {
                     let error = (obs.rating - reality.skill.overall()).abs();
-                    self.errors.push(error);
+                    self.samples.push((tick, error));
                 }
             }
         }
     }
 
     fn compute(&self) -> MetricResult {
-        summary_to_result(&self.errors)
+        summary_to_result(&self.errors())
+    }
+
+    fn time_buckets(&self) -> Option<Vec<f64>> {
+        if self.samples.is_empty() {
+            return None;
+        }
+        let end = self.samples.iter().map(|(t, _)| *t).max().unwrap();
+        let width = if end == 0 {
+            1
+        } else {
+            end.div_ceil(TIME_BUCKETS as u64)
+        };
+        let mut sums = [0.0f64; TIME_BUCKETS];
+        let mut counts = [0u64; TIME_BUCKETS];
+        for &(tick, error) in &self.samples {
+            let idx = ((tick / width).min(TIME_BUCKETS as u64 - 1)) as usize;
+            sums[idx] += error;
+            counts[idx] += 1;
+        }
+        Some(
+            sums.iter()
+                .zip(counts.iter())
+                .map(|(&s, &c)| if c == 0 { 0.0 } else { s / c as f64 })
+                .collect(),
+        )
+    }
+}
+
+impl RatingAccuracyCollector {
+    fn errors(&self) -> Vec<f64> {
+        self.samples.iter().map(|(_, e)| *e).collect()
     }
 }
 
@@ -138,7 +178,7 @@ mod tests {
         c.record_match(&mr(vec![PlayerId(2)], vec![PlayerId(1)]), &world);
 
         // Four participant samples: 200, 100, 100, 200 → MAE = 150.
-        assert_eq!(c.errors.len(), 4);
+        assert_eq!(c.samples.len(), 4);
         match c.compute() {
             MetricResult::Summary { mean, .. } => assert!((mean - 150.0).abs() < 1e-9),
             other => panic!("expected Summary, got {other:?}"),
@@ -157,6 +197,32 @@ mod tests {
             a.record_match(&mr(vec![PlayerId(1)], vec![PlayerId(2)]), &world);
             b.record_match(&mr(vec![PlayerId(1)], vec![PlayerId(2)]), &world);
         }
-        assert_eq!(a.errors, b.errors);
+        assert_eq!(a.samples, b.samples);
+    }
+
+    #[test]
+    fn time_buckets_split_samples_by_duration_windows() {
+        let mut world = World::new(SimRng::from_seed(5));
+        add(&mut world, 1, 1000.0, 2000.0); // error 1000
+        let mut c = RatingAccuracyCollector::new();
+
+        world.time = SimTime::from_secs(10.0);
+        c.record_match(&mr(vec![PlayerId(1)], vec![]), &world);
+        world.time = SimTime::from_secs(30.0);
+        c.record_match(&mr(vec![PlayerId(1)], vec![]), &world);
+        world.time = SimTime::from_secs(50.0);
+        c.record_match(&mr(vec![PlayerId(1)], vec![]), &world);
+
+        let buckets = c.time_buckets().expect("samples present");
+        assert_eq!(buckets.len(), TIME_BUCKETS);
+        // 50s sim span → 2.5s per bucket; 10s/30s/50s → indices 4, 12, 19.
+        let expected = [buckets[4], buckets[12], buckets[19]];
+        assert!(expected.iter().all(|b| (*b - 1000.0).abs() < 1e-9));
+        assert!(
+            buckets
+                .iter()
+                .enumerate()
+                .all(|(i, b)| { [4, 12, 19].contains(&i) || (*b - 0.0).abs() < 1e-9 })
+        );
     }
 }

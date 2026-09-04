@@ -33,6 +33,12 @@ impl MetricsEngine {
         for collector in &self.collectors {
             self.results
                 .insert(collector.name().to_string(), collector.compute());
+            if let Some(bucket_means) = collector.time_buckets() {
+                self.results.insert(
+                    format!("{}_by_time", collector.name()),
+                    MetricResult::TimeSeries { bucket_means },
+                );
+            }
         }
     }
 
@@ -150,5 +156,11 @@ mod tests {
         assert!(results.contains_key("rating_accuracy"));
         assert!(results.contains_key("match_quality"));
         assert!(results.contains_key("queue_time"));
+        // Accuracy collector emits the time-bucketed convergence series.
+        assert!(results.contains_key("rating_accuracy_by_time"));
+        match &results["rating_accuracy_by_time"] {
+            MetricResult::TimeSeries { bucket_means } => assert_eq!(bucket_means.len(), 20),
+            other => panic!("expected TimeSeries, got {other:?}"),
+        }
     }
 }
