@@ -4999,103 +4999,16 @@ When player utility is modeled, matchmaking becomes an ecological system, not me
 
 ---
 
-## 17. v0.1 Build Order
+## 17. v0.1 Implementation
 
-v0.1 implements the minimal viable simulation: 10,000 players, 1D static skill, 5v5 logistic outcome, FIFO queue, batch matchmaker, Elo rating, and rating error metric.
+The v0.1 build order (Steps 1–12) is complete. The implementation delivers a working discrete-event simulation with 10,000 players, 1D static skill, logistic outcomes, rating-balanced batch matchmaking, Elo rating, and metric collectors. See `experiments/v0_1_basic.yaml` for the minimal experiment manifest and `AGENTS.md` for the full implementation state.
 
-### Step 1: Workspace + Core Types
-
-- Initialize Cargo workspace with `Cargo.toml` at root
-- Create `crates/matchlab-core` with `SimTime`, `PlayerId`, `MatchId`, `SimRng`
-- Implement `SkillVector`, `PlayerReality`, `PlayerObservation`, `MatchResult`
-- Unit tests: time arithmetic, RNG seeding, ID generation
-
-### Step 2: Event Engine
-
-- Implement `EventEngine` with priority queue
-- Implement `Event` trait, `EventKind` enum (all 11 variants), `TimestampedEvent`
-- Implement `World` struct
-- Implement `Simulation::run()` and `Simulation::run_to_completion()`
-- Test: schedule 3 events at different times, verify execution order
-
-### Step 3: Player Population
-
-- Create `crates/matchlab-players`
-- `PopulationGenerator` with one archetype (stable, normal distribution)
-- `SkillProcess` (static skill — no evolution in v0.1)
-- Test: generate 1000 players, verify mean and stddev
-
-### Step 4: Game Outcome
-
-- Create `crates/matchlab-game`
-- `OutcomeModel` trait
-- `LogisticOutcomeModel`
-- `MatchResult` construction
-- Test: equal teams → ~50% win rate over 10,000 games
-
-### Step 5: Elo Rating
-
-- Create `crates/matchlab-rating`
-- `RatingSystem` trait with `information_budget`
-- `EloRatingSystem`
-- `FlatPointsRatingSystem`
-- Test: known outcomes → expected rating changes
-
-### Step 6: Queue + Matchmaker
-
-- Create `crates/matchlab-matchmaking`
-- `Queue` with enqueue, dequeue, `waiting_time`
-- Simple batch matchmaker (every N ticks, form matches from queued players)
-- Test: fill queue, verify matches formed
-
-### Step 7: Event Handlers
-
-- Wire everything with event handlers:
-  - `PlayerJoin` → add to world, schedule `PlayerQueue`
-  - `PlayerQueue` → add to queue, trigger matchmaker
-  - `MatchFormed` → simulate game, schedule `MatchEnd`
-  - `MatchEnd` → update ratings, record metrics
-- Test: 100-player simulation end-to-end
-
-### Step 8: Metrics
-
-- Create `crates/matchlab-metrics`
-- `RatingAccuracyCollector`, `MatchQualityCollector`, `QueueTimeCollector`
-- Verify queue time tracks actual wait (not match duration)
-- Test: metrics computed correctly from known data
-
-### Step 9: Config + Runner
-
-- Create `crates/matchlab-experiments`
-- YAML config parsing with serde
-- Config inheritance: load base, deep-merge overrides
-- `ExperimentRunner::run()`
-- CLI: `matchlab run <manifest.yaml>`
-- Test: minimal experiment from YAML completes
-
-### Step 10: Analysis + Output
-
-- Create `crates/matchlab-analysis`
-- `summary()` statistics
-- JSON output
-- Test: experiment produces valid results
-
-### v0.1 Exit Criteria
-
-- [ ] `cargo run -- run experiments/v0_1_basic.yaml` completes
-- [ ] Produces `results/` with metrics JSON
-- [ ] Elo ratings converge (MAE decreases over time)
-- [ ] Match quality mean > 0.85
-- [ ] Queue time is measured as actual wait time (not match duration)
-- [ ] All unit tests pass (`cargo test`)
-- [ ] Same seed → identical results across runs
-
-### v0.1 Minimal Experiment Manifest
+### Reference: Minimal Experiment Manifest
 
 ```yaml
 experiment:
   name: v0_1_basic
-  description: "Minimal Elo test with static skill population"
+  description: "Minimal Elo test with static skill population, cold ladder start"
   seed: 42
 
   population:
@@ -5110,6 +5023,7 @@ experiment:
         play_frequency: 0.8
         session_length: 1800.0
         quit_probability: 0.0
+        initial_rating: 1000.0
 
   game:
     team_size: 5

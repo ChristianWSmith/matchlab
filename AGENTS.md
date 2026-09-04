@@ -130,15 +130,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
-**Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
-population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
-the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
-batch matchmaker (v0.1 **Ticket 07**), the event-handler loop (v0.1
-**Ticket 08**), the metric collectors (v0.1 **Ticket 09**), the config +
-runner + CLI (v0.1 **Ticket 10**), the analysis + output (v0.1
-**Ticket 11**), and the v0.1 acceptance pass (v0.1 **Ticket 12**) are complete.
-The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
+The workspace is fully implemented: 12 crates under `crates/`, a binary at `src/main.rs`, and 9 workspace members. The root `Cargo.toml` is a Cargo workspace:
 
 ```
 crates/
@@ -156,15 +148,14 @@ crates/
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`,
   `rand 0.8`, `rand_chacha 0.3`; `[workspace.package]` sets `edition = "2024"`.
 - `src/main.rs` is the `match-lab` binary with a `matchlab run <manifest>`
-  CLI skeleton (prints "not yet implemented" until Ticket 10); it depends on
-  `matchlab-experiments` and `matchlab-analysis`.
+  CLI; it depends on `matchlab-experiments` and `matchlab-analysis`.
 - `experiments/base/` exists (empty, for inherited base configs).
 - `.github/workflows/ci.yml` runs build + test + check + clippy + fmt.
 - `/results` is gitignored.
 - `cargo build --workspace`, `cargo test --workspace`, and
   `cargo check --workspace` all pass.
 
-**`matchlab-core` is implemented with the v0.1 core types:**
+**`matchlab-core` is implemented with the core types:**
 - `time.rs` — `SimTime` (nanosecond `u64`), `ZERO`, `from_secs`/`from_millis`,
   `as_secs_f64`, `duration_since` (saturating), `ticks`.
 - `rng.rs` — `SimRng` deterministic wrapper (`SmallRng` seeded from `u64`) with
@@ -181,7 +172,7 @@ crates/
   10 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
   MatchEnd, SkillChange, MatchTimer), plus a checked `downcast::<T>()` helper.
   The `Any`-based `as_any()` lets handlers recover a concrete event's payload
-  (`downcast_ref`) after matching on `kind()` — this is how Ticket 08 handlers
+  (`downcast_ref`) after matching on `kind()` — this is how event handlers
   read `player_id`/`match_id`/teams. `EventEngine` (register_handler/schedule/
   next_event/peek_time/is_empty/tick).
 - `world.rs` — `World` holding `players`, `observations`, `matches`, `rng`,
@@ -191,7 +182,7 @@ crates/
 - `simulation.rs` — `Simulation { world, engine }` with `new`, and
   `run(until)` / `run_to_completion()` (skips idle clock periods).
 
-**`matchlab-players` is implemented with the v0.1 population logic:**
+**`matchlab-players` is implemented with the population logic:**
 - `archetype.rs` — `ArchetypeConfig` (serde `Deserialize`: `name`, `proportion`,
   `skill_distribution`, `skill_volatility`, `improvement_rate`, `play_frequency`,
   `session_length`, `quit_probability`, optional `initial_rating`) and
@@ -212,7 +203,7 @@ crates/
   initial/visible ladder value. Proportions become integer counts via the
   **largest-remainder method** so they always sum exactly to `size`.
 
-**`matchlab-game` is implemented with the v0.1 outcome model:**
+**`matchlab-game` is implemented with the outcome model:**
 - `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
   team_b)` and `simulate(match_id, team_a, team_b, rng) -> MatchResult`. Takes
   `PlayerObservation` only — never `PlayerReality` (truth separation).
@@ -229,7 +220,7 @@ crates/
   flat-`rating` default closed the loop (outcomes driven by ratings, which
   update those ratings) and made "MAE decreases" structurally impossible.
 
-**`matchlab-rating` is implemented with the v0.1 rating systems:**
+**`matchlab-rating` is implemented with the rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
   `initialize(player_id)`, `predict(team_a, team_b)`,
   `update(match_result, observations) -> HashMap<PlayerId, RatingState>`, plus
@@ -256,7 +247,7 @@ crates/
   Option<Box<dyn RatingSystem>>`. Glicko-2/TrueSkill are **not** registered in
   v0.1; unknown names return `None`.
 
-**`matchlab-matchmaking` is implemented with the v0.1 queue + batch matchmaker:**
+**`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
   game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
@@ -273,13 +264,13 @@ crates/
   consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
   opposite teams, so the two teams are balanced and `match_quality` stays
   ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
-  population, failing the v0.1 quality exit criterion). The `interval_ticks`
-  field is metadata the Ticket 08 handler uses to decide when to trigger
+  population, failing the quality exit criterion). The `interval_ticks`
+  field is metadata the event handler uses to decide when to trigger
   matchmaking; the handler forms matches in consecutive blocks, emitting the
   final block when full (the spec's reference loop silently drops it).
   ExpandingWindow/Strict/HubSpoke are **out of scope**.
 
-**`matchlab-loop` is implemented with the v0.1 event-handler machine:**
+**`matchlab-loop` is implemented with the event-handler machine:**
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
   max_matches }` and `MachineState { population: HashMap<PlayerId,
   (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
@@ -290,7 +281,7 @@ crates/
   - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
     schedule `PlayerQueue`.
   - `PlayerQueue` → enqueue the player (entry built from the live observation)
-    and refresh `obs.queue_joined_at` to `world.time` (keeps the v0.1
+    and refresh `obs.queue_joined_at` to `world.time` (keeps the
     queue-time metric measuring the current join→formation wait, including
     re-queues after a match).
   - `MatchTimer` (new periodic event) → call `find_matches`, cap formation to
@@ -323,7 +314,7 @@ crates/
   order + equal-time heap pops make the whole experiment deterministic for a
   given seed. Re-exports `LoopConfig`, `MachineState`, and the `handle_*` fns.
 
-**`matchlab-metrics` is implemented with the v0.1 collectors** (depends on
+**`matchlab-metrics` is implemented with the collectors** (depends on
 `matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
 besides the simulation):
 - `collector.rs` — `MetricCollector` trait (spec §11.2): `name()`,
@@ -359,7 +350,7 @@ besides the simulation):
 No collectors besides these three are in scope for v0.1 (spec §11.3's
 inequality/ndcg/correlation/convergence/etc. are out).
 
-**`matchlab-experiments` is implemented with the v0.1 config + runner:**
+**`matchlab-experiments` is implemented with the config + runner:**
 - `config.rs` — serde types for the full experiment manifest (spec §13.2):
   `ExperimentConfig`, `ExperimentSpec` (name, optional description, seed,
   population/game/matchmaking/rating/detection/ranking/metrics/objectives/
@@ -412,7 +403,7 @@ inequality/ndcg/correlation/convergence/etc. are out).
   meaningful convergence scenario: visible ratings start at 1000 while true
   skill is sampled from N(1000, 250), so Elo has something to learn.
 
-**`matchlab-analysis` is implemented with the v0.1 reporting/export layer:**
+**`matchlab-analysis` is implemented with the reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
   `Summary`/`summary_to_result` API (spec §14.1). The canonical implementation
   stays in `matchlab-metrics` to keep the metrics-only-core boundary.
@@ -436,10 +427,9 @@ inequality/ndcg/correlation/convergence/etc. are out).
   byte-identical files (the wall-clock `timestamp` field is the only thing
   that legitimately differs).
 
-Individually-consistent tickets from `tickets/` drive the v0.1 build order;
-all twelve are now complete (v0.1 is accepted).
+The twelve-step build order is complete and v0.1 is accepted.
 
-**Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
+**Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1–12 are complete.
 
 ---
 
@@ -447,7 +437,7 @@ all twelve are now complete (v0.1 is accepted).
 
 1. **Workspace + Core Types** — `matchlab-core`: SimTime, PlayerId, MatchId, SimRng, SkillVector, PlayerReality, PlayerObservation, MatchResult
 2. **Event Engine** — EventEngine, Event trait, EventKind, World, Simulation
-3. **Player Population** — `matchlab-players`: PopulationGenerator, SkillProcess (static in v0.1)
+3. **Player Population** — `matchlab-players`: PopulationGenerator, SkillProcess (static)
 4. **Game Outcome** — `matchlab-game`: OutcomeModel trait, LogisticOutcomeModel
 5. **Elo Rating** — `matchlab-rating`: RatingSystem trait, Elo, FlatPoints
 6. **Queue + Matchmaker** — `matchlab-matchmaking`: Queue, BatchMatchmaker
@@ -455,15 +445,7 @@ all twelve are now complete (v0.1 is accepted).
 8. **Metrics** — `matchlab-metrics`: RatingAccuracy, MatchQuality, QueueTime collectors
 9. **Config + Runner** — `matchlab-experiments`: YAML parsing, config inheritance, ExperimentRunner, CLI
 10. **Analysis + Output** — `matchlab-analysis`: summary stats, JSON export
-
-**v0.1 exit criteria:** (Ticket 12 is the formal acceptance pass.)
-- `cargo run -- run experiments/v0_1_basic.yaml` completes (exit 0)
-- Produces `results/` with metrics JSON
-- Elo ratings converge (MAE decreases over time, demonstrated via 20-bucket `rating_accuracy_by_time` `TimeSeries`: 197.5 → 159.5)
-- Match quality mean > 0.85 (mean 0.98 with rating-balanced batch matchmaker)
-- Queue time measures actual wait (mean 5.02s, not match duration)
-- All `cargo test` pass
-- Same seed → identical results across runs across runs
+11. **Acceptance** — `cargo run -- run experiments/v0_1_basic.yaml` produces metrics JSON, Elo MAE decreases (197.5 → 159.5), match quality mean 0.98, queue time 5.02s, all tests pass, deterministic.
 
 ---
 
