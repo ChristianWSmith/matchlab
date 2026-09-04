@@ -126,8 +126,8 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace foundation (v0.1 **Ticket 01**) and the core types (v0.1
-**Ticket 02**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
+**Ticket 02**), and the event engine + World (v0.1 **Ticket 03**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
 
 ```
 crates/
@@ -163,10 +163,23 @@ crates/
   `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
 - `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
   `PlayerPerformance`, `MatchConfig`.
+- `event.rs` — `Event` trait (`time()`/`kind()`), 12-variant `EventKind`,
+  `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
+  (`Fn(&mut World, &dyn Event) -> Vec<Box<dyn Event>> + Send + Sync`),
+  9 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
+  MatchEnd, SkillChange), `EventEngine` (register_handler/schedule/next_event/
+  peek_time/is_empty/tick). Handlers must not downcast payloads (no `Any`);
+  rely on `event.time()`/`kind()` from the trait.
+- `world.rs` — `World` holding `players`, `observations`, `matches`, `rng`,
+  `time`, with private monotonic ID counters (`next_player_id()`/`next_match_id()`).
+  Truth separation: `player.rs`/`world.rs` enforce the rule that algorithms
+  access players via `observe()`/`observations`, never `players`/`reality()`.
+- `simulation.rs` — `Simulation { world, engine }` with `new`, and
+  `run(until)` / `run_to_completion()` (skips idle clock periods).
 
-The other seven crates are still stubs; no engine, algorithms, or population
-logic are implemented yet. Individually-consistent tickets from `tickets/`
-drive the remaining v0.1 build order (next: Ticket 03, event engine + World).
+The other seven crates are still stubs; no algorithms or population logic are
+implemented yet. Individually-consistent tickets from `tickets/` drive the
+remaining v0.1 build order (next: Ticket 04, Player Population).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 

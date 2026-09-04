@@ -7,7 +7,10 @@
 //! Core types are implemented incrementally per the v0.1 build order in
 //! `docs/spec.md` section 17.
 
+pub mod event;
 pub mod match_;
 pub mod player;
 pub mod rng;
+pub mod simulation;
 pub mod time;
+pub mod world;
