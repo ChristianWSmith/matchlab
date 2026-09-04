@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 matchlab-core = { path = "../matchlab-core" }
 serde.workspace = true
+serde_yaml.workspace = true

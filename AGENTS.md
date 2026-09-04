@@ -127,7 +127,8 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 ## Current State
 
 The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
-**Ticket 02**), and the event engine + World (v0.1 **Ticket 03**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+**Ticket 02**), the event engine + World (v0.1 **Ticket 03**), and the player
+population (v0.1 **Ticket 04**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
 
 ```
 crates/
@@ -177,9 +178,29 @@ crates/
 - `simulation.rs` — `Simulation { world, engine }` with `new`, and
   `run(until)` / `run_to_completion()` (skips idle clock periods).
 
-The other seven crates are still stubs; no algorithms or population logic are
-implemented yet. Individually-consistent tickets from `tickets/` drive the
-remaining v0.1 build order (next: Ticket 04, Player Population).
+**`matchlab-players` is implemented with the v0.1 population logic:**
+- `archetype.rs` — `ArchetypeConfig` (serde `Deserialize`: `name`, `proportion`,
+  `skill_distribution`, `skill_volatility`, `improvement_rate`, `play_frequency`,
+  `session_length`, `quit_probability`, optional `initial_rating`) and
+  `DistributionConfig` (tagged enum: `normal`, `uniform`, `log_normal`). The
+  optional `initial_rating` overrides visible rating while true skill stays
+  sampled — the seed of the smurf-like mismatch; no boolean smurf flag exists.
+- `skill.rs` — `SkillProcess { improvement_rate, volatility }` with
+  `advance(&SkillVector, &mut SimRng)`. v0.1 uses **static** skill: with
+  `improvement_rate=0, volatility=0` `advance` is the identity (no-op), so the
+  population is generated once at `t=0` and never changes.
+- `population.rs` — `PopulationConfig { size, archetypes }` and
+  `PopulationGenerator::generate(config, rng) -> (Vec<PlayerReality>,
+  Vec<PlayerObservation>)`. Each player is drawn from its archetype's
+  distribution; observation uses `initial_rating` if set else the sampled skill
+  (`rating_deviation: 350.0`, `games_played: 0`, etc. per §5.8, with the
+  observation's `skill_vector`/`hidden_mmr` derived from the visible rating).
+  Proportions become integer counts via the **largest-remainder method** so
+  they always sum exactly to `size`.
+
+The other six crates are still stubs; no algorithms are implemented yet.
+Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
+order (next: Ticket 05, Game Outcome).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
