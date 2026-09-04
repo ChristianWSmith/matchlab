@@ -132,8 +132,9 @@ The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 **Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
 population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
 the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
-batch matchmaker (v0.1 **Ticket 07**), and the event-handler loop (v0.1
-**Ticket 08**) are complete. The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
+batch matchmaker (v0.1 **Ticket 07**), the event-handler loop (v0.1
+**Ticket 08**), and the metric collectors (v0.1 **Ticket 09**) are complete.
+The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
 
 ```
 crates/
@@ -267,7 +268,10 @@ crates/
   they are unit-testable without the engine:
   - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
     schedule `PlayerQueue`.
-  - `PlayerQueue` → enqueue the player (entry built from the live observation).
+  - `PlayerQueue` → enqueue the player (entry built from the live observation)
+    and refresh `obs.queue_joined_at` to `world.time` (keeps the v0.1
+    queue-time metric measuring the current join→formation wait, including
+    re-queues after a match).
   - `MatchTimer` (new periodic event) → call `find_matches`, cap formation to
     the remaining `max_matches − matches_formed` budget (a formed match is an
     in-flight obligation, so over-capping on `matches_completed` would overshoot),
@@ -291,9 +295,33 @@ crates/
   completion. Initial `PlayerJoin` order + equal-time heap pops make the whole
   experiment deterministic for a given seed.
 
-The other three crates are still stubs; no algorithms are implemented yet.
+**`matchlab-metrics` is implemented with the v0.1 collectors** (depends on
+`matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
+besides the simulation):
+- `collector.rs` — `MetricCollector` trait (spec §11.2): `name()`,
+  `record_match(mr, world)`, `compute() -> MetricResult`; `MetricResult` enum
+  (`Scalar`, `Distribution`, `Summary { mean, median, p75, p90, p95, p99,
+  stddev }`, `Histogram { buckets }`) with `serde::Serialize`.
+- `engine.rs` — `MetricsEngine` (spec §11.1): `register`, `record_match`,
+  `finalize()`, `results() -> &HashMap<String, MetricResult>`.
+- `stats.rs` — `Summary { n, mean, median, p75, p90, p95, p99, stddev }`,
+  `summary(&[f64])` (nearest-rank percentile by truncation per §14.1), and
+  `summary_to_result(&[f64])` (empty sample → `Scalar(0.0)`). Duplicated from
+  `matchlab-analysis` on purpose to keep the dependency boundary metrics-only-core.
+- `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
+  `obs.rating` vs `reality.skill.overall()`, summarized (spec §11.3). Reads
+  ground truth — allowed for metrics, confirming the "MAE decreases" exit criterion.
+- `quality.rs` — `MatchQualityCollector` ("match_quality"):
+  `1 − (|avg_a − avg_b|/400).clamp(0,1)` from observation ratings, summarized.
+- `queue.rs` — `QueueTimeCollector` ("queue_time"): wait = `world.time
+  .duration_since(obs.queue_joined_at)` per participant — real join→formation
+  wait, **not** match duration (v0.1 exit condition).
+No collectors besides these three are in scope for v0.1 (spec §11.3's
+inequality/ndcg/correlation/convergence/etc. are out).
+
+The other two crates are still stubs; no algorithms are implemented yet.
 Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 09, Metrics).
+order (next: Ticket 10, Config + Runner).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 

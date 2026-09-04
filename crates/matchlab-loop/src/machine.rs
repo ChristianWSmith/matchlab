@@ -99,7 +99,7 @@ pub fn handle_player_queue(
     let queue_event =
         downcast::<matchlab_core::event::PlayerQueueEvent>(event).expect("PlayerQueueEvent");
     let pid = queue_event.player_id;
-    if let Some(obs) = world.observe(pid) {
+    if let Some(obs) = world.observe(pid).cloned() {
         let entry = QueueEntry {
             player_id: pid,
             joined_at: world.time,
@@ -110,6 +110,9 @@ pub fn handle_player_queue(
             role: None,
             latency_ms: 30.0,
         };
+        if let Some(live) = world.observations.get_mut(&pid) {
+            live.queue_joined_at = Some(world.time);
+        }
         state.queue.enqueue(entry);
     }
     Vec::new()
