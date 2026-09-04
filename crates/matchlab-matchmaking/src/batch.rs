@@ -4,6 +4,7 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 
 use crate::constraint::Constraint;
+use crate::hooks::LuaHooks;
 use crate::matchmaker::{Matchmaker, ProposedMatch};
 use crate::queue::Queue;
 
@@ -21,6 +22,7 @@ use crate::queue::Queue;
 pub struct BatchMatchmaker {
     pub interval_ticks: u64,
     pub constraints: Vec<Box<dyn Constraint>>,
+    hooks: Option<LuaHooks>,
 }
 
 impl BatchMatchmaker {
@@ -28,6 +30,15 @@ impl BatchMatchmaker {
         Self {
             interval_ticks,
             constraints: Vec::new(),
+            hooks: None,
+        }
+    }
+
+    pub fn with_hooks(interval_ticks: u64, hooks: LuaHooks) -> Self {
+        Self {
+            interval_ticks,
+            constraints: Vec::new(),
+            hooks: Some(hooks),
         }
     }
 }
@@ -38,7 +49,7 @@ impl Matchmaker for BatchMatchmaker {
         queue: &Queue,
         world: &World,
         team_size: usize,
-        _now: SimTime,
+        now: SimTime,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
         let mut candidates: Vec<_> = queue.entries().iter().collect();
@@ -61,16 +72,55 @@ impl Matchmaker for BatchMatchmaker {
             }
             let a = std::mem::take(team_a);
             let b = std::mem::take(team_b);
-            let quality = ProposedMatch::match_quality(&a, &b, world);
+
+            let quality = self
+                .hooks
+                .as_ref()
+                .and_then(|h| {
+                    let avg_a: f64 = a
+                        .iter()
+                        .filter_map(|pid| world.observations.get(pid))
+                        .map(|o| o.rating)
+                        .sum::<f64>()
+                        / a.len().max(1) as f64;
+                    let avg_b: f64 = b
+                        .iter()
+                        .filter_map(|pid| world.observations.get(pid))
+                        .map(|o| o.rating)
+                        .sum::<f64>()
+                        / b.len().max(1) as f64;
+                    let queue_times: Vec<f64> = a
+                        .iter()
+                        .chain(b.iter())
+                        .filter_map(|pid| world.observations.get(pid))
+                        .filter_map(|obs| obs.queue_joined_at)
+                        .map(|jt| now.duration_since(jt).as_secs_f64())
+                        .collect();
+                    h.call_match_quality(avg_a, avg_b, &queue_times)
+                })
+                .unwrap_or_else(|| ProposedMatch::match_quality(&a, &b, world));
+
             let proposed = ProposedMatch {
                 team_a: a,
                 team_b: b,
                 quality_score: quality,
             };
-            if self
-                .constraints
-                .iter()
-                .all(|c| c.is_satisfied(&proposed, world))
+
+            let accepted = self
+                .hooks
+                .as_ref()
+                .and_then(|h| {
+                    let team_a_ids: Vec<u64> = proposed.team_a.iter().map(|p| p.0).collect();
+                    let team_b_ids: Vec<u64> = proposed.team_b.iter().map(|p| p.0).collect();
+                    h.call_accept_match(&team_a_ids, &team_b_ids, quality, now.as_secs_f64())
+                })
+                .unwrap_or(true);
+
+            if accepted
+                && self
+                    .constraints
+                    .iter()
+                    .all(|c| c.is_satisfied(&proposed, world))
             {
                 matches.push(proposed);
             }
@@ -402,5 +452,85 @@ mod tests {
             assert_eq!(ma.team_b, mb.team_b);
             assert_eq!(ma.quality_score, mb.quality_score);
         }
+    }
+
+    #[test]
+    fn lua_hook_overrides_match_quality() {
+        let mut queue = Queue::default();
+        for id in 1..=10u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0));
+        }
+        let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+
+        let script = r#"
+function on_match_quality(team_a_avg, team_b_avg, queue_times)
+    return 0.5
+end
+"#;
+        let path = temp_path("test_mm_quality");
+        std::fs::write(&path, script).unwrap();
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let mm = BatchMatchmaker::with_hooks(1, hooks);
+
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+
+        assert_eq!(matches.len(), 1);
+        assert!((matches[0].quality_score - 0.5).abs() < 0.001);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_hook_accept_match_rejects_low_quality() {
+        let mut queue = Queue::default();
+        for id in 1..=10u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0));
+        }
+        let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+
+        let script = r#"
+function on_accept_match(team_a, team_b, quality, now)
+    return false
+end
+"#;
+        let path = temp_path("test_mm_accept");
+        std::fs::write(&path, script).unwrap();
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let mm = BatchMatchmaker::with_hooks(1, hooks);
+
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+
+        assert!(matches.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_hook_undefined_falls_back_to_default() {
+        let mut queue = Queue::default();
+        for id in 1..=10u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0));
+        }
+        let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+
+        let script = "-- no hooks defined";
+        let path = temp_path("test_mm_fallback");
+        std::fs::write(&path, script).unwrap();
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let mm = BatchMatchmaker::with_hooks(1, hooks);
+
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].quality_score, 1.0);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn temp_path(prefix: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("{}_{}_{}.lua", prefix, std::process::id(), n))
     }
 }

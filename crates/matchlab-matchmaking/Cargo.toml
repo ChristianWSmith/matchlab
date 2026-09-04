@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 matchlab-core = { path = "../matchlab-core" }
+mlua = { workspace = true, features = ["send"] }

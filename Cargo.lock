@@ -215,6 +215,7 @@ name = "matchlab-matchmaking"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "mlua",
 ]
 
 [[package]]
