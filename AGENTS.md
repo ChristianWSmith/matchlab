@@ -56,12 +56,12 @@ match-lab/              # workspace root
 matchlab-core          ← no internal deps
     ↑
     ├── matchlab-players
-    ├── matchlab-game
-    ├── matchlab-matchmaking
-    ├── matchlab-rating
-    ├── matchlab-detection
+    ├── matchlab-game          (+ mlua)
+    ├── matchlab-matchmaking   (+ mlua)
+    ├── matchlab-rating        (+ mlua)
+    ├── matchlab-detection     (+ mlua)
     ├── matchlab-ranking
-    ├── matchlab-metrics       (depends on core only)
+    ├── matchlab-metrics       (depends on core only; + mlua for hooks)
     ├── matchlab-objective     (depends on core + metrics)
     ├── matchlab-adversarial   (depends on core)
     └── matchlab-utility       (depends on core)
@@ -470,12 +470,13 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 ## Conventions
 
 - **Rust edition:** 2024
-- **Shared deps** (workspace): `serde` (with derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`
+- **Shared deps** (workspace): `serde` (with derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (lua54, vendored)
 - **No comments in code** unless explicitly requested
 - **Unit tests** live in `#[cfg(test)] mod tests` blocks within each source file
 - **Crate naming:** `matchlab-{domain}` (e.g., `matchlab-core`, `matchlab-rating`)
 - **File naming:** `match_.rs` (not `match.rs`, which is a Rust keyword)
-- **Plugin registration:** new rating systems, matchmakers, etc. are added by editing the appropriate crate's source and adding a `from_name` arm to the registry — not runtime dynamic loading
+- **Plugin model:** Lua scripts under `plugins/` override specific decision points ("hooks") at runtime via `mlua`. Native Rust implementations remain the default. Scripts use `lua:<trait>` prefix in YAML (e.g., `lua:elo`). Missing hooks fall back to Rust defaults. See `docs/spec.md` §3.3 for hook signatures and design rules.
+- **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`. Scripts receive only observable data, never `PlayerReality`.
 
 ---
 
@@ -488,8 +489,10 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 | Rating algorithm implementations | `crates/matchlab-rating/src/` |
 | Matchmaker implementations | `crates/matchlab-matchmaking/src/` |
 | Metric collector implementations | `crates/matchlab-metrics/src/` |
-| How to add a new rating system | Follow Elo in `crates/matchlab-rating/src/elo.rs`, register in `plugins/mod.rs` |
+| Lua hook scripts | `plugins/` (organized by trait type) |
+| Hook definitions + loader | `crates/matchlab-{trait}/src/hooks.rs`, `loader.rs` |
+| How to add a Lua hook | Write a `.lua` file in `plugins/`, define hook functions, reference via `lua:<name>` in YAML |
 | Experiment YAML schema | `docs/spec.md` section 13.1 |
-| v0.1 build plan | `docs/spec.md` section 17 |
+| Build plan | `tickets/` directory |
 | Adversarial agents (booster, deranker, etc.) | `crates/matchlab-adversarial/src/` |
 | Player satisfaction model | `crates/matchlab-utility/src/satisfaction.rs` |

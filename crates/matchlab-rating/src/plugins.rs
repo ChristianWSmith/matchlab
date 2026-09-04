@@ -11,6 +11,15 @@ pub mod registry {
             "flatpoints" => Some(Box::new(crate::flat::FlatPointsRatingSystem::from_yaml(
                 config,
             )?)),
+            "lua:elo" => {
+                let path = config.get("script")?.as_str()?;
+                let hooks = crate::hooks::LuaHooks::load(path).ok()?;
+                let sys = crate::elo::EloRatingSystem::from_yaml(config)?;
+                Some(Box::new(crate::elo::EloRatingSystem::with_hooks(
+                    sys.config,
+                    hooks,
+                )))
+            }
             _ => None,
         }
     }
@@ -20,6 +29,14 @@ pub mod registry {
 mod tests {
     use super::registry;
     use crate::system::ObservationType;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_path(prefix: &str) -> std::path::PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("{}_{}_{}.lua", prefix, std::process::id(), n))
+    }
 
     #[test]
     fn elo_registers_from_name() {
@@ -66,5 +83,45 @@ mod tests {
         // Missing required fields → None.
         let yaml = serde_yaml::from_str("{}").unwrap();
         assert!(registry::from_name("elo", &yaml).is_none());
+    }
+
+    #[test]
+    fn lua_elo_registers_from_name() {
+        let script = "function on_k_factor() return 48.0 end";
+        let path = temp_path("test_plugin_lua_elo");
+        std::fs::write(&path, script).unwrap();
+
+        let yaml = serde_yaml::from_str(&format!(
+            "script: {}\nk_factor: 32.0\ninitial_rating: 1200.0\nbeta: 400.0\n",
+            path.to_str().unwrap()
+        ))
+        .unwrap();
+        let sys = registry::from_name("lua:elo", &yaml).expect("lua:elo should register");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1200.0);
+        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_elo_missing_script_returns_none() {
+        let yaml = serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\n").unwrap();
+        assert!(registry::from_name("lua:elo", &yaml).is_none());
+    }
+
+    #[test]
+    fn lua_elo_invalid_script_returns_none() {
+        let path = temp_path("test_plugin_bad");
+        std::fs::write(&path, "bad lua syntax {{{").unwrap();
+
+        let yaml = serde_yaml::from_str(&format!(
+            "script: {}\nk_factor: 32.0\ninitial_rating: 1000.0\n",
+            path.to_str().unwrap()
+        ))
+        .unwrap();
+        assert!(registry::from_name("lua:elo", &yaml).is_none());
+
+        let _ = std::fs::remove_file(&path);
     }
 }

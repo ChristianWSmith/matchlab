@@ -82,6 +82,12 @@ match-lab/
 ├── design.md
 ├── docs/
 │   └── spec.md
+├── plugins/                    # Lua hook scripts
+│   ├── rating/
+│   ├── matchmaking/
+│   ├── game/
+│   ├── detection/
+│   └── metrics/
 ├── experiments/                # YAML experiment manifests
 │   ├── base/                   # base configs for inheritance
 │   │   └── standard.yaml
@@ -111,7 +117,8 @@ match-lab/
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── outcome.rs
-│   │       └── logistic.rs
+│   │       ├── logistic.rs
+│   │       └── hooks.rs        # Lua hooks for outcome models
 │   │
 │   ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search
 │   │   ├── Cargo.toml
@@ -123,7 +130,8 @@ match-lab/
 │   │       ├── objective.rs    # per-match optimization scoring
 │   │       ├── search.rs       # SearchStrategy trait
 │   │       ├── expanding.rs
-│   │       └── strict.rs
+│   │       ├── strict.rs
+│   │       └── hooks.rs        # Lua hooks for matchmakers
 │   │
 │   ├── matchlab-rating/        # rating systems (Elo, Glicko, TrueSkill, Flat)
 │   │   ├── Cargo.toml
@@ -133,7 +141,9 @@ match-lab/
 │   │       ├── elo.rs
 │   │       ├── flat.rs
 │   │       ├── glicko.rs
-│   │       └── trueskill.rs
+│   │       ├── trueskill.rs
+│   │       ├── hooks.rs        # LuaHooks struct, hook definitions
+│   │       └── loader.rs       # ScriptLoader (validates .lua files)
 │   │
 │   ├── matchlab-detection/     # smurf detection, interventions
 │   │   ├── Cargo.toml
@@ -141,7 +151,8 @@ match-lab/
 │   │       ├── lib.rs
 │   │       ├── detector.rs
 │   │       ├── smurf.rs
-│   │       └── intervention.rs
+│   │       ├── intervention.rs
+│   │       └── hooks.rs        # Lua hooks for detection systems
 │   │
 │   ├── matchlab-ranking/       # rank mapping, leaderboard
 │   │   ├── Cargo.toml
@@ -166,7 +177,8 @@ match-lab/
 │   │       ├── streaks.rs
 │   │       ├── population.rs
 │   │       ├── correlation.rs
-│   │       └── smurf.rs
+│   │       ├── smurf.rs
+│   │       └── hooks.rs        # Lua hooks for metric collectors
 │   │
 │   ├── matchlab-objective/     # weighted utility, multi-objective scoring
 │   │   ├── Cargo.toml
@@ -219,15 +231,15 @@ match-lab/
 matchlab-core          (no internal deps)
     ↑
     ├── matchlab-players
-    ├── matchlab-game
-    ├── matchlab-matchmaking
-    ├── matchlab-rating
-    ├── matchlab-detection
+    ├── matchlab-game            (+ mlua)
+    ├── matchlab-matchmaking     (+ mlua)
+    ├── matchlab-rating          (+ mlua)
+    ├── matchlab-detection       (+ mlua)
     ├── matchlab-ranking
-    ├── matchlab-metrics       (depends on core only)
-    ├── matchlab-objective     (depends on core + metrics)
-    ├── matchlab-adversarial   (depends on core)
-    └── matchlab-utility       (depends on core)
+    ├── matchlab-metrics         (depends on core only; + mlua)
+    ├── matchlab-objective       (depends on core + metrics)
+    ├── matchlab-adversarial     (depends on core)
+    └── matchlab-utility         (depends on core)
 
 matchlab-experiments   (depends on all above)
     ↑
@@ -244,44 +256,228 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 rand = "0.8"
 rand_chacha = "0.3"
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
 ```
 
-### 3.3 Plugin Model
+### 3.3 Plugin Model: Lua Hooks
 
-New rating systems, matchmakers, and outcome models can be added by editing the appropriate crate's source and recompiling — the enum/trait dispatch handles them. For a research tool this is acceptable: plugins are compile-time crates behind the trait boundary, not runtime dynamic libraries.
+Plugins are implemented as Lua scripts loaded at runtime via `mlua` (Lua 5.4, vendored). Native Rust implementations remain the default; Lua scripts override specific decision points ("hooks") while Rust handles all heavy computation. This enables zero-recompilation experimentation while maintaining near-native performance.
+
+```
+match-lab/
+├── Cargo.toml
+├── plugins/                    # Lua hook scripts
+│   ├── rating/
+│   │   ├── dynamic_elo.lua     # dynamic K factor, custom bounds
+│   │   └── adaptive_glicko.lua
+│   ├── matchmaking/
+│   │   ├── adaptive_quality.lua
+│   │   └── custom_formation.lua
+│   ├── game/
+│   │   └── fatigue_model.lua
+│   ├── detection/
+│   │   └── smurf_thresholds.lua
+│   └── metrics/
+│       └── custom_metric.lua
+├── experiments/
+└── crates/
+    ├── matchlab-rating/
+    │   └── src/
+    │       ├── hooks.rs        # LuaHooks struct, hook definitions
+    │       ├── loader.rs       # ScriptLoader (validates .lua files)
+    │       └── ...
+    ├── matchlab-matchmaking/
+    │   └── src/
+    │       ├── hooks.rs
+    │       └── ...
+    └── ...
+```
+
+#### Hook Architecture
+
+Each trait implementation carries an optional `LuaHooks` field. The Rust code handles the heavy computation; Lua scripts customize decision points at specific hook locations. Missing hooks fall back to native Rust defaults.
 
 ```rust
-// crates/matchlab-rating/src/plugins/mod.rs
+// crates/matchlab-rating/src/hooks.rs
 
-/// Registry of rating systems. New systems register here rather than
-/// being auto-discovered from the filesystem (avoids unsafe dynamic
-/// loading and cold-start costs in a simulation).
-pub mod registry {
-    use crate::system::RatingSystem;
+use mlua::{Lua, Table, Function};
 
-    pub fn all_systems() -> Vec<&'static str> {
-        vec!["elo", "glicko2", "trueskill", "flatpoints"]
+pub struct LuaHooks {
+    lua: Lua,
+    script_path: String,
+}
+
+impl LuaHooks {
+    pub fn load(path: &str) -> Result<Self, String> {
+        let lua = Lua::new();
+        let script = std::fs::read_to_string(path)
+            .map_err(|e| format!("cannot read {}: {}", path, e))?;
+        lua.load(&script).exec()
+            .map_err(|e| format!("lua error in {}: {}", path, e))?;
+        Ok(Self { lua, script_path: path.to_string() })
     }
 
-    pub fn from_name(
-        name: &str,
-        config: &serde_yaml::Value,
-    ) -> Option<Box<dyn RatingSystem>> {
-        match name {
-            "elo" => Some(Box::new(crate::elo::Elo::from_yaml(config)?)),
-            "glicko2" => Some(Box::new(crate::glicko::Glicko2::from_yaml(config)?)),
-            "trueskill" => Some(Box::new(crate::trueskill::TrueSkill::from_yaml(config)?)),
-            "flatpoints" => Some(Box::new(crate::flat::FlatPoints::from_yaml(config)?)),
-            _ => None,
-        }
+    pub fn call_k_factor(
+        &self,
+        player_id: u64,
+        rating: f64,
+        games_played: u64,
+        recent_win_rate: f64,
+    ) -> Option<f64> {
+        let func = self.lua.globals().get::<_, Function>("on_k_factor").ok()?;
+        func.call::<_, f64>((player_id, rating, games_played as f64, recent_win_rate)).ok()
+    }
+
+    pub fn call_rating_bounds(&self) -> Option<(f64, f64)> {
+        let func = self.lua.globals().get::<_, Function>("on_rating_bounds").ok()?;
+        let table: Table = func.call::<_, Table>(()).ok()?;
+        let floor: f64 = table.get("floor").ok()?;
+        let ceiling: f64 = table.get("ceiling").ok()?;
+        Some((floor, ceiling))
     }
 }
 ```
 
-Notes on the plugin boundary:
-- **No runtime dynamic linking.** A plugin is a crate compiled into the binary behind a trait. This keeps the simulation deterministic, auditable, and free of `dlopen` complexity.
-- **Extensibility is at compile time.** The design's "drop it into `rating/plugins/`" maps to adding a module and a `from_name` arm. `experiments/` YAML then selects it by name.
-- **Config via `from_yaml(&Value)`.** Each system parses its own parameter map from the manifest, so new systems carry their own schema without touching the core trait.
+#### Registry Syntax
+
+The plugin registry uses a `lua:` prefix to select a Lua-hooked variant:
+
+```rust
+// crates/matchlab-rating/src/plugins.rs
+
+pub fn from_name(name: &str, config: &serde_yaml::Value) -> Option<Box<dyn RatingSystem>> {
+    match name {
+        "elo" => Some(Box::new(crate::elo::EloRatingSystem::from_yaml(config)?)),
+        "glicko2" => Some(Box::new(crate::glicko::Glicko2RatingSystem::from_yaml(config)?)),
+        "trueskill" => Some(Box::new(crate::trueskill::TrueSkillRatingSystem::from_yaml(config)?)),
+        "flatpoints" => Some(Box::new(crate::flat::FlatPointsRatingSystem::from_yaml(config)?)),
+        "lua:elo" => {
+            let path = config.get("script")?.as_str()?;
+            let hooks = crate::hooks::LuaHooks::load(path).ok()?;
+            Some(Box::new(crate::elo::EloRatingSystem::with_hooks(config, hooks)))
+        }
+        _ => None,
+    }
+}
+```
+
+YAML config:
+```yaml
+rating:
+  systems:
+    - name: lua:elo
+      script: plugins/rating/dynamic_elo.lua
+      k_factor: 32.0  # fallback default
+      initial_rating: 1000.0
+      beta: 400.0
+```
+
+#### Hook Points by Trait
+
+**RatingSystem hooks:**
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `on_k_factor` | `(player_id, rating, games_played, recent_win_rate) → f64` | Dynamic K factor per player |
+| `on_rating_bounds` | `() → { floor: f64, ceiling: f64 }` | Rating floor/ceiling |
+| `on_initial_rating` | `(archetype_name) → f64` | Per-archetype starting rating |
+| `on_volatility` | `(games_played, rating_change) → f64` | Dynamic volatility for Glicko/TS |
+
+**Matchmaker hooks:**
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `on_match_quality` | `(team_a_avg, team_b_avg, queue_times) → f64` | Custom quality formula |
+| `on_accept_match` | `(team_a, team_b, quality, now) → bool` | Accept/reject proposed match |
+| `on_queue_priority` | `(entry, now) → f64` | Reorder queue (higher = first) |
+| `on_max_skill_diff` | `(longest_wait_secs) → f64` | Expanding window logic |
+| `on_team_assignment` | `(candidates, team_size) → { team_a, team_b }` | Custom team formation |
+
+**OutcomeModel hooks:**
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `on_effective_skill` | `(observation) → f64` | How to compute skill from obs |
+| `on_noise` | `(match_context) → f64` | Dynamic noise |
+| `on_post_process` | `(match_result) → MatchResult` | Modify outcome after simulation |
+
+**MetricCollector hooks:**
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `on_record` | `(match_result, world_snapshot) → Option<f64>` | Custom metric value |
+| `on_bucket_config` | `() → Vec<f64>` | Custom time bucket boundaries |
+
+**DetectionSystem hooks:**
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `on_anomaly_threshold` | `(player_id, games_played) → f64` | Per-player sigma threshold |
+| `on_confidence` | `(consecutive_anomalies, evidence_count) → f64` | Custom confidence calculation |
+| `on_intervention` | `(probability, prior_actions) → String` | Custom intervention action name |
+
+#### Lua Script Examples
+
+```lua
+-- plugins/rating/dynamic_elo.lua
+function on_k_factor(player_id, rating, games_played, recent_win_rate)
+    if games_played < 10 then
+        return 64.0
+    elseif recent_win_rate > 0.7 then
+        return 48.0
+    elseif games_played > 100 then
+        return 16.0
+    end
+    return 32.0
+end
+
+function on_rating_bounds()
+    return { floor = 100.0, ceiling = 3000.0 }
+end
+```
+
+```lua
+-- plugins/matchmaking/adaptive_quality.lua
+function on_match_quality(team_a_avg, team_b_avg, queue_times)
+    local diff = math.abs(team_a_avg - team_b_avg)
+    local max_wait = 0
+    for _, t in ipairs(queue_times) do
+        if t > max_wait then max_wait = t end
+    end
+    local tolerance = 200.0 + max_wait * 5.0
+    return 1.0 - math.min(diff / tolerance, 1.0)
+end
+
+function on_accept_match(team_a, team_b, quality, now)
+    return quality > 0.85
+end
+```
+
+#### Design Rules
+
+1. **Lua never does heavy math.** Rust computes win probabilities, rating updates, team averages. Lua only makes decisions (thresholds, multipliers, accept/reject).
+2. **Missing hooks are safe.** If a script doesn't define `on_k_factor`, the native Rust default is used. No errors, no fallback chains.
+3. **Scripts are validated at load time.** `ScriptLoader` checks that the file parses and that any defined functions have correct arity.
+4. **Determinism is preserved.** Lua's `math.random` is not used; all randomness comes from the simulation's `SimRng`. Scripts must be pure functions of their inputs.
+5. **Truth separation is enforced.** Lua hooks receive only observable data (ratings, queue times, match results). They never see `PlayerReality`.
+
+### 3.4 Plugin Directory Structure
+
+Lua scripts live under `plugins/` at the workspace root, organized by trait type:
+
+```
+plugins/
+├── rating/          # RatingSystem hooks (dynamic K, custom bounds, etc.)
+├── matchmaking/     # Matchmaker hooks (quality, acceptance, formation)
+├── game/            # OutcomeModel hooks (skill computation, noise, post-processing)
+├── detection/       # DetectionSystem hooks (thresholds, confidence, interventions)
+└── metrics/         # MetricCollector hooks (custom metrics, bucket config)
+```
+
+Scripts are referenced in YAML manifests with relative paths:
+```yaml
+rating:
+  systems:
+    - name: lua:elo
+      script: plugins/rating/dynamic_elo.lua
+```
+
+The `ScriptLoader` resolves these paths relative to the workspace root at experiment startup.
 
 ---
 
