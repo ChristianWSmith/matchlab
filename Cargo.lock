@@ -156,6 +156,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchlab-adversarial"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "serde",
+]
+
+[[package]]
 name = "matchlab-analysis"
 version = "0.1.0"
 dependencies = [
@@ -172,6 +180,14 @@ name = "matchlab-core"
 version = "0.1.0"
 dependencies = [
  "rand",
+ "serde",
+]
+
+[[package]]
+name = "matchlab-detection"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
  "serde",
 ]
 
@@ -229,6 +245,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchlab-objective"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "matchlab-metrics",
+ "serde",
+]
+
+[[package]]
 name = "matchlab-players"
 version = "0.1.0"
 dependencies = [
@@ -238,12 +263,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchlab-ranking"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "serde",
+]
+
+[[package]]
 name = "matchlab-rating"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
  "mlua",
  "serde_yaml",
+]
+
+[[package]]
+name = "matchlab-utility"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "serde",
 ]
 
 [[package]]

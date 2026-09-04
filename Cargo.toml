@@ -10,6 +10,11 @@ members = [
     "crates/matchlab-metrics",
     "crates/matchlab-experiments",
     "crates/matchlab-analysis",
+    "crates/matchlab-detection",
+    "crates/matchlab-ranking",
+    "crates/matchlab-objective",
+    "crates/matchlab-adversarial",
+    "crates/matchlab-utility",
 ]
 
 [workspace.package]
