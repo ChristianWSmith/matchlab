@@ -128,8 +128,8 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 **Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
-population (v0.1 **Ticket 04**), and the game outcome model (v0.1 **Ticket 05**)
-are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
+and the rating systems Elo + FlatPoints (v0.1 **Ticket 06**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
 
 ```
 crates/
@@ -211,9 +211,30 @@ crates/
   populated `MatchResult` (team ids, scores, per-player `PlayerPerformance`,
   duration, `variance`).
 
-The other five crates are still stubs; no algorithms are implemented yet.
+**`matchlab-rating` is implemented with the v0.1 rating systems:**
+- `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
+  `initialize(player_id)`, `predict(team_a, team_b)`,
+  `update(match_result, observations) -> HashMap<PlayerId, RatingState>`, plus
+  `rating()`/`uncertainty()` conveniences. `RatingState { rating,
+  rating_deviation, volatility, games_played }`, 11-variant `ObservationType`.
+- `elo.rs` — `EloRatingSystem` (spec §8.4) with `EloConfig { k_factor,
+  initial_rating, beta }` and `from_yaml`. `divisor = beta * ln(10)` keeps the
+  log10 Elo scale consistent with the logistic game model (so both compute the
+  same win probability for a given rating gap). `update` applies
+  `k_factor * (actual − expected)` per team member. **Information-budget
+  enforcement (`filter.rs`) is deferred to Ticket 10** — Elo/Flat only read
+  `WinLoss` data, declared correctly.
+- `flat.rs` — `FlatPointsRatingSystem` (spec §8.3) with `FlatPointsConfig {
+  win_points, loss_points, initial_rating }` and `from_yaml`; fixed ±points
+  baseline.
+- `plugins.rs` — `registry` module with `all_systems()` (`["elo",
+  "flatpoints"]`) and `from_name(name, &serde_yaml::Value) ->
+  Option<Box<dyn RatingSystem>>`. Glicko-2/TrueSkill are **not** registered in
+  v0.1; unknown names return `None`.
+
+The other four crates are still stubs; no algorithms are implemented yet.
 Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 06, Elo Rating).
+order (next: Ticket 07, Queue + Matchmaker).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
