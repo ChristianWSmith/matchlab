@@ -7,6 +7,8 @@ use matchlab_core::world::World;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
+use matchlab_metrics::MetricsEngine;
+use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
 use std::collections::HashMap;
 
@@ -29,6 +31,7 @@ pub struct MachineState {
     rating_system: Box<dyn RatingSystem>,
     outcome_model: Box<dyn OutcomeModel>,
     matchmaker: Box<dyn Matchmaker>,
+    pub metrics: MetricsEngine,
     team_size: usize,
     batch_interval: SimTime,
     rejoin_delay: SimTime,
@@ -41,6 +44,7 @@ impl MachineState {
         rating_system: Box<dyn RatingSystem>,
         outcome_model: Box<dyn OutcomeModel>,
         matchmaker: Box<dyn Matchmaker>,
+        metrics: MetricsEngine,
         config: LoopConfig,
     ) -> Self {
         let pop_map: HashMap<PlayerId, (PlayerReality, PlayerObservation)> = population
@@ -57,6 +61,7 @@ impl MachineState {
             rating_system,
             outcome_model,
             matchmaker,
+            metrics,
             team_size: config.team_size,
             batch_interval,
             rejoin_delay: config.rejoin_delay,
@@ -66,6 +71,10 @@ impl MachineState {
 
     pub fn batch_interval(&self) -> SimTime {
         self.batch_interval
+    }
+
+    pub fn matches_formed(&self) -> u64 {
+        self.matches_formed
     }
 }
 
@@ -185,6 +194,7 @@ pub fn handle_match_formed(
         .simulate(match_id, &team_a, &team_b, &mut world.rng);
     let duration = result.duration;
 
+    state.metrics.record_match(&result, world);
     state.active_matches.insert(match_id, result);
     world.matches.insert(match_id, MatchState::InProgress);
 
@@ -213,7 +223,9 @@ pub fn handle_match_end(
         }
     }
 
-    let updates = state.rating_system.update(&result, &obs_map);
+    let budget = state.rating_system.information_budget();
+    let filtered = filter_match_result(&result, &budget).into_match_result(result.match_id);
+    let updates = state.rating_system.update(&filtered, &obs_map);
     for (pid, rs) in updates {
         if let Some(o) = world.observations.get_mut(&pid) {
             o.rating = rs.rating;
@@ -249,6 +261,7 @@ mod tests {
     use matchlab_core::rng::SimRng;
     use matchlab_game::logistic::LogisticOutcomeModel;
     use matchlab_matchmaking::batch::BatchMatchmaker;
+    use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
     use matchlab_rating::elo::{EloConfig, EloRatingSystem};
@@ -312,6 +325,7 @@ mod tests {
             })),
             Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
             Box::new(BatchMatchmaker::new(10)),
+            MetricsEngine::new(),
             LoopConfig {
                 team_size: 1,
                 batch_interval_ticks: 10,
@@ -526,6 +540,7 @@ mod tests {
             })),
             Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
             Box::new(BatchMatchmaker::new(60)),
+            MetricsEngine::new(),
             cfg,
             1234,
         );
@@ -592,6 +607,7 @@ mod tests {
                 })),
                 Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
                 Box::new(BatchMatchmaker::new(60)),
+                MetricsEngine::new(),
                 cfg,
                 1234,
             )
@@ -621,6 +637,64 @@ mod tests {
         assert_eq!(
             a_ratings, b_ratings,
             "same seed must give identical ratings"
+        );
+    }
+
+    #[test]
+    fn full_pipeline_records_and_finalizes_metrics() {
+        let archetype = ArchetypeConfig {
+            name: "stable".to_string(),
+            proportion: 1.0,
+            skill_distribution: DistributionConfig::Normal {
+                mean: 1000.0,
+                stddev: 150.0,
+            },
+            skill_volatility: 5.0,
+            improvement_rate: 0.0,
+            play_frequency: 0.8,
+            session_length: 1800.0,
+            quit_probability: 0.01,
+            initial_rating: None,
+        };
+        let config = PopulationConfig {
+            size: 40,
+            archetypes: vec![archetype],
+        };
+        let mut rng = SimRng::from_seed(42);
+        let (realities, obs_list) = PopulationGenerator::generate(&config, &mut rng);
+        let pop: Vec<(PlayerReality, PlayerObservation)> =
+            realities.into_iter().zip(obs_list).collect();
+
+        let mut metrics = MetricsEngine::new();
+        metrics.register(Box::new(MatchQualityCollector::new()));
+
+        let cfg = LoopConfig {
+            team_size: 5,
+            batch_interval_ticks: 60,
+            rejoin_delay: SimTime::from_secs(30.0),
+            max_matches: 20,
+        };
+        let mut loop_a = MatchLoop::new(
+            pop,
+            Box::new(EloRatingSystem::new(EloConfig {
+                k_factor: 32.0,
+                initial_rating: 1000.0,
+                beta: 400.0,
+            })),
+            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
+            Box::new(BatchMatchmaker::new(60)),
+            metrics,
+            cfg,
+            1234,
+        );
+        loop_a.run();
+
+        let completed = loop_a.state.lock().unwrap().matches_completed;
+        assert_eq!(completed, 20);
+        let results = loop_a.finalize_metrics();
+        assert!(
+            results.contains_key("match_quality"),
+            "match_quality should be recorded and finalized"
         );
     }
 }

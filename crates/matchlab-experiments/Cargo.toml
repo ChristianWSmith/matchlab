@@ -11,6 +11,7 @@ matchlab-players = { path = "../matchlab-players" }
 matchlab-game = { path = "../matchlab-game" }
 matchlab-matchmaking = { path = "../matchlab-matchmaking" }
 matchlab-rating = { path = "../matchlab-rating" }
+matchlab-loop = { path = "../matchlab-loop" }
 matchlab-metrics = { path = "../matchlab-metrics" }
 serde.workspace = true
 serde_yaml.workspace = true

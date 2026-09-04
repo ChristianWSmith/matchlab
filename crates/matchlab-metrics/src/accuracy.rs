@@ -4,10 +4,15 @@ use matchlab_core::world::World;
 use crate::collector::{MetricCollector, MetricResult};
 use crate::stats::summary_to_result;
 
-/// MAE of `obs.rating` vs `reality.skill.overall()` across all observable
-/// players (spec §11.3). Metrics are the only legitimate consumer of
+/// MAE of `obs.rating` vs `reality.skill.overall()` for each match's
+/// participants (spec §11.3). Metrics are the only legitimate consumer of
 /// `PlayerReality` besides the simulation itself — collectors are read-only
 /// aggregators, never feeding algorithms.
+///
+/// Sampling per participating player (like the match-quality and queue-time
+/// collectors) keeps accuracy bounded: a whole-population snapshot per match
+/// would store `matches × players` floats and slow the loop by orders of
+/// magnitude at manifest scale.
 pub struct RatingAccuracyCollector {
     errors: Vec<f64>,
 }
@@ -29,11 +34,13 @@ impl MetricCollector for RatingAccuracyCollector {
         "rating_accuracy"
     }
 
-    fn record_match(&mut self, _mr: &MatchResult, world: &World) {
-        for (pid, obs) in &world.observations {
-            if let Some(reality) = world.players.get(pid) {
-                let error = (obs.rating - reality.skill.overall()).abs();
-                self.errors.push(error);
+    fn record_match(&mut self, mr: &MatchResult, world: &World) {
+        for pid in mr.team_a.iter().chain(mr.team_b.iter()) {
+            if let Some(obs) = world.observations.get(pid) {
+                if let Some(reality) = world.players.get(pid) {
+                    let error = (obs.rating - reality.skill.overall()).abs();
+                    self.errors.push(error);
+                }
             }
         }
     }
@@ -54,12 +61,12 @@ mod tests {
     use matchlab_core::time::SimTime;
     use std::collections::VecDeque;
 
-    fn mr() -> MatchResult {
+    fn mr(team_a: Vec<PlayerId>, team_b: Vec<PlayerId>) -> MatchResult {
         MatchResult {
             match_id: MatchId(1),
             winner: Team::A,
-            team_a: vec![PlayerId(1)],
-            team_b: vec![PlayerId(2)],
+            team_a,
+            team_b,
             team_a_score: 1.0,
             team_b_score: 0.0,
             player_performances: Vec::new(),
@@ -118,20 +125,38 @@ mod tests {
     }
 
     #[test]
-    fn rating_accuracy_is_mean_absolute_error_from_reality() {
+    fn rating_accuracy_is_participant_mean_absolute_error_from_reality() {
         let mut world = World::new(SimRng::from_seed(2));
-        // rating vs true_skill: 200, 100, 100 → MAE = 400/3 ≈ 133.33
+        // Participants 1 (1000→1200, err 200) and 2 (1100→1200, err 100).
+        // Non-participant 3 (900→800) is deliberately excluded.
         add(&mut world, 1, 1000.0, 1200.0);
         add(&mut world, 2, 1100.0, 1200.0);
         add(&mut world, 3, 900.0, 800.0);
 
         let mut c = RatingAccuracyCollector::new();
-        c.record_match(&mr(), &world);
-        c.record_match(&mr(), &world);
+        c.record_match(&mr(vec![PlayerId(1)], vec![PlayerId(2)]), &world);
+        c.record_match(&mr(vec![PlayerId(2)], vec![PlayerId(1)]), &world);
 
+        // Four participant samples: 200, 100, 100, 200 → MAE = 150.
+        assert_eq!(c.errors.len(), 4);
         match c.compute() {
-            MetricResult::Summary { mean, .. } => assert!((mean - 400.0 / 3.0).abs() < 1e-9),
+            MetricResult::Summary { mean, .. } => assert!((mean - 150.0).abs() < 1e-9),
             other => panic!("expected Summary, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn accuracy_samples_are_stable_across_repeated_records() {
+        let mut world = World::new(SimRng::from_seed(3));
+        add(&mut world, 1, 1000.0, 1200.0);
+        add(&mut world, 2, 1100.0, 1200.0);
+
+        let mut a = RatingAccuracyCollector::new();
+        let mut b = RatingAccuracyCollector::new();
+        for _ in 0..10 {
+            a.record_match(&mr(vec![PlayerId(1)], vec![PlayerId(2)]), &world);
+            b.record_match(&mr(vec![PlayerId(1)], vec![PlayerId(2)]), &world);
+        }
+        assert_eq!(a.errors, b.errors);
     }
 }

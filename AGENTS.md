@@ -66,8 +66,8 @@ matchlab-core          ← no internal deps
     ├── matchlab-adversarial   (depends on core)
     └── matchlab-utility       (depends on core)
 
-matchlab-loop          (depends on core + players + game + rating + matchmaking)
-matchlab-experiments   (depends on all above)
+matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
+matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + objective)
 matchlab (binary)      (depends on experiments + analysis)
 ```
@@ -133,7 +133,8 @@ The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
 the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
 batch matchmaker (v0.1 **Ticket 07**), the event-handler loop (v0.1
-**Ticket 08**), and the metric collectors (v0.1 **Ticket 09**) are complete.
+**Ticket 08**), the metric collectors (v0.1 **Ticket 09**), and the config +
+runner + CLI (v0.1 **Ticket 10**) are complete.
 The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
 
 ```
@@ -229,9 +230,15 @@ crates/
   initial_rating, beta }` and `from_yaml`. `divisor = beta * ln(10)` keeps the
   log10 Elo scale consistent with the logistic game model (so both compute the
   same win probability for a given rating gap). `update` applies
-  `k_factor * (actual − expected)` per team member. **Information-budget
-  enforcement (`filter.rs`) is deferred to Ticket 10** — Elo/Flat only read
-  `WinLoss` data, declared correctly.
+  `k_factor * (actual − expected)` per team member. Elo/Flat only declare
+  `WinLoss` in their information budget; a **matching-info budget** is enforced:
+  loop handlers sanitize the `MatchResult` via `filter.rs` before `update`.
+- `filter.rs` — `filter_match_result(&MatchResult, &[ObservationType]) ->
+  FilteredMatchResult` (spec §8.2) with `into_match_result(&self, MatchId) ->
+  MatchResult` producing a budget-sanitized `MatchResult` (scores,
+  per-player performances, and durations zeroed/emptied for non-permitted
+  data). `matchlab-loop` calls this in `handle_match_end`, so a WinLoss-only
+  system never sees score/perf/duration leaks.
 - `flat.rs` — `FlatPointsRatingSystem` (spec §8.3) with `FlatPointsConfig {
   win_points, loss_points, initial_rating }` and `from_yaml`; fixed ±points
   baseline.
@@ -262,10 +269,10 @@ crates/
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
   max_matches }` and `MachineState { population: HashMap<PlayerId,
   (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
-  MatchResult>, matches_completed, matches_formed }` plus the boxed rating
-  system, outcome model, and matchmaker. The `handle_*` functions are plain
-  `(world, event, state) -> Vec<Box<dyn Event>>` pure-per-event transforms, so
-  they are unit-testable without the engine:
+  MatchResult>, matches_completed, matches_formed, pub metrics: MetricsEngine,
+  rating_system, outcome_model, matchmaker }`. The `handle_*` functions are
+  plain `(world, event, state) -> Vec<Box<dyn Event>>` pure-per-event
+  transforms, so they are unit-testable without the engine.
   - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
     schedule `PlayerQueue`.
   - `PlayerQueue` → enqueue the player (entry built from the live observation)
@@ -276,24 +283,31 @@ crates/
     the remaining `max_matches − matches_formed` budget (a formed match is an
     in-flight obligation, so over-capping on `matches_completed` would overshoot),
     emit one `MatchFormed` per proposal + re-schedule the next timer.
-  - `MatchFormed` → simulate via the outcome model with `world.rng`, store the
-    `MatchResult` in `active_matches` + `World.matches[InProgress]`, schedule
-    `MatchEnd` at `now + duration`.
-  - `MatchEnd` → `rating_system.update`, apply returned `RatingState`s back to
-    `World.observations` only (truth separation), mark the match `Completed`,
-    increment `matches_completed`, and re-queue all participants after
-    `rejoin_delay` while `matches_formed < max_matches`.
+  - `MatchFormed` → simulate via the outcome model with `world.rng`,
+    `metrics.record_match(&result, world)` (recorded at **formation** time —
+    recording at MatchEnd made `queue_time` ≈ match duration, breaking the
+    "queue time = actual wait" exit criterion), store the `MatchResult` in
+    `active_matches` + `World.matches[InProgress]`, schedule `MatchEnd` at
+    `now + duration`.
+  - `MatchEnd` → `rating_system.update` on a **budget-sanitized** result
+    (`filter_match_result` + `into_match_result`), apply returned
+    `RatingState`s back to `World.observations` only (truth separation), mark
+    the match `Completed`, increment `matches_completed`, and re-queue all
+    participants after `rejoin_delay` while `matches_formed < max_matches`.
   Forming is capped by `matches_formed` (guarantees the loop terminates at
   exactly `max_matches` completed matches); `find_matches` is invoked with the
   world's rng temporarily swapped out because the matchmaker signature takes
-  `&World` + `&mut SimRng`.
+  `&World` + `&mut SimRng`. `MachineState::new(rating, outcome, matchmaker,
+  metrics, config)`; `matches_formed()` getter (field private).
 - `lib.rs` — `MatchLoop { state: Arc<Mutex<MachineState>>, world, engine }`
-  with `new(...)` that registers the five handlers on the `EventEngine`,
-  schedules initial `PlayerJoin`s (sorted by `PlayerId.0` — `HashMap` iteration
-  order is randomized via `RandomState`, so unsorted seeding would break
-  determinism) plus an initial `MatchTimer`, and `run()` that ticks to
-  completion. Initial `PlayerJoin` order + equal-time heap pops make the whole
-  experiment deterministic for a given seed.
+  with `new(rating, outcome, matchmaker, metrics, config, seed)` registering
+  the five handlers on the `EventEngine`, scheduling initial `PlayerJoin`s
+  (sorted by `PlayerId.0` — `HashMap` iteration order is randomized via
+  `RandomState`, so unsorted seeding would break determinism) plus an initial
+  `MatchTimer`, `run()` that ticks to completion, `run_until(SimTime)`
+  (uses `engine.peek_time()`), and `finalize_metrics()`. Initial `PlayerJoin`
+  order + equal-time heap pops make the whole experiment deterministic for a
+  given seed. Re-exports `LoopConfig`, `MachineState`, and the `handle_*` fns.
 
 **`matchlab-metrics` is implemented with the v0.1 collectors** (depends on
 `matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
@@ -309,7 +323,9 @@ besides the simulation):
   `summary_to_result(&[f64])` (empty sample → `Scalar(0.0)`). Duplicated from
   `matchlab-analysis` on purpose to keep the dependency boundary metrics-only-core.
 - `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
-  `obs.rating` vs `reality.skill.overall()`, summarized (spec §11.3). Reads
+  `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
+  summarized (spec §11.3; participant-sampled rather than whole-population
+  snapshots so memory/steps scale with matches, not matches × players). Reads
   ground truth — allowed for metrics, confirming the "MAE decreases" exit criterion.
 - `quality.rs` — `MatchQualityCollector` ("match_quality"):
   `1 − (|avg_a − avg_b|/400).clamp(0,1)` from observation ratings, summarized.
@@ -319,9 +335,53 @@ besides the simulation):
 No collectors besides these three are in scope for v0.1 (spec §11.3's
 inequality/ndcg/correlation/convergence/etc. are out).
 
-The other two crates are still stubs; no algorithms are implemented yet.
-Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 10, Config + Runner).
+**`matchlab-experiments` is implemented with the v0.1 config + runner:**
+- `config.rs` — serde types for the full experiment manifest (spec §13.2):
+  `ExperimentConfig`, `ExperimentSpec` (name, optional description, seed,
+  population/game/matchmaking/rating/detection/ranking/metrics/objectives/
+  cohorts/duration/output), `PopulationSpec`/`ArchetypeSpec`/`DistributionSpec`
+  (normal/uniform/log_normal), `GameSpec`, `MatchmakingSpec`
+  (algorithm + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
+  with `RatingSystemSpec { name, params }` flatten, `DetectionSpec`,
+  `SmurfDetectionSpec`, `RankingSpec`, `RankBracketSpec`, `ObjectiveWeightsSpec`,
+  `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { until_secs | max_matches | max_time }`,
+  `OutputSpec { directory, format }`. `cohorts` is a required `Vec`
+  (manifests use `cohorts: []` when unused).
+- `inherit.rs` — YAML-level config inheritance: `load(path)` /
+  `resolve_str(text, base_dir)` / `load_value`, with `base: <path>` keys
+  resolved recursively and `deep_merge` (mappings merge recursively; scalars
+  and sequences are replaced by the child). Enables spec §13.1's controlled
+  one-variable-differs experiments; the `experiments/base/` directory holds
+  inherited base configs.
+- `seed.rs` — `SeedManager` (spec §13.7): separate seeds for
+  population/game/arrival/behavior derived from the one experiment seed via
+  `derive(name, parent_seed)`, plus `hash_config(&ExperimentConfig)` (a
+  `#[derive(Default)]` `DefaultHasher` over length-prefixed serialized
+  fields) and `git_commit_hash()` for `ExperimentResult`.
+- `runner.rs` — `ExperimentRunner::run(&ExperimentConfig) ->
+  Result<ExperimentResult, String>`: generates the population, builds the
+  rating system via `matchlab_rating::registry::from_name` (params flattened
+  to a `serde_yaml::Value::Mapping`), builds the logistic outcome model +
+  batch matchmaker (`batch_interval` in YAML is seconds →
+  `LoopConfig.batch_interval_ticks`), registers the named metric collectors
+  (errors on unknown names), and runs `MatchLoop` to the `DurationSpec`
+  bound. v0.1 uses only the **first** `rating.systems` entry. Returns
+  `ExperimentResult { experiment_id = "{name}-{config_hash}", name,
+  config_hash, git_commit, timestamp, matches_completed, matches_formed,
+  simulated_time_secs, metrics }`; the timestamp is a hand-rolled ISO-8601 UTC
+  string (no chrono dep). 6 unit tests include a same-seed determinism check
+  (identical metrics) and a sim-time bound check. `lib.rs` re-exports the public API.
+- Binary `src/main.rs` — `matchlab run <manifest.yaml>` (exit 0/1/2): loads via
+  `inherit::load`, runs, writes the result as JSON to
+  `<output.directory>/<experiment.name>.json` (via `serde_json`, added to the
+  binary's deps in the root `Cargo.toml`), and prints a summary.
+- `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
+  players, team size 5, flat skill, no detection/ranking/objective/cohorts,
+  capped by `max_time: 604800`).
+
+The only remaining stub is `matchlab-analysis`; no algorithms are implemented
+there yet. Individually-consistent tickets from `tickets/` drive the remaining
+v0.1 build order (next: Ticket 11, Analysis + Output).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 

@@ -1,3 +1,10 @@
 //! matchlab-experiments: runner, YAML config, inheritance, factorial design.
-//!
-//! (v0.1 stub — implementation lands in ticket 10.)
+
+pub mod config;
+pub mod inherit;
+pub mod runner;
+pub mod seed;
+
+pub use config::ExperimentConfig;
+pub use runner::{ExperimentResult, ExperimentRunner};
+pub use seed::SeedManager;

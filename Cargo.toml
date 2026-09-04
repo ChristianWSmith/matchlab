@@ -34,3 +34,4 @@ license.workspace = true
 [dependencies]
 matchlab-experiments = { path = "crates/matchlab-experiments" }
 matchlab-analysis = { path = "crates/matchlab-analysis" }
+serde_json = "1"
