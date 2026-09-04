@@ -196,6 +196,7 @@ name = "matchlab-game"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "mlua",
 ]
 
 [[package]]
@@ -223,6 +224,7 @@ name = "matchlab-metrics"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "mlua",
  "serde",
 ]
 
