@@ -1,6 +1,36 @@
-[package]
-name = "match-lab"
+[workspace]
+resolver = "2"
+members = [
+    "crates/matchlab-core",
+    "crates/matchlab-players",
+    "crates/matchlab-game",
+    "crates/matchlab-matchmaking",
+    "crates/matchlab-rating",
+    "crates/matchlab-loop",
+    "crates/matchlab-metrics",
+    "crates/matchlab-experiments",
+    "crates/matchlab-analysis",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[package]
+name = "match-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
+matchlab-experiments = { path = "crates/matchlab-experiments" }
+matchlab-analysis = { path = "crates/matchlab-analysis" }

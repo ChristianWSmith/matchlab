@@ -1,0 +1,362 @@
+//! Experiment manifest schema (spec §13.2), v0.1-scoped.
+//!
+//! Configs serialize/deserialize as YAML so the manifest hash in
+//! `ExperimentResult` is stable. Fields outside the v0.1 build (detection,
+//! ranking, objectives, cohorts) parse for forward compatibility but are
+//! ignored by the v0.1 runner.
+
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExperimentConfig {
+    pub experiment: ExperimentSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExperimentSpec {
+    pub name: String,
+    pub description: Option<String>,
+    pub seed: u64,
+    pub population: PopulationSpec,
+    pub game: GameSpec,
+    pub matchmaking: MatchmakingSpec,
+    pub rating: RatingSpec,
+    pub detection: Option<DetectionSpec>,
+    pub ranking: Option<RankingSpec>,
+    pub metrics: Vec<String>,
+    pub objectives: Option<ObjectiveWeightsSpec>,
+    pub cohorts: Vec<CohortSpec>,
+    pub duration: DurationSpec,
+    pub output: OutputSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PopulationSpec {
+    pub size: u64,
+    pub seed: u64,
+    pub archetypes: Vec<ArchetypeSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ArchetypeSpec {
+    pub name: String,
+    pub proportion: f64,
+    pub skill_distribution: DistributionSpec,
+    pub skill_volatility: f64,
+    pub improvement_rate: f64,
+    pub play_frequency: f64,
+    pub session_length: f64,
+    pub quit_probability: f64,
+    #[serde(default)]
+    pub initial_rating: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum DistributionSpec {
+    #[serde(rename = "normal")]
+    Normal { mean: f64, stddev: f64 },
+    #[serde(rename = "uniform")]
+    Uniform { low: f64, high: f64 },
+    #[serde(rename = "log_normal")]
+    LogNormal { mean: f64, stddev: f64 },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GameSpec {
+    pub team_size: usize,
+    pub outcome_model: String,
+    pub beta: f64,
+    pub noise: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MatchmakingSpec {
+    pub algorithm: String,
+    pub max_queue_time: f64,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RatingSpec {
+    pub systems: Vec<RatingSystemSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RatingSystemSpec {
+    pub name: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DetectionSpec {
+    pub enabled: bool,
+    pub smurf: Option<SmurfDetectionSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SmurfDetectionSpec {
+    pub acceleration_threshold: f64,
+    pub ban_threshold: f64,
+    pub min_games_before_action: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RankingSpec {
+    pub brackets: Vec<RankBracketSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RankSpec {
+    pub tier: String,
+    pub division: u8,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RankBracketSpec {
+    pub rank: RankSpec,
+    pub min: f64,
+    pub max: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ObjectiveWeightsSpec {
+    pub match_quality: Option<f64>,
+    pub queue_time: Option<f64>,
+    pub rating_accuracy: Option<f64>,
+    pub convergence_speed: Option<f64>,
+    pub smurf_damage: Option<f64>,
+    pub false_positive_rate: Option<f64>,
+    pub streak_frustration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CohortSpec {
+    pub name: String,
+    pub filter: CohortFilterSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum CohortFilterSpec {
+    #[serde(rename = "all")]
+    All,
+    #[serde(rename = "archetype")]
+    Archetype { value: String },
+    #[serde(rename = "smurf_by_properties")]
+    SmurfByProperties,
+    #[serde(rename = "games_played_range")]
+    GamesPlayedRange { low: u64, high: u64 },
+    #[serde(rename = "skill_range")]
+    SkillRange { low: f64, high: f64 },
+    #[serde(rename = "party_size")]
+    PartySize { size: usize },
+    #[serde(rename = "session_length")]
+    SessionLength { min: f64, max: f64 },
+    #[serde(rename = "rank_tier")]
+    RankTier { tier: String },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DurationSpec {
+    pub matches: u64,
+    pub max_time: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OutputSpec {
+    pub directory: String,
+    pub formats: Vec<String>,
+    pub plots: bool,
+    pub report: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimal_v01_manifest_parses() {
+        let yaml = r#"
+experiment:
+  name: v0_1_basic
+  description: "Minimal Elo test with static skill population"
+  seed: 42
+  population:
+    size: 10000
+    seed: 42
+    archetypes:
+      - name: stable
+        proportion: 1.0
+        skill_distribution: { type: normal, mean: 1000, stddev: 250 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+  game:
+    team_size: 5
+    outcome_model: logistic
+    beta: 400.0
+    noise: 0.05
+  matchmaking:
+    algorithm: batch
+    batch_interval: 10
+    max_queue_time: 60.0
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy
+  cohorts:
+    - name: all
+      filter: { type: all }
+  duration:
+    matches: 1000000
+    max_time: 604800.0
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: false
+"#;
+        let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.experiment.name, "v0_1_basic");
+        assert_eq!(config.experiment.seed, 42);
+        assert_eq!(config.experiment.population.size, 10000);
+        assert_eq!(config.experiment.population.archetypes.len(), 1);
+        assert_eq!(config.experiment.game.team_size, 5);
+        assert_eq!(config.experiment.matchmaking.algorithm, "batch");
+        let batch = config
+            .experiment
+            .matchmaking
+            .params
+            .get("batch_interval")
+            .and_then(|v| v.as_u64());
+        assert_eq!(batch, Some(10));
+        assert_eq!(config.experiment.rating.systems.len(), 1);
+        assert_eq!(config.experiment.rating.systems[0].name, "elo");
+        assert_eq!(
+            config.experiment.rating.systems[0]
+                .params
+                .get("k_factor")
+                .and_then(|v| v.as_f64()),
+            Some(32.0)
+        );
+        assert_eq!(config.experiment.metrics.len(), 3);
+        assert_eq!(config.experiment.duration.matches, 1_000_000);
+        assert_eq!(config.experiment.duration.max_time, 604800.0);
+        assert!(config.experiment.detection.is_none());
+        assert!(config.experiment.objectives.is_none());
+        assert_eq!(config.experiment.cohorts.len(), 1);
+    }
+
+    #[test]
+    fn config_serializes_back_to_yaml_for_hashing() {
+        let yaml = r#"
+experiment:
+  name: x
+  seed: 1
+  population:
+    size: 10
+    seed: 1
+    archetypes:
+      - name: a
+        proportion: 1.0
+        skill_distribution: { type: uniform, low: 0.0, high: 1000.0 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+  game:
+    team_size: 1
+    outcome_model: logistic
+    beta: 400.0
+    noise: 0.05
+  matchmaking:
+    algorithm: batch
+    batch_interval: 10
+    max_queue_time: 60.0
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  metrics:
+    - match_quality
+  cohorts: []
+  duration:
+    matches: 10
+    max_time: 1000.0
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: false
+"#;
+        let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
+        let text = serde_yaml::to_string(&config).unwrap();
+        let reparsed: ExperimentConfig = serde_yaml::from_str(&text).unwrap();
+        assert_eq!(reparsed.experiment.name, "x");
+        assert_eq!(reparsed.experiment.population.size, 10);
+    }
+
+    #[test]
+    fn log_normal_distribution_parses() {
+        let yaml = r#"
+experiment:
+  name: log
+  seed: 1
+  population:
+    size: 100
+    seed: 1
+    archetypes:
+      - name: a
+        proportion: 1.0
+        skill_distribution: { type: log_normal, mean: 7.0, stddev: 0.5 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+  game:
+    team_size: 1
+    outcome_model: logistic
+    beta: 400.0
+    noise: 0.0
+  matchmaking:
+    algorithm: batch
+    batch_interval: 10
+    max_queue_time: 60.0
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  metrics: []
+  cohorts: []
+  duration:
+    matches: 10
+    max_time: 1000.0
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: false
+"#;
+        let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
+        let spec = &config.experiment.population.archetypes[0].skill_distribution;
+        assert!(matches!(spec, DistributionSpec::LogNormal { .. }));
+    }
+}

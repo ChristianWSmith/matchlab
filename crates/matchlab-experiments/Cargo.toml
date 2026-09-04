@@ -1,0 +1,18 @@
+[package]
+name = "matchlab-experiments"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+matchlab-core = { path = "../matchlab-core" }
+matchlab-players = { path = "../matchlab-players" }
+matchlab-game = { path = "../matchlab-game" }
+matchlab-matchmaking = { path = "../matchlab-matchmaking" }
+matchlab-rating = { path = "../matchlab-rating" }
+matchlab-loop = { path = "../matchlab-loop" }
+matchlab-metrics = { path = "../matchlab-metrics" }
+serde.workspace = true
+serde_yaml.workspace = true
+rand.workspace = true
