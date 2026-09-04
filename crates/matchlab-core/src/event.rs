@@ -2,11 +2,21 @@ use crate::match_::MatchId;
 use crate::player::PlayerId;
 use crate::time::SimTime;
 use crate::world::World;
+use std::any::Any;
 use std::collections::{BinaryHeap, HashMap};
 
-pub trait Event: std::fmt::Debug + Send + Sync {
+pub trait Event: std::fmt::Debug + Send + Sync + Any {
     fn time(&self) -> SimTime;
     fn kind(&self) -> EventKind;
+    /// Type-erased self reference for checked payload downcasting
+    /// (`event.as_any().downcast_ref::<ConcreteEvent>()`). Handlers use this to
+    /// read the payload carried by a concrete event after matching on `kind()`.
+    fn as_any(&self) -> &dyn Any;
+}
+
+/// Convenience: downcast a `&dyn Event` to a concrete event type.
+pub fn downcast<T: Event>(event: &dyn Event) -> Option<&T> {
+    event.as_any().downcast_ref::<T>()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,6 +33,7 @@ pub enum EventKind {
     RatingUpdate,
     DetectionCheck,
     SkillChange,
+    MatchTimer,
 }
 
 /// An event wrapped with its dispatch metadata for the priority queue.
@@ -144,6 +155,9 @@ impl Event for PlayerJoinEvent {
     fn kind(&self) -> EventKind {
         EventKind::PlayerJoin
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -158,6 +172,9 @@ impl Event for PlayerLeaveEvent {
     }
     fn kind(&self) -> EventKind {
         EventKind::PlayerLeave
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -174,6 +191,9 @@ impl Event for PlayerQueueEvent {
     fn kind(&self) -> EventKind {
         EventKind::PlayerQueue
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -188,6 +208,9 @@ impl Event for PlayerQuitEvent {
     }
     fn kind(&self) -> EventKind {
         EventKind::PlayerQuit
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -204,6 +227,9 @@ impl Event for PlayerReturnEvent {
     fn kind(&self) -> EventKind {
         EventKind::PlayerReturn
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -219,6 +245,9 @@ impl Event for PlayerDisconnectEvent {
     }
     fn kind(&self) -> EventKind {
         EventKind::PlayerDisconnect
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -237,6 +266,9 @@ impl Event for MatchFormedEvent {
     fn kind(&self) -> EventKind {
         EventKind::MatchFormed
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -251,6 +283,27 @@ impl Event for MatchEndEvent {
     }
     fn kind(&self) -> EventKind {
         EventKind::MatchEnd
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Periodic trigger that asks the active matchmaker to form matches.
+#[derive(Debug)]
+pub struct MatchTimerEvent {
+    pub time: SimTime,
+}
+
+impl Event for MatchTimerEvent {
+    fn time(&self) -> SimTime {
+        self.time
+    }
+    fn kind(&self) -> EventKind {
+        EventKind::MatchTimer
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -267,6 +320,9 @@ impl Event for SkillChangeEvent {
     fn kind(&self) -> EventKind {
         EventKind::SkillChange
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]
@@ -282,6 +338,20 @@ mod tests {
             guard.push(event.time());
             Vec::new()
         })
+    }
+
+    #[test]
+    fn downcast_helper_recovers_concrete_payload() {
+        let event: Box<dyn Event> = Box::new(PlayerJoinEvent {
+            time: SimTime::from_secs(5.0),
+            player_id: PlayerId(7),
+        });
+        let recovered = downcast::<PlayerJoinEvent>(event.as_ref()).expect("downcast");
+        assert_eq!(recovered.player_id, PlayerId(7));
+        assert_eq!(recovered.time, SimTime::from_secs(5.0));
+
+        // Wrong type yields None.
+        assert!(downcast::<PlayerLeaveEvent>(event.as_ref()).is_none());
     }
 
     #[test]

@@ -102,6 +102,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchlab-loop"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "matchlab-game",
+ "matchlab-matchmaking",
+ "matchlab-players",
+ "matchlab-rating",
+]
+
+[[package]]
 name = "matchlab-matchmaking"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,13 @@
+[package]
+name = "matchlab-loop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+matchlab-core = { path = "../matchlab-core" }
+matchlab-players = { path = "../matchlab-players" }
+matchlab-game = { path = "../matchlab-game" }
+matchlab-rating = { path = "../matchlab-rating" }
+matchlab-matchmaking = { path = "../matchlab-matchmaking" }

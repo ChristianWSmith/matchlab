@@ -6,6 +6,7 @@ members = [
     "crates/matchlab-game",
     "crates/matchlab-matchmaking",
     "crates/matchlab-rating",
+    "crates/matchlab-loop",
     "crates/matchlab-metrics",
     "crates/matchlab-experiments",
     "crates/matchlab-analysis",

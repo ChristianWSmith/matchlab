@@ -42,6 +42,7 @@ match-lab/              # workspace root
     ├── matchlab-rating/        # rating systems (Elo, Glicko-2, TrueSkill, Flat)
     ├── matchlab-detection/     # smurf detection, interventions
     ├── matchlab-ranking/       # rank mapping, leaderboard
+    ├── matchlab-loop/          # simulation loop, event handlers, machine state
     ├── matchlab-metrics/       # metric collectors (accuracy, quality, queue time, etc.)
     ├── matchlab-objective/     # weighted utility, multi-objective scoring
     ├── matchlab-adversarial/   # adversarial player agents (boosters, derankers, etc.)
@@ -65,6 +66,7 @@ matchlab-core          ← no internal deps
     ├── matchlab-adversarial   (depends on core)
     └── matchlab-utility       (depends on core)
 
+matchlab-loop          (depends on core + players + game + rating + matchmaking)
 matchlab-experiments   (depends on all above)
 matchlab-analysis      (depends on core + metrics + objective)
 matchlab (binary)      (depends on experiments + analysis)
@@ -129,8 +131,9 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 **Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
 population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
-the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), and the queue +
-batch matchmaker (v0.1 **Ticket 07**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), the queue +
+batch matchmaker (v0.1 **Ticket 07**), and the event-handler loop (v0.1
+**Ticket 08**) are complete. The root `Cargo.toml` is a Cargo workspace with the nine v0.1 crates declared as members:
 
 ```
 crates/
@@ -139,6 +142,7 @@ crates/
 ├── matchlab-game/
 ├── matchlab-matchmaking/
 ├── matchlab-rating/
+├── matchlab-loop/
 ├── matchlab-metrics/
 ├── matchlab-experiments/
 └── matchlab-analysis/
@@ -166,13 +170,15 @@ crates/
   `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
 - `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
   `PlayerPerformance`, `MatchConfig`.
-- `event.rs` — `Event` trait (`time()`/`kind()`), 12-variant `EventKind`,
-  `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
+- `event.rs` — `Event` trait (`time()`/`kind()`/`as_any()`), 13-variant
+  `EventKind`, `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
   (`Fn(&mut World, &dyn Event) -> Vec<Box<dyn Event>> + Send + Sync`),
-  9 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
-  MatchEnd, SkillChange), `EventEngine` (register_handler/schedule/next_event/
-  peek_time/is_empty/tick). Handlers must not downcast payloads (no `Any`);
-  rely on `event.time()`/`kind()` from the trait.
+  10 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
+  MatchEnd, SkillChange, MatchTimer), plus a checked `downcast::<T>()` helper.
+  The `Any`-based `as_any()` lets handlers recover a concrete event's payload
+  (`downcast_ref`) after matching on `kind()` — this is how Ticket 08 handlers
+  read `player_id`/`match_id`/teams. `EventEngine` (register_handler/schedule/
+  next_event/peek_time/is_empty/tick).
 - `world.rs` — `World` holding `players`, `observations`, `matches`, `rng`,
   `time`, with private monotonic ID counters (`next_player_id()`/`next_match_id()`).
   Truth separation: `player.rs`/`world.rs` enforce the rule that algorithms
@@ -251,9 +257,43 @@ crates/
   `interval_ticks` field is metadata the Ticket 08 handler uses to decide when
   to trigger matchmaking. ExpandingWindow/Strict/HubSpoke are **out of scope**.
 
+**`matchlab-loop` is implemented with the v0.1 event-handler machine:**
+- `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
+  max_matches }` and `MachineState { population: HashMap<PlayerId,
+  (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
+  MatchResult>, matches_completed, matches_formed }` plus the boxed rating
+  system, outcome model, and matchmaker. The `handle_*` functions are plain
+  `(world, event, state) -> Vec<Box<dyn Event>>` pure-per-event transforms, so
+  they are unit-testable without the engine:
+  - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
+    schedule `PlayerQueue`.
+  - `PlayerQueue` → enqueue the player (entry built from the live observation).
+  - `MatchTimer` (new periodic event) → call `find_matches`, cap formation to
+    the remaining `max_matches − matches_formed` budget (a formed match is an
+    in-flight obligation, so over-capping on `matches_completed` would overshoot),
+    emit one `MatchFormed` per proposal + re-schedule the next timer.
+  - `MatchFormed` → simulate via the outcome model with `world.rng`, store the
+    `MatchResult` in `active_matches` + `World.matches[InProgress]`, schedule
+    `MatchEnd` at `now + duration`.
+  - `MatchEnd` → `rating_system.update`, apply returned `RatingState`s back to
+    `World.observations` only (truth separation), mark the match `Completed`,
+    increment `matches_completed`, and re-queue all participants after
+    `rejoin_delay` while `matches_formed < max_matches`.
+  Forming is capped by `matches_formed` (guarantees the loop terminates at
+  exactly `max_matches` completed matches); `find_matches` is invoked with the
+  world's rng temporarily swapped out because the matchmaker signature takes
+  `&World` + `&mut SimRng`.
+- `lib.rs` — `MatchLoop { state: Arc<Mutex<MachineState>>, world, engine }`
+  with `new(...)` that registers the five handlers on the `EventEngine`,
+  schedules initial `PlayerJoin`s (sorted by `PlayerId.0` — `HashMap` iteration
+  order is randomized via `RandomState`, so unsorted seeding would break
+  determinism) plus an initial `MatchTimer`, and `run()` that ticks to
+  completion. Initial `PlayerJoin` order + equal-time heap pops make the whole
+  experiment deterministic for a given seed.
+
 The other three crates are still stubs; no algorithms are implemented yet.
 Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 08, Event Handlers).
+order (next: Ticket 09, Metrics).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
