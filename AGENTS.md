@@ -129,7 +129,8 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
 **Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
 population (v0.1 **Ticket 04**), the game outcome model (v0.1 **Ticket 05**),
-and the rating systems Elo + FlatPoints (v0.1 **Ticket 06**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+the rating systems Elo + FlatPoints (v0.1 **Ticket 06**), and the queue +
+batch matchmaker (v0.1 **Ticket 07**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
 
 ```
 crates/
@@ -232,9 +233,27 @@ crates/
   Option<Box<dyn RatingSystem>>`. Glicko-2/TrueSkill are **not** registered in
   v0.1; unknown names return `None`.
 
-The other four crates are still stubs; no algorithms are implemented yet.
+**`matchlab-matchmaking` is implemented with the v0.1 queue + batch matchmaker:**
+- `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
+  game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
+  `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
+  v0.1 queue-time metric), `entries`/`len`/`is_empty`, `from_entries`.
+- `matchmaker.rs` — `Matchmaker` trait (spec §7.2)
+  `find_matches(queue, world, team_size, now, rng) -> Vec<ProposedMatch>`;
+  `ProposedMatch { team_a, team_b, quality_score }` with static `match_quality`
+  = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed from **observations** only.
+- `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
+  v0.1; the batch matchmaker runs with an empty list.
+- `batch.rs` — `BatchMatchmaker { interval_ticks, constraints }` (spec §7.8).
+  FIFO-candidate greedy formation: sort by `joined_at`, fill team A then team B,
+  emit matches in consecutive `2 × team_size` blocks (the spec's reference loop
+  silently drops a full final block — this implementation emits it). The
+  `interval_ticks` field is metadata the Ticket 08 handler uses to decide when
+  to trigger matchmaking. ExpandingWindow/Strict/HubSpoke are **out of scope**.
+
+The other three crates are still stubs; no algorithms are implemented yet.
 Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 07, Queue + Matchmaker).
+order (next: Ticket 08, Event Handlers).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
