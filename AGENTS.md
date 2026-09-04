@@ -127,8 +127,9 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 ## Current State
 
 The workspace foundation (v0.1 **Ticket 01**), the core types (v0.1
-**Ticket 02**), the event engine + World (v0.1 **Ticket 03**), and the player
-population (v0.1 **Ticket 04**) are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
+**Ticket 02**), the event engine + World (v0.1 **Ticket 03**), the player
+population (v0.1 **Ticket 04**), and the game outcome model (v0.1 **Ticket 05**)
+are complete. The root `Cargo.toml` is a Cargo workspace with the eight v0.1 crates declared as members:
 
 ```
 crates/
@@ -198,9 +199,21 @@ crates/
   Proportions become integer counts via the **largest-remainder method** so
   they always sum exactly to `size`.
 
-The other six crates are still stubs; no algorithms are implemented yet.
+**`matchlab-game` is implemented with the v0.1 outcome model:**
+- `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
+  team_b)` and `simulate(match_id, team_a, team_b, rng) -> MatchResult`. Takes
+  `PlayerObservation` only — never `PlayerReality` (truth separation).
+- `logistic.rs` — `LogisticOutcomeModel` (spec §6.2) with `beta`, `noise`, and
+  inert `use_multidimensional`/`dimension_weights` fields (multidim research
+  path is **out of scope** for v0.1; `effective_skill` defaults to the flat
+  `obs.rating`). `win_probability` is the logistic of the average-team-skill
+  difference; `simulate` adds noise, picks a winner, and builds a fully
+  populated `MatchResult` (team ids, scores, per-player `PlayerPerformance`,
+  duration, `variance`).
+
+The other five crates are still stubs; no algorithms are implemented yet.
 Individually-consistent tickets from `tickets/` drive the remaining v0.1 build
-order (next: Ticket 05, Game Outcome).
+order (next: Ticket 06, Elo Rating).
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1-10 are listed there with specific deliverables and exit criteria.
 
