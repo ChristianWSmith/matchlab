@@ -2,7 +2,7 @@ pub mod registry {
     use crate::system::RatingSystem;
 
     pub fn all_systems() -> Vec<&'static str> {
-        vec!["elo", "flatpoints", "glicko2"]
+        vec!["elo", "flatpoints", "glicko2", "trueskill"]
     }
 
     pub fn from_name(name: &str, config: &serde_yaml::Value) -> Option<Box<dyn RatingSystem>> {
@@ -12,6 +12,9 @@ pub mod registry {
                 config,
             )?)),
             "glicko2" => Some(Box::new(crate::glicko::Glicko2RatingSystem::from_yaml(
+                config,
+            )?)),
+            "trueskill" => Some(Box::new(crate::trueskill::TrueSkillRatingSystem::from_yaml(
                 config,
             )?)),
             "lua:elo" => {
@@ -28,6 +31,15 @@ pub mod registry {
                 let hooks = crate::hooks::LuaHooks::load(path).ok()?;
                 let sys = crate::glicko::Glicko2RatingSystem::from_yaml(config)?;
                 Some(Box::new(crate::glicko::Glicko2RatingSystem::with_hooks(
+                    sys.config,
+                    hooks,
+                )))
+            }
+            "lua:trueskill" => {
+                let path = config.get("script")?.as_str()?;
+                let hooks = crate::hooks::LuaHooks::load(path).ok()?;
+                let sys = crate::trueskill::TrueSkillRatingSystem::from_yaml(config)?;
+                Some(Box::new(crate::trueskill::TrueSkillRatingSystem::with_hooks(
                     sys.config,
                     hooks,
                 )))
@@ -78,9 +90,30 @@ mod tests {
     }
 
     #[test]
-    fn trueskill_is_not_implemented() {
-        let yaml = serde_yaml::from_str("rating: 1000.0\n").unwrap();
-        assert!(registry::from_name("trueskill", &yaml).is_none());
+    fn trueskill_registers_from_name() {
+        let yaml = serde_yaml::from_str("initial_mean: 1200.0\n").unwrap();
+        let sys = registry::from_name("trueskill", &yaml).expect("trueskill should register");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1200.0);
+        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+    }
+
+    #[test]
+    fn lua_trueskill_registers_from_name() {
+        let script = "function on_rating_bounds() return { floor = 100.0, ceiling = 3000.0 } end";
+        let path = temp_path("test_plugin_lua_trueskill");
+        std::fs::write(&path, script).unwrap();
+
+        let yaml = serde_yaml::from_str(&format!(
+            "script: {}\ninitial_mean: 1500.0\n",
+            path.to_str().unwrap()
+        ))
+        .unwrap();
+        let sys = registry::from_name("lua:trueskill", &yaml).expect("lua:trueskill should register");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1500.0);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -120,7 +153,7 @@ mod tests {
         assert!(systems.contains(&"elo"));
         assert!(systems.contains(&"flatpoints"));
         assert!(systems.contains(&"glicko2"));
-        assert!(!systems.contains(&"trueskill"));
+        assert!(systems.contains(&"trueskill"));
     }
 
     #[test]

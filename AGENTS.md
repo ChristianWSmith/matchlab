@@ -255,10 +255,20 @@ crates/
   `μ'` → scale back. Team matches treat each player's opponents as the
   opposing team's players, one opponent tuple per player. Verified against
   Glickman's paper worked example (r'=1464.06, RD'=151.52, σ'=0.05999).
+- `trueskill.rs` — `TrueSkillRatingSystem` (spec §8.6) with `TrueSkillConfig {
+  initial_mean, initial_variance, beta, dynamics, draw_probability }` and
+  `from_yaml` (accepts `initial_rating` alias for `initial_mean`). Each player
+  is N(μ, σ²); team performance = sum of member performances. The comparison
+  `d = P_A − P_B` is modeled as N(μ_A−μ_B, c²) and updated via truncated-
+  Gaussian conditioning: winner uses the inverse-Mills-ratio factors
+  `v,w` on `z > u−t`, loser on `z < −u−t` (with draw margin `u` from
+  `draw_probability`). μ += (σ²/c)v, σ² *= (1−(σ²/c²)w). `initial_variance`
+  is stored as `rating_deviation` = σ (sqrt of variance).
 - `plugins.rs` — `registry` module with `all_systems()` (`["elo",
-  "flatpoints", "glicko2"]`) and `from_name(name, &serde_yaml::Value) ->
-  Option<Box<dyn RatingSystem>>`, plus `lua:elo`/`lua:glicko2` hook-hooked
-  variants. TrueSkill is **not** registered; unknown names return `None`.
+  "flatpoints", "glicko2", "trueskill"]`) and `from_name(name,
+  &serde_yaml::Value) -> Option<Box<dyn RatingSystem>>`, plus
+  `lua:elo`/`lua:glicko2`/`lua:trueskill` hook-hooked variants. Unknown names
+  return `None`.
 
 **`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
