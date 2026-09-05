@@ -242,41 +242,40 @@ crates/
   initial/visible ladder value. Proportions become integer counts via the
   **largest-remainder method** so they always sum exactly to `size`.
 
-**`matchlab-game` is implemented with the outcome models:**
+**`matchlab-game` is implemented with the Lua-native outcome models:**
 - `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
   team_b)` and `simulate(match_id, team_a, team_b, rng) -> MatchResult`. Takes
   `PlayerObservation` only — never `PlayerReality` (truth separation).
-- `logistic.rs` — `LogisticOutcomeModel` (spec §6.2) with `beta`, `noise`, and
-  inert `use_multidimensional`/`dimension_weights` fields (multidim research
-  path is **out of scope** for v0.1). `effective_skill` uses
-  `obs.skill_vector.overall()` — the **true skill** carried in the observation
-  binding (falling back to `obs.rating` only for skill-vacuous observations) —
-  so match outcomes are decided by ground truth and Elo genuinely learns from
-  results. `win_probability` is the logistic of the average-team-skill
-  difference; `simulate` adds noise, picks a winner, and builds a fully
-  populated `MatchResult` (team ids, scores, per-player `PlayerPerformance`,
-  duration, `variance`). Ticket 12 grounded outcomes this way; the previous
-  flat-`rating` default closed the loop (outcomes driven by ratings, which
-  update those ratings) and made "MAE decreases" structurally impossible.
-- `variance.rs` — `VarianceOutcomeModel { beta, noise, variance_multiplier }`
-  (§6.3): logistic with a `variance_multiplier`-scaled noise envelope → more
-  upsets at a given skill gap. Optional `on_effective_skill` Lua hook.
-- `composition.rs` — `CompositionOutcomeModel { dimension_weights,
-  synergy_bonus, beta }` (§6.3): effective skill is each player's
-  `SkillVector.weighted_overall(dimension_weights)`; team totals add a
-  `synergy_bonus` per player. The multidim research model — can a 1D rating
-  represent multidimensional skill?
-- `performance.rs` — `PerformanceOutcomeModel { beta, performance_weight }`
-  (§6.3): `recent_performances` mean (scaled by `performance_weight × beta`)
-  shifts effective skill, so hot/cold streaks tilt win probability. Optional
-  `on_effective_skill` Lua hook.
-- `fatigue.rs` — `FatigueOutcomeModel { base_model, fatigue_decay_rate }`
-  (§6.3): wraps a base model, decays each player's skill by
-  `1 − decay_rate × games_played` (games played is the observable
-  session-length proxy). Delegates `win_probability`/`simulate` to the base.
-- `momentum.rs` — `MomentumOutcomeModel { base_model, momentum_factor }`
-  (§6.3): wraps a base model, scales each player's skill by
-  `1 + momentum_factor × (win_rate − 0.5)` (streak proxy). Delegates to base.
+- `lua.rs` — `LuaOutcomeModel`: implements `OutcomeModel` by delegating to a
+  script's `win_probability`/`simulate` functions; `simulate` runs inside
+  `with_rng` so scripts draw deterministically via `matchlab.rng_*`. Observation
+  tables carry `skill_overall`/`skill_vector` (`include_skill`), so match
+  winners are decided by ground truth and Elo genuinely learns from results.
+- The variants ship as Lua scripts under `plugins/game/`:
+  - `logistic.lua` — spec §6.2. `effective_skill` = `skill_overall` (falling
+    back to `rating` only for skill-vacuous observations); `win_probability` is
+    the logistic of the average-team-skill difference; `simulate` adds noise,
+    picks a winner, and builds a fully populated `MatchResult` (team ids,
+    scores, per-player performances, duration, `variance`). Draw order mirrors
+    the reference so results are byte-identical for a seed.
+  - `variance.lua` — spec §6.3; logistic with a `variance_multiplier`-scaled
+    noise envelope → more upsets at a given skill gap.
+  - `composition.lua` — spec §6.3; effective skill is each player's
+    `skill_vector` weighted by `config.dimension_weights`; team totals add a
+    `synergy_bonus` per player. The multidim research model — can a 1D rating
+    represent multidimensional skill?
+  - `performance.lua` — spec §6.3; `recent_performances` mean (scaled by
+    `performance_weight × beta`) shifts effective skill, so hot/cold streaks
+    tilt win probability.
+  - `fatigue.lua` — spec §6.3; decays each player's skill by
+    `1 − decay_rate × games_played` (games played is the observable
+    session-length proxy) before the logistic math.
+  - `momentum.lua` — spec §6.3; scales each player's skill by
+    `1 + momentum_factor × (win_rate − 0.5)` (streak proxy) before the logistic
+    math.
+- Ticket 12 grounded outcomes this way; the Lua ports reproduce the Rust
+  results byte-for-byte (v0_1_basic acceptance numbers unchanged through the
+  all-Lua game path).
 
 **`matchlab-rating` is implemented with the Lua-native rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,

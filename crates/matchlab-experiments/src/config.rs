@@ -73,13 +73,15 @@ pub enum DistributionSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameSpec {
     pub team_size: usize,
-    pub outcome_model: String,
-    pub beta: f64,
-    pub noise: f64,
-    #[serde(default)]
-    pub variant: Option<String>,
+    /// Path to the Lua outcome-model script (e.g. plugins/game/logistic.lua).
+    #[serde(default = "default_outcome_script")]
+    pub script: String,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+fn default_outcome_script() -> String {
+    "plugins/game/logistic.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -250,7 +252,7 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 5
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
@@ -333,7 +335,7 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
@@ -385,8 +387,7 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
-    variant: fatigue
+    script: plugins/game/fatigue.lua
     beta: 400.0
     noise: 0.05
     fatigue_decay_rate: 0.01
@@ -434,7 +435,7 @@ experiment:
     report: false
 "#;
         let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.experiment.game.variant.as_deref(), Some("fatigue"));
+        assert_eq!(config.experiment.game.script, "plugins/game/fatigue.lua");
         assert_eq!(
             config
                 .experiment
@@ -478,7 +479,7 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.0
   matchmaking:

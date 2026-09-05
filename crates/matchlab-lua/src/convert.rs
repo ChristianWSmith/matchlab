@@ -36,6 +36,12 @@ pub fn observation_to_table(
         .map_err(|e| e.to_string())?;
     t.set("is_online", obs.is_online)
         .map_err(|e| e.to_string())?;
+    let recent = lua.create_table().map_err(|e| e.to_string())?;
+    for (i, v) in obs.recent_performances.iter().enumerate() {
+        recent.set(i + 1, *v).map_err(|e| e.to_string())?;
+    }
+    t.set("recent_performances", recent)
+        .map_err(|e| e.to_string())?;
     set_opt_number(
         &t,
         "queue_joined_at_secs",

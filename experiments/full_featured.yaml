@@ -5,8 +5,7 @@ experiment:
   description: "All subsystems enabled: detection, ranking, adversarial agents, satisfaction, fatigue variant"
   game:
     team_size: 5
-    outcome_model: logistic
-    variant: fatigue
+    script: plugins/game/fatigue.lua
     beta: 400.0
     noise: 0.05
     fatigue_decay_rate: 0.001

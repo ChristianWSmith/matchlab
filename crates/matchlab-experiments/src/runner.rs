@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
-use matchlab_game::logistic::LogisticOutcomeModel;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
 use matchlab_matchmaking::batch::BatchMatchmaker;
@@ -205,86 +204,9 @@ fn flatten_params(
 }
 
 fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String> {
-    let base = match spec.outcome_model.as_str() {
-        "logistic" => {
-            Box::new(LogisticOutcomeModel::new(spec.beta, spec.noise)) as Box<dyn OutcomeModel>
-        }
-        other => return Err(format!("unknown outcome model: {other}")),
-    };
-    let variant = spec.variant.as_deref().unwrap_or("");
-    match variant {
-        "" => Ok(base),
-        "variance" => {
-            let multiplier = spec
-                .params
-                .get("variance_multiplier")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0);
-            Ok(Box::new(
-                matchlab_game::variance::VarianceOutcomeModel::new(
-                    spec.beta, spec.noise, multiplier,
-                ),
-            ))
-        }
-        "composition" => {
-            let weights = spec
-                .params
-                .get("dimension_weights")
-                .and_then(|v| v.as_mapping())
-                .map(|m| {
-                    m.iter()
-                        .map(|(k, v)| {
-                            (
-                                k.as_str().unwrap_or("").to_string(),
-                                v.as_f64().unwrap_or(1.0),
-                            )
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let synergy = spec
-                .params
-                .get("synergy_bonus")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-            Ok(Box::new(
-                matchlab_game::composition::CompositionOutcomeModel::new(
-                    weights, synergy, spec.beta,
-                ),
-            ))
-        }
-        "performance" => {
-            let weight = spec
-                .params
-                .get("performance_weight")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0);
-            Ok(Box::new(
-                matchlab_game::performance::PerformanceOutcomeModel::new(spec.beta, weight),
-            ))
-        }
-        "fatigue" => {
-            let decay = spec
-                .params
-                .get("fatigue_decay_rate")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.001);
-            Ok(Box::new(matchlab_game::fatigue::FatigueOutcomeModel::new(
-                base, decay,
-            )))
-        }
-        "momentum" => {
-            let factor = spec
-                .params
-                .get("momentum_factor")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.1);
-            Ok(Box::new(
-                matchlab_game::momentum::MomentumOutcomeModel::new(base, factor),
-            ))
-        }
-        other => Err(format!("unknown outcome model variant: {other}")),
-    }
+    let params = flatten_params(&spec.params);
+    matchlab_game::lua::LuaOutcomeModel::load(&spec.script, &params)
+        .map(|m| Box::new(m) as Box<dyn OutcomeModel>)
 }
 
 fn build_matchmaker(spec: &MatchmakingSpec) -> Result<Box<dyn Matchmaker>, String> {
@@ -577,7 +499,7 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
@@ -718,13 +640,17 @@ experiment:
     }
 
     #[test]
-    fn fatigue_outcome_variant_runs() {
+    fn fatigue_outcome_script_runs() {
         let mut config = mini_config();
-        config.experiment.game.variant = Some("fatigue".to_string());
-        config.experiment.game.params = BTreeMap::from([(
-            "fatigue_decay_rate".to_string(),
-            serde_yaml::Value::from(0.001),
-        )]);
+        config.experiment.game.script = "plugins/game/fatigue.lua".to_string();
+        config.experiment.game.params = BTreeMap::from([
+            ("beta".to_string(), serde_yaml::Value::from(400.0)),
+            ("noise".to_string(), serde_yaml::Value::from(0.05)),
+            (
+                "fatigue_decay_rate".to_string(),
+                serde_yaml::Value::from(0.001),
+            ),
+        ]);
         let result = ExperimentRunner::run(&config).unwrap();
         assert_eq!(result.matches_completed, 40);
     }

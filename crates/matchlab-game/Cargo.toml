@@ -7,4 +7,6 @@ license.workspace = true
 
 [dependencies]
 matchlab-core = { path = "../matchlab-core" }
+matchlab-lua = { path = "../matchlab-lua" }
 mlua = { workspace = true, features = ["send"] }
+serde_yaml.workspace = true

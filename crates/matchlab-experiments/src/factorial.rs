@@ -101,10 +101,7 @@ mod tests {
                 },
                 game: GameSpec {
                     team_size: 5,
-                    outcome_model: "logistic".to_string(),
-                    beta: 400.0,
-                    noise: 0.05,
-                    variant: None,
+                    script: "plugins/game/logistic.lua".to_string(),
                     params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
@@ -176,7 +173,15 @@ mod tests {
             }],
         };
         let configs = design.generate_configs(&base());
-        assert_eq!(configs[0].experiment.game.beta, 300.0);
+        assert_eq!(
+            configs[0]
+                .experiment
+                .game
+                .params
+                .get("beta")
+                .and_then(|v| v.as_f64()),
+            Some(300.0)
+        );
     }
 
     #[test]

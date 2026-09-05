@@ -474,7 +474,8 @@ mod tests {
     use matchlab_core::match_::Team;
     use matchlab_core::player::{DetectionFlag, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
-    use matchlab_game::logistic::LogisticOutcomeModel;
+    use matchlab_game::lua::LuaOutcomeModel;
+    use matchlab_game::outcome::OutcomeModel;
     use matchlab_matchmaking::batch::BatchMatchmaker;
     use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
@@ -487,6 +488,14 @@ mod tests {
         let params =
             serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
         registry::from_script("plugins/rating/elo.lua", &params).expect("elo.lua loads")
+    }
+
+    fn lua_logistic() -> Box<dyn OutcomeModel> {
+        let params = serde_yaml::from_str("beta: 400.0\nnoise: 0.1").unwrap();
+        Box::new(
+            LuaOutcomeModel::load("plugins/game/logistic.lua", &params)
+                .expect("logistic.lua loads"),
+        )
     }
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
@@ -541,7 +550,7 @@ mod tests {
         MachineState::new(
             pop,
             lua_elo(),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
+            lua_logistic(),
             Box::new(BatchMatchmaker::new(10)),
             MetricsEngine::new(),
             LoopConfig {
@@ -757,7 +766,7 @@ mod tests {
         let mut loop_a = MatchLoop::new(
             pop.clone(),
             lua_elo(),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
+            lua_logistic(),
             Box::new(BatchMatchmaker::new(60)),
             MetricsEngine::new(),
             cfg,
@@ -820,7 +829,7 @@ mod tests {
             MatchLoop::new(
                 pop,
                 lua_elo(),
-                Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
+                lua_logistic(),
                 Box::new(BatchMatchmaker::new(60)),
                 MetricsEngine::new(),
                 cfg,
@@ -892,7 +901,7 @@ mod tests {
         let mut loop_a = MatchLoop::new(
             pop,
             lua_elo(),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
+            lua_logistic(),
             Box::new(BatchMatchmaker::new(60)),
             metrics,
             cfg,
