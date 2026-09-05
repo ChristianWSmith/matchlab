@@ -143,19 +143,6 @@ fn default_ranking_script() -> String {
     "plugins/ranking/brackets.lua".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RankSpec {
-    pub tier: String,
-    pub division: u8,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RankBracketSpec {
-    pub rank: RankSpec,
-    pub min: f64,
-    pub max: f64,
-}
-
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AdversarialSpec {
@@ -185,17 +172,6 @@ pub struct SatisfactionSpec {
 
 fn default_satisfaction_script() -> String {
     "plugins/utility/satisfaction.lua".to_string()
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SatisfactionWeightsSpec {
-    pub match_quality: Option<f64>,
-    pub queue_time_penalty: Option<f64>,
-    pub win_bonus: Option<f64>,
-    pub loss_streak_penalty: Option<f64>,
-    pub rank_progression_bonus: Option<f64>,
-    pub fairness_sensitivity: Option<f64>,
-    pub rematch_bonus: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -433,8 +409,9 @@ experiment:
     script: plugins/detection/smurf.lua
     min_games_before_action: 3
   ranking:
+    script: plugins/ranking/brackets.lua
     brackets:
-      - { rank: { tier: bronze, division: 1 }, min: 0, max: 1200 }
+      - { tier: bronze, division: 1, min: 0, max: 1200 }
   adversarial:
     agents:
       - script: plugins/adversarial/afk.lua
@@ -442,9 +419,9 @@ experiment:
         go_afk_probability: 0.5
   satisfaction:
     enabled: true
-    weights:
-      match_quality: 1.0
-      queue_time_penalty: -0.01
+    script: plugins/utility/satisfaction.lua
+    match_quality: 1.0
+    queue_time_penalty: -0.01
   metrics: []
   objectives:
     match_quality: 1.0

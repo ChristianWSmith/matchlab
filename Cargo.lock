@@ -206,6 +206,7 @@ dependencies = [
  "matchlab-detection",
  "matchlab-game",
  "matchlab-loop",
+ "matchlab-lua",
  "matchlab-matchmaking",
  "matchlab-metrics",
  "matchlab-objective",

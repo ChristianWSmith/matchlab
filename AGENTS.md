@@ -504,7 +504,8 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   population/game/arrival/behavior derived from the one experiment seed via
   `derive(name, parent_seed)`, plus `hash_config(&ExperimentConfig)` (a
   `#[derive(Default)]` `DefaultHasher` over length-prefixed serialized
-  fields) and `git_commit_hash()` for `ExperimentResult`.
+  fields **plus the contents of every referenced Lua script**, so a script edit
+  changes the experiment identity) and `git_commit_hash()` for `ExperimentResult`.
 - `factorial.rs` — `FactorialDesign { factors }` (spec §13.5) with
   `generate_configs(&base) -> Vec<ExperimentConfig>` producing the Cartesian
   product of factor values. Each factor is a dot-separated config path with
