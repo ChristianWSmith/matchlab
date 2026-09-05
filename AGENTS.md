@@ -482,6 +482,20 @@ inequality/ndcg/correlation/convergence/etc. are out).
   minimal. Objective `MaximizeWinRate { target_games: 10 }`.
 - `lib.rs` — re-exports all agents + `AdversarialAgent`/`AdversarialObjective`.
 
+**`matchlab-utility` is implemented with the satisfaction model:**
+- `satisfaction.rs` — `SatisfactionModel` (spec §16.1) with
+  `SatisfactionWeights` (serde `Deserialize`: `match_quality`,
+  `queue_time_penalty`, `win_bonus`, `loss_streak_penalty`,
+  `rank_progression_bonus`, `fairness_sensitivity`, `rematch_bonus`;
+  `Default` matches §16.1) and `PlayerExperience` (recent match qualities,
+  queue times, outcomes, `current_streak`, `rank_change`,
+  `perceived_fairness`, `rematch_rate`; `new()`/`record_match()` helpers).
+  `satisfaction()` is the weighted sum (loss-streak penalty only kicks in
+  below −3), `retention_probability()` is the logistic `1/(1+e^−s)`, and
+  `rematch_probability()` requires a higher threshold (`1/(1+e^−0.5(s−2))`).
+  `lib.rs` re-exports `SatisfactionModel`, `SatisfactionWeights`,
+  `PlayerExperience`.
+
 The twelve-step build order is complete and v0.1 is accepted.
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1–12 are complete.
