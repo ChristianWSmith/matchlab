@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn hash_config_changes_with_script_contents() {
         let a: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
-        let mut b: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
+        let b: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
         let ha = hash_config(&a);
         let hb = hash_config(&b);
         assert_eq!(ha, hb, "identical configs hash identically");

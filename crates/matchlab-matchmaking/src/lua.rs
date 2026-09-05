@@ -129,9 +129,7 @@ impl Matchmaker for LuaMatchmaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{
-        DetectionFlag, PlayerObservation, Region, SkillVector, VisibleRank,
-    };
+    use matchlab_core::player::{PlayerObservation, Region, SkillVector, VisibleRank};
     use std::collections::VecDeque;
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {

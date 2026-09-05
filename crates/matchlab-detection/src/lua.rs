@@ -147,7 +147,7 @@ impl DetectionSystem for LuaDetectionSystem {
 mod tests {
     use super::*;
     use matchlab_core::match_::{MatchId, PlayerPerformance, Team};
-    use matchlab_core::player::{DetectionFlag, PlayerObservation, SkillVector, VisibleRank};
+    use matchlab_core::player::{PlayerObservation, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
     use std::collections::VecDeque;

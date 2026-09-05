@@ -940,7 +940,6 @@ mod tests {
     #[test]
     fn ranking_updates_visible_rank_on_match_end() {
         use matchlab_ranking::lua::LuaRankMapper;
-        use matchlab_ranking::ranker::RankMapper;
         let mut state = default_state(vec![]);
         let brackets = serde_yaml::from_str(
             "brackets:\n  - { tier: bronze, division: 1, min: 0.0, max: 1200.0 }\n  - { tier: silver, division: 1, min: 1200.0, max: 2000.0 }",
@@ -1060,7 +1059,6 @@ mod tests {
     #[test]
     fn low_satisfaction_schedules_quit_instead_of_requeue() {
         use matchlab_utility::lua::LuaSatisfactionModel;
-        use matchlab_utility::satisfaction::SatisfactionModel;
         let mut state = default_state(vec![]);
         let model = LuaSatisfactionModel::load(
             "plugins/utility/satisfaction.lua",

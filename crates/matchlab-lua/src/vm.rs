@@ -186,7 +186,6 @@ impl LuaVm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context;
     use std::io::Write;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -302,7 +301,7 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         let first: f64 = vm.with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
         let second: f64 = vm.with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
-        assert!(first >= 0.0 && first < 100.0);
+        assert!((0.0..100.0).contains(&first));
         assert_ne!(first, second);
         let _ = std::fs::remove_file(&p);
     }
