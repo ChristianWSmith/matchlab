@@ -41,6 +41,7 @@ pub struct ExperimentResult {
     pub matches_formed: u64,
     pub simulated_time_secs: f64,
     pub metrics: BTreeMap<String, MetricResult>,
+    pub utility_score: Option<f64>,
 }
 
 impl ExperimentRunner {
@@ -96,6 +97,7 @@ impl ExperimentRunner {
             matches_formed,
             simulated_time_secs,
             metrics,
+            utility_score: None,
         };
         Ok(result)
     }

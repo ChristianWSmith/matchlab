@@ -498,7 +498,9 @@ besides the simulation):
   bound. v0.1 uses only the **first** `rating.systems` entry. Returns
   `ExperimentResult { experiment_id = "{name}-{config_hash}", name,
   config_hash, git_commit, timestamp, matches_completed, matches_formed,
-  simulated_time_secs, metrics }`; the timestamp is a hand-rolled ISO-8601 UTC
+  simulated_time_secs, metrics, utility_score }` (`utility_score` defaults to
+  `None`; populated when objective weights are configured); the timestamp is a
+  hand-rolled ISO-8601 UTC
   string (no chrono dep). `metrics` is a `BTreeMap` (not `HashMap`) so JSON
   serialization key order is deterministic across processes. Each registered
   collector's `time_buckets()` (if present) is folded into `{name}_by_time`
@@ -522,6 +524,17 @@ besides the simulation):
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
   `Summary`/`summary_to_result` API (spec §14.1). The canonical implementation
   stays in `matchlab-metrics` to keep the metrics-only-core boundary.
+- `pareto.rs` — spec §14.2: `ParetoPoint { label, values }` and
+  `pareto_front(points, higher_is_better) -> Vec<&ParetoPoint>` — the set of
+  non-dominated points (a point dominates another if at least as good on all
+  dimensions and strictly better on one).
+- `cohorts.rs` — spec §14.3: `CohortResult { name, player_count, metrics }`
+  and `analyze_cohort(name, filter, world, full_metrics)` slicing players by a
+  `CohortFilter` and reporting per-cohort `rating_accuracy` (per-player MAE).
+- `comparator.rs` — spec §14.6: `Comparator { results, baseline }` with
+  `metric_comparison() -> HashMap<String, Vec<MetricComparison>>` (side-by-side
+  per metric) and `ranking() -> Vec<(&ExperimentResult, f64)>` sorted by
+  `utility_score` descending (skips results without one).
 - `report.rs` — spec §14.4: `ReportConfig { include_plots, include_raw_data,
   format }` and `ReportFormat { Json, Markdown }` (HTML out of scope, despite
   the spec's enum). `generate_report(&ExperimentResult) -> String` (single
