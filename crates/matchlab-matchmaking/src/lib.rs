@@ -16,8 +16,12 @@ pub mod hooks;
 pub mod hub_spoke;
 pub mod loader;
 pub mod matchmaker;
+pub mod objective;
 pub mod queue;
+pub mod search;
 pub mod strict;
 
 pub use hooks::LuaHooks;
 pub use loader::{ScriptLoader, ScriptValidationResult};
+pub use objective::MatchObjective;
+pub use search::{BeamSearch, GreedySearch, RandomSamplingSearch, SearchStrategy, SearchStrategyKind};

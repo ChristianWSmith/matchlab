@@ -303,6 +303,17 @@ crates/
   delegates under-capacity regions to their spoke, and handles overflow
   directly (longest-waiting first). Emits the trailing full block (the spec's
   reference loop silently drops it).
+- `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
+  weight_ping, weight_rating_uncertainty }` (spec §7.4) with
+  `score(proposed, queue_entries, world) = w_q·Q − w_t·T − w_p·P − w_r·R`
+  where `Q` is balance quality, `T` is max queue wait / 60s, `P` is a
+  placeholder ping cost (0.0), and `R` is mean RD / 350.
+- `search.rs` — `SearchStrategy` trait + `SearchStrategyKind` enum (spec §7.5)
+  with three implementations: `GreedySearch` (nearest-by-rating fill),
+  `RandomSamplingSearch { samples }` (random compositions, keep best by
+  objective), and `BeamSearch { width }` (partial assignments expanded and
+  truncated to `width`). NearestNeighbor/Hungarian/Genetic/IntegerProgramming/
+  SimulatedAnnealing are declared in `SearchStrategyKind` but not implemented.
 
 **`matchlab-loop` is implemented with the event-handler machine:**
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
