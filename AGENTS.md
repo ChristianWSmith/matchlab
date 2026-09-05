@@ -456,11 +456,15 @@ besides the simulation):
 - `config.rs` — serde types for the full experiment manifest (spec §13.2):
   `ExperimentConfig`, `ExperimentSpec` (name, optional description, seed,
   population/game/matchmaking/rating/detection/ranking/metrics/objectives/
-  cohorts/duration/output), `PopulationSpec`/`ArchetypeSpec`/`DistributionSpec`
-  (normal/uniform/log_normal), `GameSpec`, `MatchmakingSpec`
+  adversarial/satisfaction/cohorts/duration/output), `PopulationSpec`/
+  `ArchetypeSpec`/`DistributionSpec`
+  (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params),
+  `MatchmakingSpec`
   (algorithm + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
   with `RatingSystemSpec { name, params }` flatten, `DetectionSpec`,
   `SmurfDetectionSpec`, `RankingSpec`, `RankBracketSpec`, `ObjectiveWeightsSpec`,
+  `AdversarialSpec`/`AdversarialAgentSpec`, `SatisfactionSpec`/
+  `SatisfactionWeightsSpec`,
   `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { until_secs | max_matches | max_time }`,
   `OutputSpec { directory, format }`. `cohorts` is a required `Vec`
   (manifests use `cohorts: []` when unused).
@@ -491,28 +495,34 @@ besides the simulation):
 - `runner.rs` — `ExperimentRunner::run(&ExperimentConfig) ->
   Result<ExperimentResult, String>`: generates the population, builds the
   rating system via `matchlab_rating::registry::from_name` (params flattened
-  to a `serde_yaml::Value::Mapping`), builds the logistic outcome model +
-  batch matchmaker (`batch_interval` in YAML is seconds →
-  `LoopConfig.batch_interval_ticks`), registers the named metric collectors
-  (errors on unknown names), and runs `MatchLoop` to the `DurationSpec`
-  bound. v0.1 uses only the **first** `rating.systems` entry. Returns
+  to a `serde_yaml::Value::Mapping`), builds the outcome model (logistic or a
+  §6.3 variant via `game.variant`), builds the matchmaker (batch,
+  expanding_window, strict, hub_spoke via `matchmaking.algorithm`), builds
+  optional detection (`SmurfDetector`), ranking (`BracketRankMapper`),
+  adversarial agents, and satisfaction model, registers the named metric
+  collectors (all 13, errors on unknown names), and runs `MatchLoop` to the
+  `DurationSpec` bound. Computes `utility_score` from `objectives` weights via
+  `ObjectiveFunction`. Returns
   `ExperimentResult { experiment_id = "{name}-{config_hash}", name,
   config_hash, git_commit, timestamp, matches_completed, matches_formed,
-  simulated_time_secs, metrics, utility_score }` (`utility_score` defaults to
-  `None`; populated when objective weights are configured); the timestamp is a
+  simulated_time_secs, metrics, utility_score }` (`utility_score` is `None`
+  unless objective weights are configured); the timestamp is a
   hand-rolled ISO-8601 UTC
   string (no chrono dep). `metrics` is a `BTreeMap` (not `HashMap`) so JSON
   serialization key order is deterministic across processes. Each registered
   collector's `time_buckets()` (if present) is folded into `{name}_by_time`
-  `TimeSeries` by the engine. 6 unit tests include a same-seed determinism
-  check (identical metrics) and a sim-time bound check. `lib.rs` re-exports
+  `TimeSeries` by the engine. Unit tests include same-seed determinism
+  (identical metrics), a sim-time bound check, objective scoring, all-metric
+  registration, and expanding_window/fatigue runs. `lib.rs` re-exports
   the public API.
 - Binary `src/main.rs` — `matchlab run <manifest.yaml>` (exit 0/1/2): loads via
   `inherit::load`, runs, and delegates output to `matchlab-analysis` — writes
   the result as pretty JSON to `<output.directory>/<experiment.name>.json`
   (`export::write_result_json`) and, when `output.report: true`, a Markdown
   report to `<name>.md` (`report::generate_report`) with config hash, git
-  commit, and the metrics table.
+  commit, and the metrics table. Prints a `features:` summary line listing
+  enabled subsystems (detection/ranking/adversarial/satisfaction/outcome
+  variant/non-batch matchmaker) and the utility score when configured.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
   players, team size 5, cold ladder start with `initial_rating: 1000`, flat
   skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).

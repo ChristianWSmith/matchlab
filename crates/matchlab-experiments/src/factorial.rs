@@ -104,6 +104,8 @@ mod tests {
                     outcome_model: "logistic".to_string(),
                     beta: 400.0,
                     noise: 0.05,
+                    variant: None,
+                    params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
                     algorithm: "batch".to_string(),
@@ -120,6 +122,8 @@ mod tests {
                 ranking: None,
                 metrics: vec!["match_quality".to_string()],
                 objectives: None,
+                adversarial: None,
+                satisfaction: None,
                 cohorts: Vec::<CohortSpec>::new(),
                 duration: DurationSpec {
                     matches: 100,

@@ -195,13 +195,18 @@ dependencies = [
 name = "matchlab-experiments"
 version = "0.1.0"
 dependencies = [
+ "matchlab-adversarial",
  "matchlab-core",
+ "matchlab-detection",
  "matchlab-game",
  "matchlab-loop",
  "matchlab-matchmaking",
  "matchlab-metrics",
+ "matchlab-objective",
  "matchlab-players",
+ "matchlab-ranking",
  "matchlab-rating",
+ "matchlab-utility",
  "rand",
  "serde",
  "serde_yaml",

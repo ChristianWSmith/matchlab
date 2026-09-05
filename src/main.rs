@@ -44,6 +44,12 @@ fn run(manifest_args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
+    let features = feature_summary(&config);
+    let utility = result
+        .utility_score
+        .map(|s| format!(", utility {s:.4}"))
+        .unwrap_or_default();
+
     if config.experiment.output.report {
         let report = matchlab_analysis::report::generate_report(&result);
         let report_path = Path::new(dir).join(format!("{}.md", result.name));
@@ -52,22 +58,51 @@ fn run(manifest_args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
         println!(
-            "{}: {} matches in {:.1}s → report: {}",
+            "{}: {} matches in {:.1}s{} → report: {}",
             result.name,
             result.matches_completed,
             result.simulated_time_secs,
+            utility,
             report_path.display()
         );
     } else {
         println!(
-            "{}: {} matches in {:.1}s → {}",
+            "{}: {} matches in {:.1}s{} → {}",
             result.name,
             result.matches_completed,
             result.simulated_time_secs,
+            utility,
             Path::new(dir)
                 .join(format!("{}.json", result.name))
                 .display()
         );
     }
+    if !features.is_empty() {
+        println!("features: {features}");
+    }
     ExitCode::SUCCESS
+}
+
+fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
+    let exp = &config.experiment;
+    let mut parts: Vec<String> = Vec::new();
+    if exp.detection.as_ref().map(|d| d.enabled).unwrap_or(false) {
+        parts.push("detection".to_string());
+    }
+    if exp.ranking.is_some() {
+        parts.push("ranking".to_string());
+    }
+    if exp.adversarial.as_ref().map(|a| !a.agents.is_empty()).unwrap_or(false) {
+        parts.push("adversarial".to_string());
+    }
+    if exp.satisfaction.as_ref().map(|s| s.enabled).unwrap_or(false) {
+        parts.push("satisfaction".to_string());
+    }
+    if let Some(variant) = exp.game.variant.as_deref() {
+        parts.push(format!("outcome:{variant}"));
+    }
+    if exp.matchmaking.algorithm != "batch" {
+        parts.push(format!("matchmaker:{}", exp.matchmaking.algorithm));
+    }
+    parts.join(", ")
 }

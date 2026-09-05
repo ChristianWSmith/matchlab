@@ -22,10 +22,17 @@ pub struct ExperimentSpec {
     pub game: GameSpec,
     pub matchmaking: MatchmakingSpec,
     pub rating: RatingSpec,
+    #[serde(default)]
     pub detection: Option<DetectionSpec>,
+    #[serde(default)]
     pub ranking: Option<RankingSpec>,
     pub metrics: Vec<String>,
+    #[serde(default)]
     pub objectives: Option<ObjectiveWeightsSpec>,
+    #[serde(default)]
+    pub adversarial: Option<AdversarialSpec>,
+    #[serde(default)]
+    pub satisfaction: Option<SatisfactionSpec>,
     pub cohorts: Vec<CohortSpec>,
     pub duration: DurationSpec,
     pub output: OutputSpec,
@@ -69,6 +76,10 @@ pub struct GameSpec {
     pub outcome_model: String,
     pub beta: f64,
     pub noise: f64,
+    #[serde(default)]
+    pub variant: Option<String>,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -120,6 +131,46 @@ pub struct RankBracketSpec {
     pub rank: RankSpec,
     pub min: f64,
     pub max: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct AdversarialSpec {
+    pub agents: Vec<AdversarialAgentSpec>,
+}
+
+impl Default for AdversarialSpec {
+    fn default() -> Self {
+        Self { agents: Vec::new() }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdversarialAgentSpec {
+    pub agent_type: String,
+    /// Player id the agent is attached to (for single-player agents).
+    #[serde(default)]
+    pub player: Option<u64>,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SatisfactionSpec {
+    pub enabled: bool,
+    #[serde(default)]
+    pub weights: Option<SatisfactionWeightsSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SatisfactionWeightsSpec {
+    pub match_quality: Option<f64>,
+    pub queue_time_penalty: Option<f64>,
+    pub win_bonus: Option<f64>,
+    pub loss_streak_penalty: Option<f64>,
+    pub rank_progression_bonus: Option<f64>,
+    pub fairness_sensitivity: Option<f64>,
+    pub rematch_bonus: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -309,6 +360,105 @@ experiment:
         let reparsed: ExperimentConfig = serde_yaml::from_str(&text).unwrap();
         assert_eq!(reparsed.experiment.name, "x");
         assert_eq!(reparsed.experiment.population.size, 10);
+    }
+
+    #[test]
+    fn adversarial_and_satisfaction_specs_parse() {
+        let yaml = r#"
+experiment:
+  name: full
+  seed: 1
+  population:
+    size: 10
+    seed: 1
+    archetypes:
+      - name: a
+        proportion: 1.0
+        skill_distribution: { type: normal, mean: 1000, stddev: 250 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+  game:
+    team_size: 1
+    outcome_model: logistic
+    variant: fatigue
+    beta: 400.0
+    noise: 0.05
+    fatigue_decay_rate: 0.01
+  matchmaking:
+    algorithm: expanding_window
+    batch_interval: 10
+    max_queue_time: 60.0
+    tiers: [[5.0, 25.0], [10.0, 50.0]]
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  detection:
+    enabled: true
+    smurf:
+      acceleration_threshold: 0.8
+      ban_threshold: 0.99
+      min_games_before_action: 3
+  ranking:
+    brackets:
+      - { rank: { tier: bronze, division: 1 }, min: 0, max: 1200 }
+  adversarial:
+    agents:
+      - agent_type: afk
+        player: 1
+        go_afk_probability: 0.5
+  satisfaction:
+    enabled: true
+    weights:
+      match_quality: 1.0
+      queue_time_penalty: -0.01
+  metrics: []
+  objectives:
+    match_quality: 1.0
+  cohorts: []
+  duration:
+    matches: 10
+    max_time: 1000.0
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: false
+"#;
+        let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.experiment.game.variant.as_deref(), Some("fatigue"));
+        assert_eq!(
+            config.experiment.game.params.get("fatigue_decay_rate").and_then(|v| v.as_f64()),
+            Some(0.01)
+        );
+        assert_eq!(
+            config.experiment.matchmaking.algorithm,
+            "expanding_window"
+        );
+        assert!(
+            config.experiment.detection.as_ref().unwrap().enabled
+        );
+        assert_eq!(
+            config.experiment.ranking.as_ref().unwrap().brackets.len(),
+            1
+        );
+        assert_eq!(
+            config
+                .experiment
+                .adversarial
+                .as_ref()
+                .unwrap()
+                .agents
+                .len(),
+            1
+        );
+        assert!(config.experiment.satisfaction.as_ref().unwrap().enabled);
+        assert!(config.experiment.objectives.is_some());
     }
 
     #[test]
