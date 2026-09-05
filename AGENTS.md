@@ -460,6 +460,28 @@ inequality/ndcg/correlation/convergence/etc. are out).
   is returned by reference and never discarded (§12.2 — the "never discard raw
   metrics" rule). `lib.rs` re-exports `ObjectiveFunction`, `ObjectiveWeights`.
 
+**`matchlab-adversarial` is implemented with the agent types:**
+- `agent.rs` — `AdversarialAgent` trait (spec §15.1): `tick(&mut self,
+  player_id, world)` + `objective() -> AdversarialObjective` (6-variant enum:
+  `MaximizeRating`, `MinimizeGamesPlayed`, `MaximizeWinRate { target_games }`,
+  `MaintainLowRating`, `WinTrade { partner }`, `Derate`). Agents act as the
+  player's behavior controller (like the outcome model), so they may adjust
+  reality behavior params (e.g. `quit_probability`) as well as observable
+  signals.
+- `booster.rs` — `BoosterAgent { boost_target, boostee }`: links the duo into a
+  party and boosts the boostee's `win_rate` to 1.0. Objective `MaximizeRating`.
+- `deranker.rs` — `DerankerAgent { target_rating }`: while rating is above the
+  target, raises `quit_probability` to 0.9 and `tilt_level` to 1.0 to throw
+  matches. Objective `MaintainLowRating`.
+- `win_trader.rs` — `WinTraderAgent { partner, alternating }`: links the pair
+  into a party and toggles `alternating`. Objective `WinTrade { partner }`.
+- `afk.rs` — `AfkAgent { go_afk_probability }`: with `world.rng.gen_bool` sets
+  `quit_probability = 1.0` (AFK/disconnect). Objective `MinimizeGamesPlayed`.
+- `rating_farmer.rs` — `RatingFarmerAgent { quit_probability,
+  quit_after_minutes }`: quits/offline after queueing to keep `games_played`
+  minimal. Objective `MaximizeWinRate { target_games: 10 }`.
+- `lib.rs` — re-exports all agents + `AdversarialAgent`/`AdversarialObjective`.
+
 The twelve-step build order is complete and v0.1 is accepted.
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1–12 are complete.
