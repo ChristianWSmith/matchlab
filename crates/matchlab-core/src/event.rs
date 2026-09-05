@@ -289,6 +289,68 @@ impl Event for MatchEndEvent {
     }
 }
 
+/// Fired when a formed match begins play. Lets handlers distinguish formation
+/// from play start (e.g. for detecting quits/forfeits during the match).
+#[derive(Debug)]
+pub struct MatchStartEvent {
+    pub time: SimTime,
+    pub match_id: MatchId,
+    pub team_a: Vec<PlayerId>,
+    pub team_b: Vec<PlayerId>,
+}
+
+impl Event for MatchStartEvent {
+    fn time(&self) -> SimTime {
+        self.time
+    }
+    fn kind(&self) -> EventKind {
+        EventKind::MatchStart
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Fired after rating updates are applied, so detection systems and metrics
+/// can observe rating changes.
+#[derive(Debug)]
+pub struct RatingUpdateEvent {
+    pub time: SimTime,
+    pub match_id: MatchId,
+    pub players: Vec<PlayerId>,
+}
+
+impl Event for RatingUpdateEvent {
+    fn time(&self) -> SimTime {
+        self.time
+    }
+    fn kind(&self) -> EventKind {
+        EventKind::RatingUpdate
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Periodic trigger to run detection evaluation for a specific player.
+#[derive(Debug)]
+pub struct DetectionCheckEvent {
+    pub time: SimTime,
+    pub player_id: PlayerId,
+}
+
+impl Event for DetectionCheckEvent {
+    fn time(&self) -> SimTime {
+        self.time
+    }
+    fn kind(&self) -> EventKind {
+        EventKind::DetectionCheck
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
 /// Periodic trigger that asks the active matchmaker to form matches.
 #[derive(Debug)]
 pub struct MatchTimerEvent {
@@ -352,6 +414,51 @@ mod tests {
 
         // Wrong type yields None.
         assert!(downcast::<PlayerLeaveEvent>(event.as_ref()).is_none());
+    }
+
+    #[test]
+    fn match_start_event_kind_and_downcast() {
+        let event: Box<dyn Event> = Box::new(MatchStartEvent {
+            time: SimTime::from_secs(10.0),
+            match_id: MatchId(3),
+            team_a: vec![PlayerId(1), PlayerId(2)],
+            team_b: vec![PlayerId(3)],
+        });
+        assert_eq!(event.kind(), EventKind::MatchStart);
+        let recovered = downcast::<MatchStartEvent>(event.as_ref()).expect("downcast");
+        assert_eq!(recovered.match_id, MatchId(3));
+        assert_eq!(recovered.team_a, vec![PlayerId(1), PlayerId(2)]);
+    }
+
+    #[test]
+    fn rating_update_event_kind_and_downcast() {
+        let event: Box<dyn Event> = Box::new(RatingUpdateEvent {
+            time: SimTime::from_secs(12.0),
+            match_id: MatchId(4),
+            players: vec![PlayerId(1), PlayerId(2)],
+        });
+        assert_eq!(event.kind(), EventKind::RatingUpdate);
+        let recovered = downcast::<RatingUpdateEvent>(event.as_ref()).expect("downcast");
+        assert_eq!(recovered.match_id, MatchId(4));
+        assert_eq!(recovered.players, vec![PlayerId(1), PlayerId(2)]);
+    }
+
+    #[test]
+    fn detection_check_event_kind_and_downcast() {
+        let event: Box<dyn Event> = Box::new(DetectionCheckEvent {
+            time: SimTime::from_secs(15.0),
+            player_id: PlayerId(9),
+        });
+        assert_eq!(event.kind(), EventKind::DetectionCheck);
+        let recovered = downcast::<DetectionCheckEvent>(event.as_ref()).expect("downcast");
+        assert_eq!(recovered.player_id, PlayerId(9));
+    }
+
+    #[test]
+    fn new_event_kinds_are_in_eventkind_enum() {
+        assert_eq!(EventKind::MatchStart, EventKind::MatchStart);
+        assert_eq!(EventKind::RatingUpdate, EventKind::RatingUpdate);
+        assert_eq!(EventKind::DetectionCheck, EventKind::DetectionCheck);
     }
 
     #[test]

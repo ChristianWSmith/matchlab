@@ -175,8 +175,9 @@ crates/
 - `event.rs` — `Event` trait (`time()`/`kind()`/`as_any()`), 13-variant
   `EventKind`, `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
   (`Fn(&mut World, &dyn Event) -> Vec<Box<dyn Event>> + Send + Sync`),
-  10 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
-  MatchEnd, SkillChange, MatchTimer), plus a checked `downcast::<T>()` helper.
+  13 concrete events (PlayerJoin/Leave/Queue/Quit/Return/Disconnect, MatchFormed,
+  MatchStart, MatchEnd, RatingUpdate, DetectionCheck, SkillChange, MatchTimer),
+  plus a checked `downcast::<T>()` helper.
   The `Any`-based `as_any()` lets handlers recover a concrete event's payload
   (`downcast_ref`) after matching on `kind()` — this is how event handlers
   read `player_id`/`match_id`/teams. `EventEngine` (register_handler/schedule/
