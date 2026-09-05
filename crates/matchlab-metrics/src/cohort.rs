@@ -72,7 +72,7 @@ impl CohortFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{SkillVector, VisibleRank};
+    use matchlab_core::player::SkillVector;
 
     fn reality(skill: f64, games: u64, archetype: &str) -> PlayerReality {
         PlayerReality {
