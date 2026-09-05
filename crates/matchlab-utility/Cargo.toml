@@ -1,0 +1,10 @@
+[package]
+name = "matchlab-utility"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+matchlab-core = { path = "../matchlab-core" }
+serde.workspace = true

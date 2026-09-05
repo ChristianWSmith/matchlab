@@ -1,0 +1,66 @@
+base: base/standard.yaml
+
+experiment:
+  name: full_featured
+  description: "All subsystems enabled: detection, ranking, adversarial agents, satisfaction, fatigue variant"
+  game:
+    team_size: 5
+    outcome_model: logistic
+    variant: fatigue
+    beta: 400.0
+    noise: 0.05
+    fatigue_decay_rate: 0.001
+  detection:
+    enabled: true
+    smurf:
+      acceleration_threshold: 0.8
+      ban_threshold: 0.99
+      min_games_before_action: 3
+  ranking:
+    brackets:
+      - { rank: { tier: iron, division: 1 }, min: 0, max: 600 }
+      - { rank: { tier: bronze, division: 1 }, min: 600, max: 900 }
+      - { rank: { tier: silver, division: 1 }, min: 900, max: 1200 }
+      - { rank: { tier: gold, division: 1 }, min: 1200, max: 1500 }
+      - { rank: { tier: platinum, division: 1 }, min: 1500, max: 1800 }
+      - { rank: { tier: diamond, division: 1 }, min: 1800, max: 2100 }
+      - { rank: { tier: radiant, division: 1 }, min: 2100, max: 100000 }
+  adversarial:
+    agents:
+      - agent_type: afk
+        player: 1
+        go_afk_probability: 0.05
+      - agent_type: deranker
+        player: 2
+        target_rating: 400.0
+  satisfaction:
+    enabled: true
+    weights:
+      match_quality: 1.0
+      queue_time_penalty: -0.01
+      win_bonus: 0.5
+      loss_streak_penalty: -0.1
+      rank_progression_bonus: 0.2
+      fairness_sensitivity: 0.0
+      rematch_bonus: 0.1
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy
+    - match_inequality
+    - ndcg
+    - dimensionality_fidelity
+    - convergence
+    - responsiveness
+    - stability
+    - streaks
+    - population_health
+    - smurf
+  objectives:
+    match_quality: 1.0
+    queue_time: 0.5
+    rating_accuracy: 1.0
+    convergence_speed: 0.8
+    smurf_damage: 2.0
+    false_positive_rate: 1.5
+    streak_frustration: 0.3

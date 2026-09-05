@@ -148,6 +148,7 @@ mod tests {
             matches_formed: 7,
             simulated_time_secs: 210.0,
             metrics,
+            utility_score: None,
         }
     }
 

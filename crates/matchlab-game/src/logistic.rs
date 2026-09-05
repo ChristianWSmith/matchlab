@@ -17,17 +17,15 @@ use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 
+use crate::hooks::LuaHooks;
 use crate::outcome::OutcomeModel;
 
 pub struct LogisticOutcomeModel {
     pub beta: f64,
     pub noise: f64,
-    /// Present but inert in v0.1. When enabled, win probability is computed
-    /// from each player's `SkillVector` via per-dimension `weighted_overall`
-    /// rather than the plain unweighted `overall` — the multidimensional-skill
-    /// research path (§6.3).
     pub use_multidimensional: bool,
     pub dimension_weights: std::collections::HashMap<String, f64>,
+    hooks: Option<LuaHooks>,
 }
 
 impl LogisticOutcomeModel {
@@ -37,14 +35,28 @@ impl LogisticOutcomeModel {
             noise,
             use_multidimensional: false,
             dimension_weights: std::collections::HashMap::new(),
+            hooks: None,
         }
     }
 
-    /// True skill used to decide match outcomes. The observation's
-    /// `skill_vector` carries ground truth (set from reality at population
-    /// generation); the flat `rating` is only a fallback for observations
-    /// built without a skill vector.
+    pub fn with_hooks(beta: f64, noise: f64, hooks: LuaHooks) -> Self {
+        Self {
+            beta,
+            noise,
+            use_multidimensional: false,
+            dimension_weights: std::collections::HashMap::new(),
+            hooks: Some(hooks),
+        }
+    }
+
     fn effective_skill(&self, obs: &PlayerObservation) -> f64 {
+        if let Some(ref hooks) = self.hooks {
+            if let Some(skill) =
+                hooks.call_effective_skill(obs.rating, obs.rating_deviation, obs.games_played)
+            {
+                return skill;
+            }
+        }
         if self.use_multidimensional {
             obs.skill_vector.weighted_overall(&self.dimension_weights)
         } else {
@@ -76,10 +88,16 @@ impl OutcomeModel for LogisticOutcomeModel {
         rng: &mut SimRng,
     ) -> MatchResult {
         let base_p = self.win_probability(team_a, team_b);
-        let noise = rng.gen_range(-self.noise, self.noise);
+        let noise = self
+            .hooks
+            .as_ref()
+            .and_then(|h| {
+                let duration = rng.gen_range(1200.0, 2400.0);
+                h.call_noise(duration, team_a.len() + team_b.len())
+            })
+            .unwrap_or_else(|| rng.gen_range(-self.noise, self.noise));
         let adjusted_p = (base_p + noise).clamp(0.01, 0.99);
         let team_a_wins = rng.gen_bool(adjusted_p);
-        let winner = if team_a_wins { Team::A } else { Team::B };
 
         let team_a_ids: Vec<PlayerId> = team_a.iter().map(|p| p.id).collect();
         let team_b_ids: Vec<PlayerId> = team_b.iter().map(|p| p.id).collect();
@@ -105,23 +123,41 @@ impl OutcomeModel for LogisticOutcomeModel {
             });
         }
 
+        let duration = SimTime::from_secs(rng.gen_range(1200.0, 2400.0));
+        let raw_winner = if team_a_wins { Team::A } else { Team::B };
+        let raw_a_score = if team_a_wins {
+            13.0
+        } else {
+            rng.gen_range(4.0, 12.0)
+        };
+        let raw_b_score = if team_a_wins {
+            rng.gen_range(4.0, 12.0)
+        } else {
+            13.0
+        };
+
+        let (final_winner, final_a_score, final_b_score) = self
+            .hooks
+            .as_ref()
+            .and_then(|h| {
+                let w = if team_a_wins { "A" } else { "B" };
+                h.call_post_process(w, raw_a_score, raw_b_score)
+                    .map(|(w_str, a, b)| {
+                        let winner = if w_str == "A" { Team::A } else { Team::B };
+                        (winner, a, b)
+                    })
+            })
+            .unwrap_or((raw_winner, raw_a_score, raw_b_score));
+
         MatchResult {
             match_id,
-            winner,
+            winner: final_winner,
             team_a: team_a_ids,
             team_b: team_b_ids,
-            team_a_score: if team_a_wins {
-                13.0
-            } else {
-                rng.gen_range(4.0, 12.0)
-            },
-            team_b_score: if team_a_wins {
-                rng.gen_range(4.0, 12.0)
-            } else {
-                13.0
-            },
+            team_a_score: final_a_score,
+            team_b_score: final_b_score,
             player_performances: performances,
-            duration: SimTime::from_secs(rng.gen_range(1200.0, 2400.0)),
+            duration,
             disconnected: false,
             forfeited: false,
             variance: noise.abs(),
@@ -316,5 +352,46 @@ mod tests {
             assert_eq!(pa.deaths, pb.deaths);
             assert_eq!(pa.impact, pb.impact);
         }
+    }
+
+    #[test]
+    fn lua_hook_overrides_effective_skill() {
+        let script = r#"
+function on_effective_skill(rating, rd, games_played)
+    return 2000.0
+end
+"#;
+        let path = temp_path("test_game_skill");
+        std::fs::write(&path, script).unwrap();
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let model = LogisticOutcomeModel::with_hooks(400.0, 0.0, hooks);
+
+        let weak = vec![obs(1, 500.0)];
+        let strong = vec![obs(2, 1500.0)];
+        let p = model.win_probability(&weak, &strong);
+        assert!((p - 0.5).abs() < 0.001, "p = {p}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_hook_undefined_falls_back_to_default() {
+        let script = "-- no hooks defined";
+        let path = temp_path("test_game_fallback");
+        std::fs::write(&path, script).unwrap();
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let model = LogisticOutcomeModel::with_hooks(400.0, 0.05, hooks);
+
+        let team_a = team_a_players();
+        let team_b = team_b_players();
+        let p = model.win_probability(&team_a, &team_b);
+        assert!((p - 0.5).abs() < 1e-9, "p = {p}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn temp_path(prefix: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("{}_{}_{}.lua", prefix, std::process::id(), n))
     }
 }

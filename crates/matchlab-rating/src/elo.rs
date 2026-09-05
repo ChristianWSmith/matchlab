@@ -2,6 +2,7 @@ use matchlab_core::match_::{MatchResult, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use std::collections::HashMap;
 
+use crate::hooks::LuaHooks;
 use crate::system::{ObservationType, RatingState, RatingSystem};
 
 pub struct EloConfig {
@@ -12,11 +13,22 @@ pub struct EloConfig {
 
 pub struct EloRatingSystem {
     pub config: EloConfig,
+    hooks: Option<LuaHooks>,
 }
 
 impl EloRatingSystem {
     pub fn new(config: EloConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            hooks: None,
+        }
+    }
+
+    pub fn with_hooks(config: EloConfig, hooks: LuaHooks) -> Self {
+        Self {
+            config,
+            hooks: Some(hooks),
+        }
     }
 
     pub fn from_yaml(value: &serde_yaml::Value) -> Option<Self> {
@@ -92,7 +104,20 @@ impl RatingSystem for EloRatingSystem {
 
         for &pid in &match_result.team_a {
             if let Some(obs) = observations.get(&pid) {
-                let new_rating = obs.rating + self.config.k_factor * (actual_a - expected_a);
+                let k = self
+                    .hooks
+                    .as_ref()
+                    .and_then(|h| {
+                        h.call_k_factor(pid.0, obs.rating, obs.games_played, obs.win_rate)
+                    })
+                    .unwrap_or(self.config.k_factor);
+                let new_rating = obs.rating + k * (actual_a - expected_a);
+                let new_rating = self
+                    .hooks
+                    .as_ref()
+                    .and_then(|h| h.call_rating_bounds())
+                    .map(|(floor, ceiling)| new_rating.clamp(floor, ceiling))
+                    .unwrap_or(new_rating);
                 updates.insert(
                     pid,
                     RatingState {
@@ -106,7 +131,20 @@ impl RatingSystem for EloRatingSystem {
         }
         for &pid in &match_result.team_b {
             if let Some(obs) = observations.get(&pid) {
-                let new_rating = obs.rating + self.config.k_factor * (actual_b - expected_b);
+                let k = self
+                    .hooks
+                    .as_ref()
+                    .and_then(|h| {
+                        h.call_k_factor(pid.0, obs.rating, obs.games_played, obs.win_rate)
+                    })
+                    .unwrap_or(self.config.k_factor);
+                let new_rating = obs.rating + k * (actual_b - expected_b);
+                let new_rating = self
+                    .hooks
+                    .as_ref()
+                    .and_then(|h| h.call_rating_bounds())
+                    .map(|(floor, ceiling)| new_rating.clamp(floor, ceiling))
+                    .unwrap_or(new_rating);
                 updates.insert(
                     pid,
                     RatingState {
@@ -128,6 +166,14 @@ mod tests {
     use matchlab_core::match_::MatchId;
     use matchlab_core::player::{DetectionFlag, SkillVector, VisibleRank};
     use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_path(prefix: &str) -> std::path::PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("{}_{}_{}.lua", prefix, std::process::id(), n))
+    }
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
@@ -292,5 +338,101 @@ mod tests {
             (p - logistic_p).abs() < 0.001,
             "elo p={p} vs logistic p={logistic_p}"
         );
+    }
+
+    #[test]
+    fn lua_hook_overrides_k_factor() {
+        let script = r#"
+function on_k_factor(player_id, rating, games_played, recent_win_rate)
+    return 64.0
+end
+"#;
+        let path = temp_path("test_elo_hooks");
+        std::fs::write(&path, script).unwrap();
+
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let config = EloConfig {
+            k_factor: 32.0,
+            initial_rating: 1000.0,
+            beta: 400.0,
+        };
+        let sys = EloRatingSystem::with_hooks(config, hooks);
+
+        let mr = make_match_result(vec![PlayerId(1)], vec![PlayerId(2)], Team::A);
+        let mut obs_map = HashMap::new();
+        obs_map.insert(PlayerId(1), obs(1, 1000.0));
+        obs_map.insert(PlayerId(2), obs(2, 1000.0));
+        let updates = sys.update(&mr, &obs_map);
+
+        // With k=64 and equal ratings, expected=0.5, actual=1.0
+        // delta = 64 * (1.0 - 0.5) = 32.0
+        let expected_delta = 64.0 * 0.5;
+        assert!(
+            (updates[&PlayerId(1)].rating - 1000.0 - expected_delta).abs() < 0.001,
+            "rating change should use Lua k_factor"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_hook_undefined_falls_back_to_config() {
+        let script = "-- no hooks defined";
+        let path = temp_path("test_elo_fallback");
+        std::fs::write(&path, script).unwrap();
+
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let config = EloConfig {
+            k_factor: 32.0,
+            initial_rating: 1000.0,
+            beta: 400.0,
+        };
+        let sys = EloRatingSystem::with_hooks(config, hooks);
+
+        let mr = make_match_result(vec![PlayerId(1)], vec![PlayerId(2)], Team::A);
+        let mut obs_map = HashMap::new();
+        obs_map.insert(PlayerId(1), obs(1, 1000.0));
+        obs_map.insert(PlayerId(2), obs(2, 1000.0));
+        let updates = sys.update(&mr, &obs_map);
+
+        // Falls back to config k_factor=32.0
+        let expected_delta = 32.0 * 0.5;
+        assert!(
+            (updates[&PlayerId(1)].rating - 1000.0 - expected_delta).abs() < 0.001,
+            "rating change should use config k_factor when hook undefined"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_hook_rating_bounds_clamps_rating() {
+        let script = r#"
+function on_k_factor() return 1000.0 end
+function on_rating_bounds()
+    return { floor = 900.0, ceiling = 1100.0 }
+end
+"#;
+        let path = temp_path("test_elo_bounds");
+        std::fs::write(&path, script).unwrap();
+
+        let hooks = LuaHooks::load(path.to_str().unwrap()).unwrap();
+        let config = EloConfig {
+            k_factor: 32.0,
+            initial_rating: 1000.0,
+            beta: 400.0,
+        };
+        let sys = EloRatingSystem::with_hooks(config, hooks);
+
+        let mr = make_match_result(vec![PlayerId(1)], vec![PlayerId(2)], Team::A);
+        let mut obs_map = HashMap::new();
+        obs_map.insert(PlayerId(1), obs(1, 1000.0));
+        obs_map.insert(PlayerId(2), obs(2, 1000.0));
+        let updates = sys.update(&mr, &obs_map);
+
+        // k=1000, delta = 1000 * 0.5 = 500, but clamped to ceiling 1100
+        assert_eq!(updates[&PlayerId(1)].rating, 1100.0);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

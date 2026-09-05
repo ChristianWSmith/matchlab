@@ -1,0 +1,20 @@
+base: base/standard.yaml
+
+experiment:
+  name: glicko_comparison
+  description: "Elo vs Glicko-2 on identical population and matchmaking"
+  rating:
+    systems:
+      - name: glicko2
+        initial_rating: 1500.0
+        initial_rd: 350.0
+        initial_volatility: 0.06
+        tau: 0.5
+        epsilon: 0.000001
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy
+    - convergence
+    - responsiveness
+    - stability

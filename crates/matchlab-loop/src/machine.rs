@@ -1,15 +1,19 @@
+use matchlab_adversarial::agent::AdversarialAgent;
 use matchlab_core::event::{MatchEndEvent, MatchFormedEvent, MatchTimerEvent, downcast};
 use matchlab_core::match_::{MatchId, MatchResult, MatchState};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
+use matchlab_detection::detector::DetectionSystem;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
 use matchlab_metrics::MetricsEngine;
+use matchlab_ranking::ranker::RankMapper;
 use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
+use matchlab_utility::satisfaction::{PlayerExperience, SatisfactionModel};
 use std::collections::HashMap;
 
 /// Config for a full simulation loop.
@@ -20,6 +24,10 @@ pub struct LoopConfig {
     pub rejoin_delay: SimTime,
     pub max_matches: u64,
 }
+
+/// Retention threshold below which a player quits instead of re-queuing
+/// (only when a satisfaction model is present).
+const RETENTION_THRESHOLD: f64 = 0.5;
 
 /// Shared mutable state used by the event handlers.
 pub struct MachineState {
@@ -36,6 +44,12 @@ pub struct MachineState {
     batch_interval: SimTime,
     rejoin_delay: SimTime,
     max_matches: u64,
+    pub detection_system: Option<Box<dyn DetectionSystem>>,
+    pub ranker: Option<Box<dyn RankMapper>>,
+    pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
+    pub satisfaction_model: Option<SatisfactionModel>,
+    pub player_experiences: HashMap<PlayerId, PlayerExperience>,
+    pending_queue_times: HashMap<PlayerId, f64>,
 }
 
 impl MachineState {
@@ -46,6 +60,33 @@ impl MachineState {
         matchmaker: Box<dyn Matchmaker>,
         metrics: MetricsEngine,
         config: LoopConfig,
+    ) -> Self {
+        Self::with_extras(
+            population,
+            rating_system,
+            outcome_model,
+            matchmaker,
+            metrics,
+            config,
+            None,
+            None,
+            HashMap::new(),
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_extras(
+        population: Vec<(PlayerReality, PlayerObservation)>,
+        rating_system: Box<dyn RatingSystem>,
+        outcome_model: Box<dyn OutcomeModel>,
+        matchmaker: Box<dyn Matchmaker>,
+        metrics: MetricsEngine,
+        config: LoopConfig,
+        detection_system: Option<Box<dyn DetectionSystem>>,
+        ranker: Option<Box<dyn RankMapper>>,
+        adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
+        satisfaction_model: Option<SatisfactionModel>,
     ) -> Self {
         let pop_map: HashMap<PlayerId, (PlayerReality, PlayerObservation)> = population
             .into_iter()
@@ -66,6 +107,12 @@ impl MachineState {
             batch_interval,
             rejoin_delay: config.rejoin_delay,
             max_matches: config.max_matches,
+            detection_system,
+            ranker,
+            adversarial_agents,
+            satisfaction_model,
+            player_experiences: HashMap::new(),
+            pending_queue_times: HashMap::new(),
         }
     }
 
@@ -194,6 +241,17 @@ pub fn handle_match_formed(
         .simulate(match_id, &team_a, &team_b, &mut world.rng);
     let duration = result.duration;
 
+    // Capture the real join→formation wait for satisfaction at match end.
+    for pid in formed.team_a.iter().chain(formed.team_b.iter()) {
+        if let Some(o) = world.observations.get(pid) {
+            if let Some(jt) = o.queue_joined_at {
+                state
+                    .pending_queue_times
+                    .insert(*pid, world.time.duration_since(jt).as_secs_f64());
+            }
+        }
+    }
+
     state.metrics.record_match(&result, world);
     state.active_matches.insert(match_id, result);
     world.matches.insert(match_id, MatchState::InProgress);
@@ -235,20 +293,177 @@ pub fn handle_match_end(
         }
     }
 
+    // Detection: observe the match result (reads observations only).
+    if let Some(detector) = state.detection_system.as_mut() {
+        detector.observe(&result, world);
+    }
+
+    // Ranking: update each participant's visible rank from their new rating.
+    if let Some(ranker) = state.ranker.as_ref() {
+        for pid in result.team_a.iter().chain(result.team_b.iter()) {
+            if let Some(o) = world.observations.get_mut(pid) {
+                let rank = ranker.rating_to_rank(o.rating);
+                o.visible_rank = matchlab_core::player::VisibleRank {
+                    tier: rank.tier,
+                    division: rank.division,
+                };
+            }
+        }
+    }
+
     world.matches.insert(match_id, MatchState::Completed);
     state.matches_completed += 1;
 
     let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
+
+    // Adversarial agents tick for each participant.
+    for pid in result.team_a.iter().chain(result.team_b.iter()) {
+        if let Some(agent) = state.adversarial_agents.get_mut(pid) {
+            agent.tick(*pid, world);
+        }
+    }
+
+    // Satisfaction: update each participant's experience; quitters schedule a
+    // PlayerQuit instead of re-queueing.
+    let quit_probability: Vec<(PlayerId, f64)> = result
+        .team_a
+        .iter()
+        .chain(result.team_b.iter())
+        .map(|pid| {
+            let quality = state
+                .metrics
+                .results()
+                .get("match_quality")
+                .map(|_| 0.5)
+                .unwrap_or(0.5);
+            let (queue_time, won) = {
+                let o = world.observations.get(pid);
+                let won = (result.team_a.contains(pid)
+                    && result.winner == matchlab_core::match_::Team::A)
+                    || (result.team_b.contains(pid)
+                        && result.winner == matchlab_core::match_::Team::B);
+                let queue_time = state.pending_queue_times.remove(pid).unwrap_or_else(|| {
+                    o.and_then(|o| o.queue_joined_at)
+                        .map(|jt| world.time.duration_since(jt).as_secs_f64())
+                        .unwrap_or(0.0)
+                });
+                (queue_time, won)
+            };
+            let exp = state.player_experiences.entry(*pid).or_default();
+            exp.record_match(quality, queue_time, won);
+            let retain = match state.satisfaction_model.as_ref() {
+                Some(model) => {
+                    let s = model.satisfaction(exp);
+                    model.retention_probability(s) >= RETENTION_THRESHOLD
+                }
+                None => true,
+            };
+            (*pid, if retain { 1.0 } else { 0.0 })
+        })
+        .collect();
+
+    let requeue: Vec<PlayerId> = quit_probability
+        .iter()
+        .filter(|(_, r)| *r >= 0.5)
+        .map(|(pid, _)| *pid)
+        .collect();
+
     if state.matches_formed < state.max_matches {
         let rejoin = SimTime(world.time.0 + state.rejoin_delay.0);
-        for pid in result.team_a.iter().chain(result.team_b.iter()) {
+        for pid in requeue {
             out.push(Box::new(matchlab_core::event::PlayerQueueEvent {
                 time: rejoin,
-                player_id: *pid,
+                player_id: pid,
+            }));
+        }
+        for (pid, r) in &quit_probability {
+            if *r < 0.5 {
+                out.push(Box::new(matchlab_core::event::PlayerQuitEvent {
+                    time: rejoin,
+                    player_id: *pid,
+                }));
+            }
+        }
+    }
+
+    // Schedule RatingUpdateEvent so detection/metrics can react to rating changes.
+    let participants: Vec<PlayerId> = result
+        .team_a
+        .iter()
+        .chain(result.team_b.iter())
+        .cloned()
+        .collect();
+    out.push(Box::new(matchlab_core::event::RatingUpdateEvent {
+        time: world.time,
+        match_id,
+        players: participants.clone(),
+    }));
+
+    // Schedule DetectionCheckEvent for players with a detection system present.
+    if state.detection_system.is_some() {
+        for pid in participants {
+            out.push(Box::new(matchlab_core::event::DetectionCheckEvent {
+                time: world.time,
+                player_id: pid,
             }));
         }
     }
+
     out
+}
+
+pub fn handle_detection_check(
+    world: &mut World,
+    event: &dyn matchlab_core::event::Event,
+    state: &mut MachineState,
+) -> Vec<Box<dyn matchlab_core::event::Event>> {
+    let check =
+        downcast::<matchlab_core::event::DetectionCheckEvent>(event).expect("DetectionCheckEvent");
+    let pid = check.player_id;
+    let Some(detector) = state.detection_system.as_ref() else {
+        return Vec::new();
+    };
+    let result = detector.evaluate(pid, world);
+    let action = detector.recommend_action(&result);
+    let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
+    if let Some(o) = world.observations.get_mut(&pid) {
+        match action {
+            matchlab_detection::intervention::InterventionAction::None => {}
+            matchlab_detection::intervention::InterventionAction::Ban => {
+                out.push(Box::new(matchlab_core::event::PlayerQuitEvent {
+                    time: world.time,
+                    player_id: pid,
+                }));
+            }
+            _ => {
+                o.detection_flags
+                    .push(matchlab_core::player::DetectionFlag::UnderReview);
+            }
+        }
+    }
+    out
+}
+
+pub fn handle_ranking_update(
+    world: &mut World,
+    event: &dyn matchlab_core::event::Event,
+    state: &mut MachineState,
+) -> Vec<Box<dyn matchlab_core::event::Event>> {
+    let update =
+        downcast::<matchlab_core::event::RatingUpdateEvent>(event).expect("RatingUpdateEvent");
+    let Some(ranker) = state.ranker.as_ref() else {
+        return Vec::new();
+    };
+    for pid in &update.players {
+        if let Some(o) = world.observations.get_mut(pid) {
+            let rank = ranker.rating_to_rank(o.rating);
+            o.visible_rank = matchlab_core::player::VisibleRank {
+                tier: rank.tier,
+                division: rank.division,
+            };
+        }
+    }
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -487,8 +702,13 @@ mod tests {
             match_id: MatchId(1),
         });
         let out = handle_match_end(&mut world, evt.as_ref(), &mut state);
-        // Requeue both players.
-        assert_eq!(out.len(), 2);
+        // Requeue both players (plus a RatingUpdateEvent).
+        let requeues = out
+            .iter()
+            .filter(|e| e.kind() == EventKind::PlayerQueue)
+            .count();
+        assert_eq!(requeues, 2);
+        assert_eq!(out.len(), 3); // 2 requeues + 1 RatingUpdate
         assert_ne!(world.observations[&PlayerId(1)].rating, 1000.0);
         assert!(
             !world.observations[&PlayerId(1)]
@@ -696,5 +916,221 @@ mod tests {
             results.contains_key("match_quality"),
             "match_quality should be recorded and finalized"
         );
+    }
+
+    #[test]
+    fn ranking_updates_visible_rank_on_match_end() {
+        use matchlab_ranking::ranker::{BracketRankMapper, Rank, RankBracket};
+        let mut state = default_state(vec![]);
+        let brackets = vec![
+            RankBracket {
+                rank: Rank {
+                    tier: "bronze".into(),
+                    division: 1,
+                },
+                min: 0.0,
+                max: 1200.0,
+            },
+            RankBracket {
+                rank: Rank {
+                    tier: "silver".into(),
+                    division: 1,
+                },
+                min: 1200.0,
+                max: 2000.0,
+            },
+        ];
+        state.ranker = Some(Box::new(BracketRankMapper::new(brackets)));
+
+        let mut world = World::new(SimRng::from_seed(6));
+        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+        world.add_player(reality(2, 1000.0), obs(2, 1000.0));
+
+        let result = MatchResult {
+            match_id: MatchId(1),
+            winner: Team::A,
+            team_a: vec![PlayerId(1)],
+            team_b: vec![PlayerId(2)],
+            team_a_score: 1.0,
+            team_b_score: 0.0,
+            player_performances: Vec::new(),
+            duration: SimTime::from_secs(1800.0),
+            disconnected: false,
+            forfeited: false,
+            variance: 0.1,
+            unexpected_events: Vec::new(),
+        };
+        state.active_matches.insert(MatchId(1), result);
+        world.time = SimTime::from_secs(1810.0);
+        let evt: Box<dyn Event> = Box::new(MatchEndEvent {
+            time: world.time,
+            match_id: MatchId(1),
+        });
+        handle_match_end(&mut world, evt.as_ref(), &mut state);
+        // Both ratings near 1000 → bronze tier.
+        assert_eq!(world.observations[&PlayerId(1)].visible_rank.tier, "bronze");
+    }
+
+    #[test]
+    fn detection_check_flags_anomalous_player() {
+        use matchlab_detection::detector::{DetectionResult, DetectionSystem};
+        use matchlab_detection::intervention::InterventionAction;
+
+        struct FlaggingDetector;
+        impl DetectionSystem for FlaggingDetector {
+            fn observe(&mut self, _mr: &matchlab_core::match_::MatchResult, _w: &World) {}
+            fn evaluate(&self, _player_id: PlayerId, _w: &World) -> DetectionResult {
+                DetectionResult {
+                    player_id: PlayerId(1),
+                    probability_of_anomaly: 0.99,
+                    confidence: 1.0,
+                    evidence: vec!["test".to_string()],
+                }
+            }
+            fn recommend_action(&self, _r: &DetectionResult) -> InterventionAction {
+                InterventionAction::FlagForReview
+            }
+        }
+
+        let mut state = default_state(vec![]);
+        state.detection_system = Some(Box::new(FlaggingDetector));
+        let mut world = World::new(SimRng::from_seed(7));
+        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+
+        let evt: Box<dyn Event> = Box::new(matchlab_core::event::DetectionCheckEvent {
+            time: SimTime::ZERO,
+            player_id: PlayerId(1),
+        });
+        let out = handle_detection_check(&mut world, evt.as_ref(), &mut state);
+        assert!(out.is_empty());
+        assert!(
+            !world.observations[&PlayerId(1)].detection_flags.is_empty(),
+            "player should be flagged for review"
+        );
+    }
+
+    #[test]
+    fn adversarial_agent_ticks_modify_world() {
+        use matchlab_adversarial::afk::AfkAgent;
+        let mut state = default_state(vec![]);
+        state
+            .adversarial_agents
+            .insert(PlayerId(1), Box::new(AfkAgent::new(1.0)));
+        let mut world = World::new(SimRng::from_seed(8));
+        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+
+        let result = MatchResult {
+            match_id: MatchId(1),
+            winner: Team::A,
+            team_a: vec![PlayerId(1)],
+            team_b: vec![PlayerId(2)],
+            team_a_score: 1.0,
+            team_b_score: 0.0,
+            player_performances: Vec::new(),
+            duration: SimTime::from_secs(1800.0),
+            disconnected: false,
+            forfeited: false,
+            variance: 0.1,
+            unexpected_events: Vec::new(),
+        };
+        state.active_matches.insert(MatchId(1), result);
+        world.time = SimTime::from_secs(1810.0);
+        let evt: Box<dyn Event> = Box::new(MatchEndEvent {
+            time: world.time,
+            match_id: MatchId(1),
+        });
+        handle_match_end(&mut world, evt.as_ref(), &mut state);
+        // AFK agent with probability 1.0 sets quit_probability = 1.0.
+        assert_eq!(world.players[&PlayerId(1)].quit_probability, 1.0);
+    }
+
+    #[test]
+    fn low_satisfaction_schedules_quit_instead_of_requeue() {
+        use matchlab_utility::satisfaction::{SatisfactionModel, SatisfactionWeights};
+        let mut state = default_state(vec![]);
+        state.satisfaction_model = Some(SatisfactionModel::new(SatisfactionWeights {
+            match_quality: 1.0,
+            queue_time_penalty: -1.0,
+            win_bonus: 0.0,
+            loss_streak_penalty: -5.0,
+            rank_progression_bonus: 0.0,
+            fairness_sensitivity: 0.0,
+            rematch_bonus: 0.0,
+        }));
+
+        let mut world = World::new(SimRng::from_seed(9));
+        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+        world.add_player(reality(2, 1000.0), obs(2, 1000.0));
+
+        // Pre-seed player 1 with a long losing streak so the loss-streak
+        // penalty pushes satisfaction below the retention threshold.
+        let mut exp = matchlab_utility::satisfaction::PlayerExperience::new();
+        exp.current_streak = -5;
+        exp.recent_outcomes = vec![false; 5];
+        state.player_experiences.insert(PlayerId(1), exp);
+
+        let result = MatchResult {
+            match_id: MatchId(1),
+            winner: Team::B,
+            team_a: vec![PlayerId(1)],
+            team_b: vec![PlayerId(2)],
+            team_a_score: 1.0,
+            team_b_score: 0.0,
+            player_performances: Vec::new(),
+            duration: SimTime::from_secs(1800.0),
+            disconnected: false,
+            forfeited: false,
+            variance: 0.1,
+            unexpected_events: Vec::new(),
+        };
+        state.active_matches.insert(MatchId(1), result);
+        world.time = SimTime::from_secs(1810.0);
+        let evt: Box<dyn Event> = Box::new(MatchEndEvent {
+            time: world.time,
+            match_id: MatchId(1),
+        });
+        let out = handle_match_end(&mut world, evt.as_ref(), &mut state);
+        // Player 1 lost with a heavy loss-streak penalty → low satisfaction →
+        // PlayerQuit instead of PlayerQueue.
+        assert!(
+            out.iter().any(|e| e.kind() == EventKind::PlayerQuit),
+            "loser with low satisfaction should quit"
+        );
+    }
+
+    #[test]
+    fn default_state_unchanged_requeues_all() {
+        let mut state = default_state(vec![]);
+        let mut world = World::new(SimRng::from_seed(10));
+        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+        world.add_player(reality(2, 1000.0), obs(2, 1000.0));
+
+        let result = MatchResult {
+            match_id: MatchId(1),
+            winner: Team::A,
+            team_a: vec![PlayerId(1)],
+            team_b: vec![PlayerId(2)],
+            team_a_score: 1.0,
+            team_b_score: 0.0,
+            player_performances: Vec::new(),
+            duration: SimTime::from_secs(1800.0),
+            disconnected: false,
+            forfeited: false,
+            variance: 0.1,
+            unexpected_events: Vec::new(),
+        };
+        state.active_matches.insert(MatchId(1), result);
+        world.time = SimTime::from_secs(1810.0);
+        let evt: Box<dyn Event> = Box::new(MatchEndEvent {
+            time: world.time,
+            match_id: MatchId(1),
+        });
+        let out = handle_match_end(&mut world, evt.as_ref(), &mut state);
+        let requeues = out
+            .iter()
+            .filter(|e| e.kind() == EventKind::PlayerQueue)
+            .count();
+        assert_eq!(requeues, 2);
+        assert!(!out.iter().any(|e| e.kind() == EventKind::PlayerQuit));
     }
 }

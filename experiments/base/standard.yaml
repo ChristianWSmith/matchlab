@@ -1,0 +1,84 @@
+experiment:
+  name: _base
+  seed: 42
+  population:
+    size: 2000
+    seed: 42
+    archetypes:
+      - name: stable
+        proportion: 0.60
+        skill_distribution: { type: normal, mean: 1000, stddev: 250 }
+        skill_volatility: 5.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.01
+      - name: improving
+        proportion: 0.15
+        skill_distribution: { type: normal, mean: 800, stddev: 200 }
+        skill_volatility: 10.0
+        improvement_rate: 2.0
+        play_frequency: 0.9
+        session_length: 2400.0
+        quit_probability: 0.005
+      - name: declining
+        proportion: 0.10
+        skill_distribution: { type: normal, mean: 1100, stddev: 150 }
+        skill_volatility: 8.0
+        improvement_rate: -1.5
+        play_frequency: 0.5
+        session_length: 1200.0
+        quit_probability: 0.03
+      - name: returning
+        proportion: 0.10
+        skill_distribution: { type: normal, mean: 1000, stddev: 200 }
+        skill_volatility: 12.0
+        improvement_rate: 1.0
+        play_frequency: 0.6
+        session_length: 1500.0
+        quit_probability: 0.02
+        initial_rating: 700
+      - name: smurf
+        proportion: 0.05
+        skill_distribution: { type: normal, mean: 1500, stddev: 100 }
+        skill_volatility: 5.0
+        improvement_rate: 0.0
+        play_frequency: 0.95
+        session_length: 3600.0
+        quit_probability: 0.002
+        initial_rating: 700
+
+  game:
+    team_size: 5
+    outcome_model: logistic
+    beta: 400.0
+    noise: 0.05
+
+  matchmaking:
+    algorithm: batch
+    batch_interval: 10
+    max_queue_time: 60.0
+
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy
+
+  cohorts: []
+
+  duration:
+    matches: 50000
+    max_time: 604800.0
+
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: true
