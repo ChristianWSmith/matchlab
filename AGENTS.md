@@ -291,7 +291,18 @@ crates/
   field is metadata the event handler uses to decide when to trigger
   matchmaking; the handler forms matches in consecutive blocks, emitting the
   final block when full (the spec's reference loop silently drops it).
-  ExpandingWindow/Strict/HubSpoke are **out of scope**.
+- `expanding.rs` — `ExpandingWindowMatchmaker` (spec §7.6) with stepped tiers
+  `[(max_secs, allowed_diff)]` (`default_tiers()`: 5s→25, 10s→50, 20s→100,
+  30s→200, fallback `max_window: 400`) — skills matched within a window that
+  widens with queue wait. Optional `on_max_skill_diff` Lua hook.
+- `strict.rs` — `StrictMatchmaker { max_skill_diff }` (spec §7.7): only matches
+  players within a fixed skill diff; outliers may wait indefinitely (intended
+  "strict" behavior). Optional `on_max_skill_diff` Lua hook.
+- `hub_spoke.rs` — `HubSpokeMatchmaker { spokes: HashMap<Region, Box<dyn
+  Matchmaker>>, spoke_capacity }` (spec §7.9): partitions the queue by region,
+  delegates under-capacity regions to their spoke, and handles overflow
+  directly (longest-waiting first). Emits the trailing full block (the spec's
+  reference loop silently drops it).
 
 **`matchlab-loop` is implemented with the event-handler machine:**
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
