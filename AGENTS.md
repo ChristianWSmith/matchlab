@@ -594,21 +594,24 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   byte-identical files (the wall-clock `timestamp` field is the only thing
   that legitimately differs).
 
-**`matchlab-ranking` is implemented with the rank mapper + leaderboard:**
+**`matchlab-ranking` is implemented with the Lua-native rank mapper + leaderboard:**
 - `ranker.rs` — `RankMapper` trait (spec §10.1): `rating_to_rank(rating) ->
   Rank` and `rank_to_rating_range(rank) -> (f64, f64)`, `Rank { tier,
-  division }` (serde `Deserialize`), `BracketRankMapper { brackets: Vec<RankBracket> }`
-  and `RankBracket { rank, min, max }`. `rating_to_rank` finds the first
-  bracket where `min <= rating < max`; ratings outside all brackets clamp to
-  the **last** bracket (the spec's reference behavior, not the first).
-  `rank_to_rating_range` returns `(0.0, 0.0)` for unknown ranks.
+  division }` (serde `Deserialize`).
+- `lua.rs` — `LuaRankMapper`: implements `RankMapper` by delegating to a
+  script's `rating_to_rank` / `rank_to_rating_range`; the bracket table is
+  `config.brackets`.
+- `plugins/ranking/brackets.lua` — `rating_to_rank` finds the first bracket
+  where `min <= rating < max`; ratings outside all brackets clamp to the
+  **last** bracket (the spec's reference behavior, not the first);
+  `rank_to_rating_range` returns `{0,0}` for unknown ranks.
 - `leaderboard.rs` — `Leaderboard` (spec §10.2) with `update(player_id,
   rating, rank, games_played)` (insert-or-replace, then re-sort by rating
   descending), `rank_of(player_id) -> Option<usize>`, `top_n(n) -> &[LeaderboardEntry]`
   (clamps when `n > len`), `entries()`/`len()`/`is_empty()`. `LeaderboardEntry {
   player_id, rating, rank, games_played }`.
-- `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `BracketRankMapper`,
-  `Rank`, `RankBracket`, `RankMapper`.
+- `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `LuaRankMapper`,
+  `Rank`, `RankMapper`.
 
 **`matchlab-objective` is implemented with the utility scoring:**
 - `utility.rs` — `ObjectiveWeights` (serde `Deserialize`: `match_quality`,
@@ -650,18 +653,20 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
 - `lib.rs` — re-exports `LuaAdversarialAgent` + `AdversarialAgent`/
   `AdversarialObjective`.
 
-**`matchlab-utility` is implemented with the satisfaction model:**
-- `satisfaction.rs` — `SatisfactionModel` (spec §16.1) with
-  `SatisfactionWeights` (serde `Deserialize`: `match_quality`,
-  `queue_time_penalty`, `win_bonus`, `loss_streak_penalty`,
-  `rank_progression_bonus`, `fairness_sensitivity`, `rematch_bonus`;
-  `Default` matches §16.1) and `PlayerExperience` (recent match qualities,
-  queue times, outcomes, `current_streak`, `rank_change`,
-  `perceived_fairness`, `rematch_rate`; `new()`/`record_match()` helpers).
-  `satisfaction()` is the weighted sum (loss-streak penalty only kicks in
-  below −3), `retention_probability()` is the logistic `1/(1+e^−s)`, and
-  `rematch_probability()` requires a higher threshold (`1/(1+e^−0.5(s−2))`).
-  `lib.rs` re-exports `SatisfactionModel`, `SatisfactionWeights`,
+**`matchlab-utility` is implemented with the Lua-native satisfaction model:**
+- `satisfaction.rs` — `SatisfactionModel` trait (spec §16.1):
+  `satisfaction(&PlayerExperience)`, `retention_probability(f64)`,
+  `rematch_probability(f64)`; and `PlayerExperience` (recent match qualities,
+  queue times, outcomes, `current_streak`, `rank_change`, `perceived_fairness`,
+  `rematch_rate`; `new()`/`record_match()` helpers).
+- `lua.rs` — `LuaSatisfactionModel`: implements the trait by delegating to a
+  script's `satisfaction` / `retention_probability` / `rematch_probability`;
+  the weights live in the script's config.
+- `plugins/utility/satisfaction.lua` — the weighted sum (loss-streak penalty
+  only kicks in below −3), `retention_probability()` is the logistic
+  `1/(1+e^−s)`, and `rematch_probability()` requires a higher threshold
+  (`1/(1+e^−0.5(s−2))`).
+- `lib.rs` — re-exports `LuaSatisfactionModel`, `SatisfactionModel`,
   `PlayerExperience`.
 
 The twelve-step build order is complete and v0.1 is accepted.

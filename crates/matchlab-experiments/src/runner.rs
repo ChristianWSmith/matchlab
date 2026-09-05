@@ -63,9 +63,9 @@ impl ExperimentRunner {
 
         let seed = seeds.population_seed;
         let detection_system = build_detection_system(config.experiment.detection.as_ref())?;
-        let ranker = build_ranker(config.experiment.ranking.as_ref());
+        let ranker = build_ranker(config.experiment.ranking.as_ref())?;
         let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref())?;
-        let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref());
+        let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref())?;
 
         let mut loop_ = MatchLoop::with_extras(
             population,
@@ -246,23 +246,13 @@ fn build_detection_system(
 
 fn build_ranker(
     spec: Option<&RankingSpec>,
-) -> Option<Box<dyn matchlab_ranking::ranker::RankMapper>> {
-    let spec = spec?;
-    let brackets = spec
-        .brackets
-        .iter()
-        .map(|b| matchlab_ranking::ranker::RankBracket {
-            rank: matchlab_ranking::ranker::Rank {
-                tier: b.rank.tier.clone(),
-                division: b.rank.division,
-            },
-            min: b.min,
-            max: b.max,
-        })
-        .collect();
-    Some(Box::new(matchlab_ranking::ranker::BracketRankMapper::new(
-        brackets,
-    )))
+) -> Result<Option<Box<dyn matchlab_ranking::ranker::RankMapper>>, String> {
+    let Some(spec) = spec else {
+        return Ok(None);
+    };
+    let params = flatten_params(&spec.params);
+    let mapper = matchlab_ranking::lua::LuaRankMapper::load(&spec.script, &params)?;
+    Ok(Some(Box::new(mapper)))
 }
 
 fn build_adversarial_agents(
@@ -289,24 +279,16 @@ fn build_adversarial_agents(
 
 fn build_satisfaction_model(
     spec: Option<&crate::config::SatisfactionSpec>,
-) -> Option<matchlab_utility::satisfaction::SatisfactionModel> {
-    let spec = spec?;
-    if !spec.enabled {
-        return None;
-    }
-    let w = spec.weights.as_ref();
-    let weights = matchlab_utility::satisfaction::SatisfactionWeights {
-        match_quality: w.and_then(|w| w.match_quality).unwrap_or(1.0),
-        queue_time_penalty: w.and_then(|w| w.queue_time_penalty).unwrap_or(-0.01),
-        win_bonus: w.and_then(|w| w.win_bonus).unwrap_or(0.5),
-        loss_streak_penalty: w.and_then(|w| w.loss_streak_penalty).unwrap_or(-0.3),
-        rank_progression_bonus: w.and_then(|w| w.rank_progression_bonus).unwrap_or(0.2),
-        fairness_sensitivity: w.and_then(|w| w.fairness_sensitivity).unwrap_or(-0.8),
-        rematch_bonus: w.and_then(|w| w.rematch_bonus).unwrap_or(0.1),
+) -> Result<Option<Box<dyn matchlab_utility::satisfaction::SatisfactionModel>>, String> {
+    let Some(spec) = spec else {
+        return Ok(None);
     };
-    Some(matchlab_utility::satisfaction::SatisfactionModel::new(
-        weights,
-    ))
+    if !spec.enabled {
+        return Ok(None);
+    }
+    let params = flatten_params(&spec.params);
+    let model = matchlab_utility::lua::LuaSatisfactionModel::load(&spec.script, &params)?;
+    Ok(Some(Box::new(model)))
 }
 
 /// ISO-8601 UTC timestamp without external dependencies.

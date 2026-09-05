@@ -132,7 +132,15 @@ fn default_detection_script() -> String {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RankingSpec {
-    pub brackets: Vec<RankBracketSpec>,
+    /// Path to the Lua rank mapper script (e.g. plugins/ranking/brackets.lua).
+    #[serde(default = "default_ranking_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+fn default_ranking_script() -> String {
+    "plugins/ranking/brackets.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -168,8 +176,15 @@ pub struct AdversarialAgentSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SatisfactionSpec {
     pub enabled: bool,
-    #[serde(default)]
-    pub weights: Option<SatisfactionWeightsSpec>,
+    /// Path to the Lua satisfaction script (e.g. plugins/utility/satisfaction.lua).
+    #[serde(default = "default_satisfaction_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+fn default_satisfaction_script() -> String {
+    "plugins/utility/satisfaction.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -460,8 +475,16 @@ experiment:
         );
         assert!(config.experiment.detection.as_ref().unwrap().enabled);
         assert_eq!(
-            config.experiment.ranking.as_ref().unwrap().brackets.len(),
-            1
+            config
+                .experiment
+                .ranking
+                .as_ref()
+                .unwrap()
+                .params
+                .get("brackets")
+                .and_then(|v| v.as_sequence())
+                .map(|s| s.len()),
+            Some(1)
         );
         assert_eq!(
             config.experiment.adversarial.as_ref().unwrap().agents.len(),

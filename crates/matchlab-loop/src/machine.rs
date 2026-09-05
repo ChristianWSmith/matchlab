@@ -47,7 +47,7 @@ pub struct MachineState {
     pub detection_system: Option<Box<dyn DetectionSystem>>,
     pub ranker: Option<Box<dyn RankMapper>>,
     pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
-    pub satisfaction_model: Option<SatisfactionModel>,
+    pub satisfaction_model: Option<Box<dyn SatisfactionModel>>,
     pub player_experiences: HashMap<PlayerId, PlayerExperience>,
     pending_queue_times: HashMap<PlayerId, f64>,
 }
@@ -86,7 +86,7 @@ impl MachineState {
         detection_system: Option<Box<dyn DetectionSystem>>,
         ranker: Option<Box<dyn RankMapper>>,
         adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
-        satisfaction_model: Option<SatisfactionModel>,
+        satisfaction_model: Option<Box<dyn SatisfactionModel>>,
     ) -> Self {
         let pop_map: HashMap<PlayerId, (PlayerReality, PlayerObservation)> = population
             .into_iter()
@@ -939,27 +939,15 @@ mod tests {
 
     #[test]
     fn ranking_updates_visible_rank_on_match_end() {
-        use matchlab_ranking::ranker::{BracketRankMapper, Rank, RankBracket};
+        use matchlab_ranking::lua::LuaRankMapper;
+        use matchlab_ranking::ranker::RankMapper;
         let mut state = default_state(vec![]);
-        let brackets = vec![
-            RankBracket {
-                rank: Rank {
-                    tier: "bronze".into(),
-                    division: 1,
-                },
-                min: 0.0,
-                max: 1200.0,
-            },
-            RankBracket {
-                rank: Rank {
-                    tier: "silver".into(),
-                    division: 1,
-                },
-                min: 1200.0,
-                max: 2000.0,
-            },
-        ];
-        state.ranker = Some(Box::new(BracketRankMapper::new(brackets)));
+        let brackets = serde_yaml::from_str(
+            "brackets:\n  - { tier: bronze, division: 1, min: 0.0, max: 1200.0 }\n  - { tier: silver, division: 1, min: 1200.0, max: 2000.0 }",
+        )
+        .unwrap();
+        let mapper = LuaRankMapper::load("plugins/ranking/brackets.lua", &brackets).unwrap();
+        state.ranker = Some(Box::new(mapper));
 
         let mut world = World::new(SimRng::from_seed(6));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));
@@ -1071,17 +1059,18 @@ mod tests {
 
     #[test]
     fn low_satisfaction_schedules_quit_instead_of_requeue() {
-        use matchlab_utility::satisfaction::{SatisfactionModel, SatisfactionWeights};
+        use matchlab_utility::lua::LuaSatisfactionModel;
+        use matchlab_utility::satisfaction::SatisfactionModel;
         let mut state = default_state(vec![]);
-        state.satisfaction_model = Some(SatisfactionModel::new(SatisfactionWeights {
-            match_quality: 1.0,
-            queue_time_penalty: -1.0,
-            win_bonus: 0.0,
-            loss_streak_penalty: -5.0,
-            rank_progression_bonus: 0.0,
-            fairness_sensitivity: 0.0,
-            rematch_bonus: 0.0,
-        }));
+        let model = LuaSatisfactionModel::load(
+            "plugins/utility/satisfaction.lua",
+            &serde_yaml::from_str(
+                "match_quality: 1.0\nqueue_time_penalty: -1.0\nwin_bonus: 0.0\nloss_streak_penalty: -5.0\nrank_progression_bonus: 0.0\nfairness_sensitivity: 0.0\nrematch_bonus: 0.0",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        state.satisfaction_model = Some(Box::new(model));
 
         let mut world = World::new(SimRng::from_seed(9));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));

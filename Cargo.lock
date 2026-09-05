@@ -298,6 +298,8 @@ name = "matchlab-ranking"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
  "serde_yaml",
 ]
@@ -317,7 +319,10 @@ name = "matchlab-utility"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
+ "serde_yaml",
 ]
 
 [[package]]
