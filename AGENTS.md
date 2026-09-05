@@ -315,6 +315,24 @@ crates/
 - The Lua ports reproduce the Rust results byte-for-byte (v0_1_basic acceptance
   numbers unchanged through the all-Lua rating path).
 
+**`matchlab-detection` is implemented with the Lua-native detection systems:**
+- `detector.rs` — `DetectionSystem` trait (spec §9.1): `observe(&mut self,
+  match_result, world)`, `evaluate(&self, player_id, world) -> DetectionResult`,
+  `recommend_action(&self, result) -> InterventionAction`.
+- `intervention.rs` — the `InterventionAction` enum (the escalation policy
+  logic lives in the Lua script).
+- `lua.rs` — `LuaDetectionSystem`: implements `DetectionSystem` by delegating
+  to a script's `observe`/`evaluate`/`recommend_action`; threads a `Context`
+  (per-player evidence) through every call; maps action strings to
+  `InterventionAction`.
+- `plugins/detection/smurf.lua` — the smurf detector: per-player state in
+  `context`, expected performance scales with visible rating, actual from
+  `impact + kills/10`; consecutive anomalies past `min_anomalous_games` ramp
+  the anomaly probability; `recommend_action` walks the threshold ladder
+  (`config.ladder`, default 0.3 None … 0.99 Ban) with escalation
+  (`escalation_factor` per prior intervention) and a `min_games_before_action`
+  gate. Smurf status is inferred from behavior — never a boolean flag.
+
 **`matchlab-matchmaking` is implemented with the queue + Lua matchmakers:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
   game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
@@ -531,12 +549,15 @@ besides the simulation):
   budget-sanitizing each result via `filter_match_result` before `update`.
 - `runner.rs` — `ExperimentRunner::run(&ExperimentConfig) ->
   Result<ExperimentResult, String>`: generates the population, builds the
-  rating system via `matchlab_rating::registry::from_name` (params flattened
-  to a `serde_yaml::Value::Mapping`), builds the outcome model (logistic or a
-  §6.3 variant via `game.variant`), builds the matchmaker (batch,
-  expanding_window, strict, hub_spoke via `matchmaking.algorithm`), builds
-  optional detection (`SmurfDetector`), ranking (`BracketRankMapper`),
-  adversarial agents, and satisfaction model, registers the named metric
+  rating system via `matchlab_rating::registry::from_script`/`from_name`
+  (params flattened to a `serde_yaml::Value::Mapping`), builds the outcome
+  model via `matchlab_game::lua::LuaOutcomeModel::load` (script path from
+  `game.script`), builds the matchmaker via
+  `matchlab_matchmaking::lua::LuaMatchmaker::load` (`matchmaking.script`),
+  builds optional detection via
+  `matchlab_detection::lua::LuaDetectionSystem::load` (`detection.script`),
+  ranking (`BracketRankMapper`), adversarial agents, and satisfaction model,
+  registers the named metric
   collectors (all 13, errors on unknown names), and runs `MatchLoop` to the
   `DurationSpec` bound. Computes `utility_score` from `objectives` weights via
   `ObjectiveFunction`. Returns

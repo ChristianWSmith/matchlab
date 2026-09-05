@@ -11,10 +11,8 @@ experiment:
     fatigue_decay_rate: 0.001
   detection:
     enabled: true
-    smurf:
-      acceleration_threshold: 0.8
-      ban_threshold: 0.99
-      min_games_before_action: 3
+    script: plugins/detection/smurf.lua
+    min_games_before_action: 3
   ranking:
     brackets:
       - { rank: { tier: iron, division: 1 }, min: 0, max: 600 }

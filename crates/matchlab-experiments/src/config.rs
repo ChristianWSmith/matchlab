@@ -119,14 +119,15 @@ pub struct RatingSystemSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DetectionSpec {
     pub enabled: bool,
-    pub smurf: Option<SmurfDetectionSpec>,
+    /// Path to the Lua detection script (e.g. plugins/detection/smurf.lua).
+    #[serde(default = "default_detection_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SmurfDetectionSpec {
-    pub acceleration_threshold: f64,
-    pub ban_threshold: f64,
-    pub min_games_before_action: u64,
+fn default_detection_script() -> String {
+    "plugins/detection/smurf.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -413,10 +414,8 @@ experiment:
         beta: 400.0
   detection:
     enabled: true
-    smurf:
-      acceleration_threshold: 0.8
-      ban_threshold: 0.99
-      min_games_before_action: 3
+    script: plugins/detection/smurf.lua
+    min_games_before_action: 3
   ranking:
     brackets:
       - { rank: { tier: bronze, division: 1 }, min: 0, max: 1200 }

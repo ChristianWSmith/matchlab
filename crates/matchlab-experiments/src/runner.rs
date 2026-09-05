@@ -256,14 +256,8 @@ fn build_detection_system(
     if !spec.enabled {
         return Ok(None);
     }
-    let Some(smurf) = spec.smurf.as_ref() else {
-        return Ok(None);
-    };
-    let mut policy = matchlab_detection::intervention::InterventionPolicy::default_ladder();
-    policy.min_games_before_action = smurf.min_games_before_action;
-    let mut detector = matchlab_detection::smurf::SmurfDetector::new(policy);
-    detector.sigma_threshold = 3.0;
-    detector.min_anomalous_games = smurf.min_games_before_action.max(1);
+    let params = flatten_params(&spec.params);
+    let detector = matchlab_detection::lua::LuaDetectionSystem::load(&spec.script, &params)?;
     Ok(Some(Box::new(detector)))
 }
 
