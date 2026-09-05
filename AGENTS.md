@@ -449,6 +449,17 @@ inequality/ndcg/correlation/convergence/etc. are out).
 - `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `BracketRankMapper`,
   `Rank`, `RankBracket`, `RankMapper`.
 
+**`matchlab-objective` is implemented with the utility scoring:**
+- `utility.rs` — `ObjectiveWeights` (serde `Deserialize`: `match_quality`,
+  `queue_time`, `rating_accuracy`, `convergence_speed`, `smurf_damage`,
+  `false_positive_rate`, `streak_frustration`; `Default` matches §12.1) and
+  `ObjectiveFunction::evaluate(&HashMap<String, MetricResult>) -> (f64, &HashMap)`
+  (spec §12.1). Higher-is-better metrics (match quality) add weighted mean;
+  lower-is-better metrics (queue time, rating error, convergence games) subtract;
+  `smurf`/`streaks` `Distribution` values are read by index. The raw metrics map
+  is returned by reference and never discarded (§12.2 — the "never discard raw
+  metrics" rule). `lib.rs` re-exports `ObjectiveFunction`, `ObjectiveWeights`.
+
 The twelve-step build order is complete and v0.1 is accepted.
 
 **Build the project following the v0.1 build order in `docs/spec.md` (section 17).** Steps 1–12 are complete.
