@@ -209,7 +209,7 @@ crates/
   initial/visible ladder value. Proportions become integer counts via the
   **largest-remainder method** so they always sum exactly to `size`.
 
-**`matchlab-game` is implemented with the outcome model:**
+**`matchlab-game` is implemented with the outcome models:**
 - `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
   team_b)` and `simulate(match_id, team_a, team_b, rng) -> MatchResult`. Takes
   `PlayerObservation` only — never `PlayerReality` (truth separation).
@@ -225,6 +225,25 @@ crates/
   duration, `variance`). Ticket 12 grounded outcomes this way; the previous
   flat-`rating` default closed the loop (outcomes driven by ratings, which
   update those ratings) and made "MAE decreases" structurally impossible.
+- `variance.rs` — `VarianceOutcomeModel { beta, noise, variance_multiplier }`
+  (§6.3): logistic with a `variance_multiplier`-scaled noise envelope → more
+  upsets at a given skill gap. Optional `on_effective_skill` Lua hook.
+- `composition.rs` — `CompositionOutcomeModel { dimension_weights,
+  synergy_bonus, beta }` (§6.3): effective skill is each player's
+  `SkillVector.weighted_overall(dimension_weights)`; team totals add a
+  `synergy_bonus` per player. The multidim research model — can a 1D rating
+  represent multidimensional skill?
+- `performance.rs` — `PerformanceOutcomeModel { beta, performance_weight }`
+  (§6.3): `recent_performances` mean (scaled by `performance_weight × beta`)
+  shifts effective skill, so hot/cold streaks tilt win probability. Optional
+  `on_effective_skill` Lua hook.
+- `fatigue.rs` — `FatigueOutcomeModel { base_model, fatigue_decay_rate }`
+  (§6.3): wraps a base model, decays each player's skill by
+  `1 − decay_rate × games_played` (games played is the observable
+  session-length proxy). Delegates `win_probability`/`simulate` to the base.
+- `momentum.rs` — `MomentumOutcomeModel { base_model, momentum_factor }`
+  (§6.3): wraps a base model, scales each player's skill by
+  `1 + momentum_factor × (win_rate − 0.5)` (streak proxy). Delegates to base.
 
 **`matchlab-rating` is implemented with the rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
