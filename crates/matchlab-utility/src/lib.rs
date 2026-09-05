@@ -1,10 +1,12 @@
-//! matchlab-utility: player satisfaction / retention model.
+//! matchlab-utility: Lua-native player satisfaction / retention model.
 //!
 //! Models player retention probability from observable experience proxies
-//! (§16). `SatisfactionModel` combines match quality, queue time, win/loss
-//! history, streaks, rank progression, fairness, and rematch behavior into a
-//! satisfaction score, then converts it to retention and rematch probabilities.
+//! (§16). `PlayerExperience` (loop-maintained data) stays in Rust; the
+//! `SatisfactionModel` trait is implemented by a Lua script
+//! (`plugins/utility/satisfaction.lua`).
 
+pub mod lua;
 pub mod satisfaction;
 
-pub use satisfaction::{PlayerExperience, SatisfactionModel, SatisfactionWeights};
+pub use lua::LuaSatisfactionModel;
+pub use satisfaction::{PlayerExperience, SatisfactionModel};

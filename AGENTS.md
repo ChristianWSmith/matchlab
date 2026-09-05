@@ -36,6 +36,7 @@ match-lab/              # workspace root
 ├── src/main.rs         # CLI binary: `matchlab run <manifest>`
 └── crates/
     ├── matchlab-core/          # simulation engine, time, events, world, RNG, core types
+    ├── matchlab-lua/           # Lua-native system foundation (VM, context, rng, validation)
     ├── matchlab-players/       # archetypes, population generation, skill process
     ├── matchlab-game/          # outcome models, match execution
     ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search strategies
@@ -55,16 +56,17 @@ match-lab/              # workspace root
 ```
 matchlab-core          ← no internal deps
     ↑
+    ├── matchlab-lua            (+ mlua)
     ├── matchlab-players
-    ├── matchlab-game          (+ mlua)
-    ├── matchlab-matchmaking   (+ mlua)
-    ├── matchlab-rating        (+ mlua)
-    ├── matchlab-detection     (+ mlua)
+    ├── matchlab-game           (+ mlua via matchlab-lua)
+    ├── matchlab-matchmaking    (+ mlua via matchlab-lua)
+    ├── matchlab-rating         (+ mlua via matchlab-lua)
+    ├── matchlab-detection      (+ mlua via matchlab-lua)
     ├── matchlab-ranking
-    ├── matchlab-metrics       (depends on core only; + mlua for hooks)
-    ├── matchlab-objective     (depends on core + metrics)
-    ├── matchlab-adversarial   (depends on core)
-    └── matchlab-utility       (depends on core)
+    ├── matchlab-metrics        (depends on core + matchlab-lua)
+    ├── matchlab-objective      (depends on core + metrics)
+    ├── matchlab-adversarial    (depends on core + matchlab-lua)
+    └── matchlab-utility        (depends on core + matchlab-lua)
 
 matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
@@ -89,16 +91,18 @@ Exception: the **outcome model** (the game, i.e. the simulator of reality) may �
 
 A "smurf" is not a player type or boolean flag — it is the combination of high `true_skill` with low `initial_rating` and few `games_played`. Detection systems must infer smurf status from observable behavior.
 
-### 2. Pluggability via Traits
+### 2. Pluggability via Traits + Lua scripts
 
-Every algorithm is a trait implementation:
-- `RatingSystem` (trait) — Elo, Glicko-2, TrueSkill, FlatPoints
-- `OutcomeModel` (trait) — Logistic, Variance, Composition, Fatigue, etc.
-- `Matchmaker` (trait) — ExpandingWindow, Strict, Batch, HubSpoke
-- `MetricCollector` (trait) — each metric is its own collector
-- `DetectionSystem` (trait) — smurf detector, etc.
+Every algorithm is a trait implementation, and every implementation is a Lua
+script under `plugins/` (there are no inherent Rust algorithms):
+- `RatingSystem` (trait) — `plugins/rating/` (elo, glicko2, trueskill, flat, …)
+- `OutcomeModel` (trait) — `plugins/game/` (logistic, variance, composition, …)
+- `Matchmaker` (trait) — `plugins/matchmaking/` (batch, expanding_window, …)
+- `MetricCollector` (trait) — `plugins/metrics/` (one script per metric)
+- `DetectionSystem` (trait) — `plugins/detection/` (smurf)
+- `AdversarialAgent` / `SatisfactionModel` / `RankMapper` — the same model.
 
-Swapping implementations should require zero changes outside the relevant crate.
+Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
 
@@ -130,11 +134,12 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace is fully implemented: 14 crates under `crates/`, a binary at `src/main.rs`. The root `Cargo.toml` is a Cargo workspace:
+The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/main.rs`. The root `Cargo.toml` is a Cargo workspace:
 
 ```
 crates/
 ├── matchlab-core/
+├── matchlab-lua/
 ├── matchlab-players/
 ├── matchlab-game/
 ├── matchlab-matchmaking/
@@ -160,6 +165,35 @@ crates/
 - `/results` is gitignored.
 - `cargo build --workspace`, `cargo test --workspace`, and
   `cargo check --workspace` all pass.
+
+**`matchlab-lua` is implemented with the Lua-native system foundation:**
+- `vm.rs` — `LuaVm` (a `Mutex<Lua>` wrapper): `load(path, params, required)`
+  resolves + validates + execs a script, stores its `config` (from YAML params),
+  registers the `matchlab.rng_*` helpers, and provides
+  `call_with_context(name, args, context)` (args + `config` + `context` are
+  pushed in that order; the script may return `(value, context)` or mutate the
+  passed context in place) and `get_global` (reads `information_budget`,
+  `name`, `time_buckets` globals). `with_rng(&mut SimRng, f)` makes the RNG
+  available to `matchlab.rng_*`.
+- `context.rs` — `Context` is an ordered `serde_yaml::Value` (defaults to an
+  empty mapping): arbitrary script-defined state persisted on the Rust model and
+  threaded through every call. `yaml_to_lua`/`lua_to_yaml` round-trip it (a Lua
+  table whose keys are exactly `1..=n` becomes a sequence).
+- `rng.rs` — deterministic randomness routing: a thread-local `*mut SimRng` slot
+  set/cleared around every guarded call; `matchlab.rng_range`/`rng_bool`/
+  `rng_normal`/`rng_u64` draw from it. Scripts must never call `math.random`.
+- `convert.rs` — core↔Lua marshalling: `observation_to_table` (with `include_skill`
+  to control the ground-truth skill binding), `participant_to_table` (metrics
+  only — adds `true_skill`/`improvement_rate`/`reality_games_played`),
+  `match_result_to_table`, `metric_snapshot`, `region_str`/`team_str`.
+- `validate.rs` — `validate_script(path, required)`: parse/exec + required
+  function presence + the `math.random` source ban.
+- `resolve.rs` — `resolve_script_path`/`workspace_root`: resolves `plugins/...`
+  paths from the workspace root (walk up to the `[workspace]` Cargo.toml), so
+  crate tests and the CLI both find scripts.
+- The algorithm crates (`rating`, `game`, `matchmaking`, `detection`, `metrics`,
+  `adversarial`, `utility`, `ranking`) depend on `matchlab-lua`; their Lua
+  adapters live in each crate's `lua.rs`.
 
 **`matchlab-core` is implemented with the core types:**
 - `time.rs` — `SimTime` (nanosecond `u64`), `ZERO`, `from_secs`/`from_millis`,
@@ -210,87 +244,98 @@ crates/
   initial/visible ladder value. Proportions become integer counts via the
   **largest-remainder method** so they always sum exactly to `size`.
 
-**`matchlab-game` is implemented with the outcome models:**
+**`matchlab-game` is implemented with the Lua-native outcome models:**
 - `outcome.rs` — `OutcomeModel` trait (spec §6.1): `win_probability(team_a,
   team_b)` and `simulate(match_id, team_a, team_b, rng) -> MatchResult`. Takes
   `PlayerObservation` only — never `PlayerReality` (truth separation).
-- `logistic.rs` — `LogisticOutcomeModel` (spec §6.2) with `beta`, `noise`, and
-  inert `use_multidimensional`/`dimension_weights` fields (multidim research
-  path is **out of scope** for v0.1). `effective_skill` uses
-  `obs.skill_vector.overall()` — the **true skill** carried in the observation
-  binding (falling back to `obs.rating` only for skill-vacuous observations) —
-  so match outcomes are decided by ground truth and Elo genuinely learns from
-  results. `win_probability` is the logistic of the average-team-skill
-  difference; `simulate` adds noise, picks a winner, and builds a fully
-  populated `MatchResult` (team ids, scores, per-player `PlayerPerformance`,
-  duration, `variance`). Ticket 12 grounded outcomes this way; the previous
-  flat-`rating` default closed the loop (outcomes driven by ratings, which
-  update those ratings) and made "MAE decreases" structurally impossible.
-- `variance.rs` — `VarianceOutcomeModel { beta, noise, variance_multiplier }`
-  (§6.3): logistic with a `variance_multiplier`-scaled noise envelope → more
-  upsets at a given skill gap. Optional `on_effective_skill` Lua hook.
-- `composition.rs` — `CompositionOutcomeModel { dimension_weights,
-  synergy_bonus, beta }` (§6.3): effective skill is each player's
-  `SkillVector.weighted_overall(dimension_weights)`; team totals add a
-  `synergy_bonus` per player. The multidim research model — can a 1D rating
-  represent multidimensional skill?
-- `performance.rs` — `PerformanceOutcomeModel { beta, performance_weight }`
-  (§6.3): `recent_performances` mean (scaled by `performance_weight × beta`)
-  shifts effective skill, so hot/cold streaks tilt win probability. Optional
-  `on_effective_skill` Lua hook.
-- `fatigue.rs` — `FatigueOutcomeModel { base_model, fatigue_decay_rate }`
-  (§6.3): wraps a base model, decays each player's skill by
-  `1 − decay_rate × games_played` (games played is the observable
-  session-length proxy). Delegates `win_probability`/`simulate` to the base.
-- `momentum.rs` — `MomentumOutcomeModel { base_model, momentum_factor }`
-  (§6.3): wraps a base model, scales each player's skill by
-  `1 + momentum_factor × (win_rate − 0.5)` (streak proxy). Delegates to base.
+- `lua.rs` — `LuaOutcomeModel`: implements `OutcomeModel` by delegating to a
+  script's `win_probability`/`simulate` functions; `simulate` runs inside
+  `with_rng` so scripts draw deterministically via `matchlab.rng_*`. Observation
+  tables carry `skill_overall`/`skill_vector` (`include_skill`), so match
+  winners are decided by ground truth and Elo genuinely learns from results.
+- The variants ship as Lua scripts under `plugins/game/`:
+  - `logistic.lua` — spec §6.2. `effective_skill` = `skill_overall` (falling
+    back to `rating` only for skill-vacuous observations); `win_probability` is
+    the logistic of the average-team-skill difference; `simulate` adds noise,
+    picks a winner, and builds a fully populated `MatchResult` (team ids,
+    scores, per-player performances, duration, `variance`). Draw order mirrors
+    the reference so results are byte-identical for a seed.
+  - `variance.lua` — spec §6.3; logistic with a `variance_multiplier`-scaled
+    noise envelope → more upsets at a given skill gap.
+  - `composition.lua` — spec §6.3; effective skill is each player's
+    `skill_vector` weighted by `config.dimension_weights`; team totals add a
+    `synergy_bonus` per player. The multidim research model — can a 1D rating
+    represent multidimensional skill?
+  - `performance.lua` — spec §6.3; `recent_performances` mean (scaled by
+    `performance_weight × beta`) shifts effective skill, so hot/cold streaks
+    tilt win probability.
+  - `fatigue.lua` — spec §6.3; decays each player's skill by
+    `1 − decay_rate × games_played` (games played is the observable
+    session-length proxy) before the logistic math.
+  - `momentum.lua` — spec §6.3; scales each player's skill by
+    `1 + momentum_factor × (win_rate − 0.5)` (streak proxy) before the logistic
+    math.
+- Ticket 12 grounded outcomes this way; the Lua ports reproduce the Rust
+  results byte-for-byte (v0_1_basic acceptance numbers unchanged through the
+  all-Lua game path).
 
-**`matchlab-rating` is implemented with the rating systems:**
+**`matchlab-rating` is implemented with the Lua-native rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
   `initialize(player_id)`, `predict(team_a, team_b)`,
   `update(match_result, observations) -> HashMap<PlayerId, RatingState>`, plus
   `rating()`/`uncertainty()` conveniences. `RatingState { rating,
   rating_deviation, volatility, games_played }`, 11-variant `ObservationType`.
-- `elo.rs` — `EloRatingSystem` (spec §8.4) with `EloConfig { k_factor,
-  initial_rating, beta }` and `from_yaml`. `divisor = beta * ln(10)` keeps the
-  log10 Elo scale consistent with the logistic game model (so both compute the
-  same win probability for a given rating gap). `update` applies
-  `k_factor * (actual − expected)` per team member. Elo/Flat only declare
-  `WinLoss` in their information budget; a **matching-info budget** is enforced:
-  loop handlers sanitize the `MatchResult` via `filter.rs` before `update`.
+- `lua.rs` — `LuaRatingSystem`: implements `RatingSystem` by delegating to a
+  script's `initialize`/`predict`/`update` functions; reads the script's
+  `information_budget` global at load; threads a `Context` through every call.
+- `plugins.rs` — `registry` with `known_systems()` (name → script map: elo →
+  `plugins/rating/elo.lua`, flatpoints, glicko2, trueskill), `from_script(path,
+  params)`, and `from_name(name, params)`.
 - `filter.rs` — `filter_match_result(&MatchResult, &[ObservationType]) ->
   FilteredMatchResult` (spec §8.2) with `into_match_result(&self, MatchId) ->
   MatchResult` producing a budget-sanitized `MatchResult` (scores,
   per-player performances, and durations zeroed/emptied for non-permitted
   data). `matchlab-loop` calls this in `handle_match_end`, so a WinLoss-only
   system never sees score/perf/duration leaks.
-- `flat.rs` — `FlatPointsRatingSystem` (spec §8.3) with `FlatPointsConfig {
-  win_points, loss_points, initial_rating }` and `from_yaml`; fixed ±points
-  baseline.
-- `glicko.rs` — `Glicko2RatingSystem` (spec §8.5) with `GlickoConfig {
-  initial_rating, initial_rd, initial_volatility, tau, epsilon }` and
-  `from_yaml`. Full 6-step Glicko-2: scale to (μ, φ, σ) → `g`/`E` per
-  opponent → `v`, `Δ` → Newton-Raphson volatility iteration → `φ*` → `φ'`,
-  `μ'` → scale back. Team matches treat each player's opponents as the
-  opposing team's players, one opponent tuple per player. Verified against
-  Glickman's paper worked example (r'=1464.06, RD'=151.52, σ'=0.05999).
-- `trueskill.rs` — `TrueSkillRatingSystem` (spec §8.6) with `TrueSkillConfig {
-  initial_mean, initial_variance, beta, dynamics, draw_probability }` and
-  `from_yaml` (accepts `initial_rating` alias for `initial_mean`). Each player
-  is N(μ, σ²); team performance = sum of member performances. The comparison
-  `d = P_A − P_B` is modeled as N(μ_A−μ_B, c²) and updated via truncated-
-  Gaussian conditioning: winner uses the inverse-Mills-ratio factors
-  `v,w` on `z > u−t`, loser on `z < −u−t` (with draw margin `u` from
-  `draw_probability`). μ += (σ²/c)v, σ² *= (1−(σ²/c²)w). `initial_variance`
-  is stored as `rating_deviation` = σ (sqrt of variance).
-- `plugins.rs` — `registry` module with `all_systems()` (`["elo",
-  "flatpoints", "glicko2", "trueskill"]`) and `from_name(name,
-  &serde_yaml::Value) -> Option<Box<dyn RatingSystem>>`, plus
-  `lua:elo`/`lua:glicko2`/`lua:trueskill` hook-hooked variants. Unknown names
-  return `None`.
+- The classic systems ship as Lua scripts under `plugins/rating/`:
+  - `elo.lua` — spec §8.4. `divisor = beta * ln(10)` keeps the log10 Elo scale
+    consistent with the logistic game model (both compute the same win
+    probability for a rating gap). `update` applies `k_factor * (actual −
+    expected)` per team member. Declares `information_budget = { "WinLoss" }`.
+  - `flat.lua` — spec §8.3; fixed ±points baseline.
+  - `glicko2.lua` — spec §8.5; full 6-step Glicko-2: scale to (μ, φ, σ) →
+    `g`/`E` per opponent → `v`, `Δ` → Newton-Raphson volatility iteration →
+    `φ*` → `φ'`, `μ'` → scale back. Verified against Glickman's paper worked
+    example (r'=1464.06, RD'=151.52, σ'=0.05999).
+  - `trueskill.lua` — spec §8.6; each player is N(μ, σ²); team performance =
+    sum of member performances; truncated-Gaussian conditioning with the
+    inverse-Mills-ratio factors `v,w` and draw margin from `draw_probability`.
+    `initial_variance` is stored as `rating_deviation` = σ (sqrt of variance).
+- Elo/Flat only declare `WinLoss` in their information budget; a **matching-info
+  budget** is enforced: loop handlers sanitize the `MatchResult` via
+  `filter.rs` before `update`.
+- The Lua ports reproduce the Rust results byte-for-byte (v0_1_basic acceptance
+  numbers unchanged through the all-Lua rating path).
 
-**`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
+**`matchlab-detection` is implemented with the Lua-native detection systems:**
+- `detector.rs` — `DetectionSystem` trait (spec §9.1): `observe(&mut self,
+  match_result, world)`, `evaluate(&self, player_id, world) -> DetectionResult`,
+  `recommend_action(&self, result) -> InterventionAction`.
+- `intervention.rs` — the `InterventionAction` enum (the escalation policy
+  logic lives in the Lua script).
+- `lua.rs` — `LuaDetectionSystem`: implements `DetectionSystem` by delegating
+  to a script's `observe`/`evaluate`/`recommend_action`; threads a `Context`
+  (per-player evidence) through every call; maps action strings to
+  `InterventionAction`.
+- `plugins/detection/smurf.lua` — the smurf detector: per-player state in
+  `context`, expected performance scales with visible rating, actual from
+  `impact + kills/10`; consecutive anomalies past `min_anomalous_games` ramp
+  the anomaly probability; `recommend_action` walks the threshold ladder
+  (`config.ladder`, default 0.3 None … 0.99 Ban) with escalation
+  (`escalation_factor` per prior intervention) and a `min_games_before_action`
+  gate. Smurf status is inferred from behavior — never a boolean flag.
+
+**`matchlab-matchmaking` is implemented with the queue + Lua matchmakers:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
   game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
@@ -300,29 +345,32 @@ crates/
   `ProposedMatch { team_a, team_b, quality_score }` with static `match_quality`
   = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed from **observations** only.
 - `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
-  v0.1; the batch matchmaker runs with an empty list.
-- `batch.rs` — `BatchMatchmaker { interval_ticks, constraints }` (spec §7.8).
-  **Rating-balanced** formation: sort candidates by `observation.rating`
-  (ties by `joined_at`) and assign alternately to team A / team B in
-  consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
-  opposite teams, so the two teams are balanced and `match_quality` stays
-  ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
-  population, failing the quality exit criterion). The `interval_ticks`
-  field is metadata the event handler uses to decide when to trigger
-  matchmaking; the handler forms matches in consecutive blocks, emitting the
-  final block when full (the spec's reference loop silently drops it).
-- `expanding.rs` — `ExpandingWindowMatchmaker` (spec §7.6) with stepped tiers
-  `[(max_secs, allowed_diff)]` (`default_tiers()`: 5s→25, 10s→50, 20s→100,
-  30s→200, fallback `max_window: 400`) — skills matched within a window that
-  widens with queue wait. Optional `on_max_skill_diff` Lua hook.
-- `strict.rs` — `StrictMatchmaker { max_skill_diff }` (spec §7.7): only matches
-  players within a fixed skill diff; outliers may wait indefinitely (intended
-  "strict" behavior). Optional `on_max_skill_diff` Lua hook.
-- `hub_spoke.rs` — `HubSpokeMatchmaker { spokes: HashMap<Region, Box<dyn
-  Matchmaker>>, spoke_capacity }` (spec §7.9): partitions the queue by region,
-  delegates under-capacity regions to their spoke, and handles overflow
-  directly (longest-waiting first). Emits the trailing full block (the spec's
-  reference loop silently drops it).
+  v0.1; the matchmakers run with an empty list.
+- `lua.rs` — `LuaMatchmaker`: implements `Matchmaker` by delegating to a
+  script's `find_matches` function. The queue is snapshotted to a Lua array
+  (player_id, rating, rating_deviation, games_played, win_rate, `idx`,
+  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode) —
+  observations only, never `PlayerReality`. Scripts set `quality_score` or the
+  adapter falls back to `ProposedMatch::match_quality`.
+- The matchmakers ship as Lua scripts under `plugins/matchmaking/`:
+  - `batch.lua` — spec §7.8. **Rating-balanced** formation: sort candidates by
+    `rating` (ties by `joined_at_secs`, then `idx` — Lua `table.sort` is
+    unstable, so the index tie-break preserves the Rust stable-sort behavior
+    and keeps results byte-identical) and assign alternately to team A / team B
+    in consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
+    opposite teams, so the two teams are balanced and `match_quality` stays
+    ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
+    population, failing the quality exit criterion).
+  - `expanding_window.lua` — spec §7.6 with stepped tiers
+    `[(max_secs, allowed_diff)]` (default 5s→25, 10s→50, 20s→100, 30s→200,
+    fallback `max_window: 400`) — skills matched within a window that widens
+    with queue wait.
+  - `strict.lua` — spec §7.7: only matches players within a fixed skill diff;
+    outliers may wait indefinitely (intended "strict" behavior).
+  - `hub_spoke.lua` — spec §7.9: partitions the queue by region (sorted region
+    keys for determinism); under-capacity regions use an inlined regional
+    greedy (no nested matchmakers in Lua), overflow regions fall to the hub
+    path (longest-waiting first).
 - `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
   weight_ping, weight_rating_uncertainty }` (spec §7.4) with
   `score(proposed, queue_entries, world) = w_q·Q − w_t·T − w_p·P − w_r·R`
@@ -397,9 +445,8 @@ crates/
   order + equal-time heap pops make the whole experiment deterministic for a
   given seed. Re-exports `LoopConfig`, `MachineState`, and the `handle_*` fns.
 
-**`matchlab-metrics` is implemented with the collectors** (depends on
-`matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
-besides the simulation):
+**`matchlab-metrics` is implemented with the Lua-native collectors** (metrics
+are the sole legitimate reader of `PlayerReality` besides the simulation):
 - `collector.rs` — `MetricCollector` trait (spec §11.2): `name()`,
   `record_match(mr, world)`, `compute() -> MetricResult`, and an optional
   `time_buckets() -> Option<Vec<f64>>` (default `None`) that the engine folds
@@ -416,47 +463,19 @@ besides the simulation):
   canonical statistics implementation; `matchlab-analysis` re-exports it
   (`matchlab_analysis::stats`) and it lives here to keep collectors on the
   metrics-only-core boundary.
-- Determinism: collectors that aggregate HashMap-derived data (convergence,
-  stability, dimensionality_fidelity, population_health) sort by a composite
-  key (value + player id) before summing — `HashMap` iteration order is
-  randomized per process via `RandomState`, which would otherwise corrupt
-  byte-identical reproducibility.
-- `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
-  `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
-  summarized (spec §11.3; participant-sampled rather than whole-population
-  snapshots so memory/steps scale with matches, not matches × players). Each
-  sample is time-stamped; `MetricCollector::time_buckets` (default
-  `None`) yields a 20 equal-duration-bucket mean series that the engine folds
-  into a `rating_accuracy_by_time` `TimeSeries` — the "MAE decreases over
-  time" convergence evidence for the v0.1 acceptance ticket. Reads ground
-  truth — allowed for metrics.
-- `quality.rs` — `MatchQualityCollector` ("match_quality"):
-  `1 − (|avg_a − avg_b|/400).clamp(0,1)` from observation ratings, summarized.
-- `queue.rs` — `QueueTimeCollector` ("queue_time"): wait = `world.time
-  .duration_since(obs.queue_joined_at)` per participant — real join→formation
-  wait, **not** match duration (v0.1 exit condition).
-- `inequality.rs` — `MatchInequalityCollector` ("match_inequality"):
-  distribution of expected win probabilities (clusters near 0.5 for good
-  matchmaking; fat-tailed for poor).
-- `ndcg.rs` — `NDCGCollector` ("ndcg"): normalized discounted cumulative gain
-  over match qualities — does good match quality appear early?
-- `dimensionality.rs` — `DimensionalityFidelityCollector`
-  ("dimensionality_fidelity"): Pearson correlation of 1D ratings vs true skill
-  and of SkillVector prediction vs true skill; fidelity = multiD improvement.
-- `convergence.rs` — `ConvergenceCollector` ("convergence"): games until
-  `|rating − true_skill|` drops below a threshold (fewer is better).
-- `responsiveness.rs` — `ResponsivenessCollector` ("responsiveness"): fraction
-  of rating updates moving in the direction the outcome predicts.
-- `stability.rs` — `StabilityCollector` ("stability"): rating stddev for
-  stable players (low `improvement_rate`); drifting players excluded.
-- `streaks.rs` — `StreakCollector` ("streaks"): probability of 3/5/8/10-game
-  streaks as a `Distribution`.
-- `population.rs` — `PopulationHealthCollector` ("population_health"): rating
-  inflation/deflation and compression as `[inflation, compression,
-  initial_mean, final_mean]`.
-- `smurf.rs` — `SmurfMetricsCollector` ("smurf"): per-smurf damage
-  (unfairness), games at detection, and archetype; identifies smurfs by
-  properties (high skill + low games) — never a boolean flag.
+- `lua.rs` — `LuaMetricCollector`: implements `MetricCollector` by delegating
+  to a script's `on_record` / `compute`; reads the script's `name` global
+  (required) and optional `time_buckets` function and `needs_population = true`
+  global (which makes the snapshot carry the full population, not just match
+  participants). The snapshot includes observation + reality fields (`true_skill`,
+  `improvement_rate`, `reality_games_played`) — metrics only. Scripts accumulate
+  samples in the VM context table (O(1) per call, no per-call round-trip).
+- Metric scripts ship under `plugins/metrics/` (one per built-in metric):
+  match_quality, queue_time, rating_accuracy (with `time_buckets` → the
+  `rating_accuracy_by_time` convergence series), match_inequality, ndcg,
+  dimensionality_fidelity, convergence, responsiveness, stability, streaks,
+  population_health, smurf. Each reproduces the reference collector's semantics
+  (rating_accuracy_by_time is byte-identical through the all-Lua path).
 - `cohort.rs` — `CohortFilter` enum (All, SkillRange, Archetype,
   GamesPlayedRange, Region, PartySize, SessionLength, RankTier,
   IsSmurfByProperties) + `tier_for_skill(skill) -> tier` string mapping.
@@ -469,13 +488,13 @@ besides the simulation):
   `ArchetypeSpec`/`DistributionSpec`
   (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params),
   `MatchmakingSpec`
-  (algorithm + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
-  with `RatingSystemSpec { name, params }` flatten, `DetectionSpec`,
-  `SmurfDetectionSpec`, `RankingSpec`, `RankBracketSpec`, `ObjectiveWeightsSpec`,
-  `AdversarialSpec`/`AdversarialAgentSpec`, `SatisfactionSpec`/
-  `SatisfactionWeightsSpec`,
-  `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { until_secs | max_matches | max_time }`,
-  `OutputSpec { directory, format }`. `cohorts` is a required `Vec`
+  (script + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
+  with `RatingSystemSpec { name?, script?, params }` flatten, `DetectionSpec`,
+  `RankingSpec`, `ObjectiveWeightsSpec`,
+  `AdversarialSpec`/`AdversarialAgentSpec` (script + params), `SatisfactionSpec`
+  (script + params),
+  `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { matches, max_time }`,
+  `OutputSpec { directory, formats, plots, report }`. `cohorts` is a required `Vec`
   (manifests use `cohorts: []` when unused).
 - `inherit.rs` — YAML-level config inheritance: `load(path)` /
   `resolve_str(text, base_dir)` / `load_value`, with `base: <path>` keys
@@ -487,7 +506,8 @@ besides the simulation):
   population/game/arrival/behavior derived from the one experiment seed via
   `derive(name, parent_seed)`, plus `hash_config(&ExperimentConfig)` (a
   `#[derive(Default)]` `DefaultHasher` over length-prefixed serialized
-  fields) and `git_commit_hash()` for `ExperimentResult`.
+  fields **plus the contents of every referenced Lua script**, so a script edit
+  changes the experiment identity) and `git_commit_hash()` for `ExperimentResult`.
 - `factorial.rs` — `FactorialDesign { factors }` (spec §13.5) with
   `generate_configs(&base) -> Vec<ExperimentConfig>` producing the Cartesian
   product of factor values. Each factor is a dot-separated config path with
@@ -503,12 +523,15 @@ besides the simulation):
   budget-sanitizing each result via `filter_match_result` before `update`.
 - `runner.rs` — `ExperimentRunner::run(&ExperimentConfig) ->
   Result<ExperimentResult, String>`: generates the population, builds the
-  rating system via `matchlab_rating::registry::from_name` (params flattened
-  to a `serde_yaml::Value::Mapping`), builds the outcome model (logistic or a
-  §6.3 variant via `game.variant`), builds the matchmaker (batch,
-  expanding_window, strict, hub_spoke via `matchmaking.algorithm`), builds
-  optional detection (`SmurfDetector`), ranking (`BracketRankMapper`),
-  adversarial agents, and satisfaction model, registers the named metric
+  rating system via `matchlab_rating::registry::from_script`/`from_name`
+  (params flattened to a `serde_yaml::Value::Mapping`), builds the outcome
+  model via `matchlab_game::lua::LuaOutcomeModel::load` (script path from
+  `game.script`), builds the matchmaker via
+  `matchlab_matchmaking::lua::LuaMatchmaker::load` (`matchmaking.script`),
+  builds optional detection via
+  `matchlab_detection::lua::LuaDetectionSystem::load` (`detection.script`),
+  ranking (`LuaRankMapper`), adversarial agents, and satisfaction model,
+  registers the named metric
   collectors (all 13, errors on unknown names), and runs `MatchLoop` to the
   `DurationSpec` bound. Computes `utility_score` from `objectives` weights via
   `ObjectiveFunction`. Returns
@@ -533,11 +556,26 @@ besides the simulation):
   enabled subsystems (detection/ranking/adversarial/satisfaction/outcome
   variant/non-batch matchmaker) and the utility score when configured.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
-  players, team size 5, cold ladder start with `initial_rating: 1000`, flat
-  skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
-  The `initial_rating` deviates from the literal §17 snippet to provide a
-  meaningful convergence scenario: visible ratings start at 1000 while true
-  skill is sampled from N(1000, 250), so Elo has something to learn.
+   players, team size 5, cold ladder start with `initial_rating: 1000`, flat
+   skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
+   The `initial_rating` deviates from the literal §17 snippet to provide a
+   meaningful convergence scenario: visible ratings start at 1000 while true
+   skill is sampled from N(1000, 250), so Elo has something to learn.
+ - `experiments/base/standard.yaml` — inherited base config (2,000 players,
+   mixed archetypes incl. a smurf archetype, elo + logistic + batch).
+ - `experiments/lua_systems_test.yaml` — smoke test that Lua-native systems
+   (elo/logistic/batch) run through the standard population.
+ - `experiments/glicko_comparison.yaml` — Glicko-2 (script) on the standard
+   population.
+ - `experiments/matchmaker_comparison.yaml` — expanding_window (script) on the
+   standard population.
+ - `experiments/detection_test.yaml` — smurf detection enabled.
+ - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
+   smurf detection, Lua rank brackets, adversarial agents (afk + deranker),
+   satisfaction, all 12 metrics, objectives.
+ - `experiments/novel_rating.yaml` — the dogfood example: a rating system with
+   no Rust equivalent (`plugins/rating/decay_elo.lua`, Elo + idle decay) and a
+   custom metric (`plugins/metrics/avg_rating_gap.lua`) added purely as Lua.
 
 **`matchlab-analysis` is implemented with the reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
@@ -574,21 +612,24 @@ besides the simulation):
   byte-identical files (the wall-clock `timestamp` field is the only thing
   that legitimately differs).
 
-**`matchlab-ranking` is implemented with the rank mapper + leaderboard:**
+**`matchlab-ranking` is implemented with the Lua-native rank mapper + leaderboard:**
 - `ranker.rs` — `RankMapper` trait (spec §10.1): `rating_to_rank(rating) ->
   Rank` and `rank_to_rating_range(rank) -> (f64, f64)`, `Rank { tier,
-  division }` (serde `Deserialize`), `BracketRankMapper { brackets: Vec<RankBracket> }`
-  and `RankBracket { rank, min, max }`. `rating_to_rank` finds the first
-  bracket where `min <= rating < max`; ratings outside all brackets clamp to
-  the **last** bracket (the spec's reference behavior, not the first).
-  `rank_to_rating_range` returns `(0.0, 0.0)` for unknown ranks.
+  division }` (serde `Deserialize`).
+- `lua.rs` — `LuaRankMapper`: implements `RankMapper` by delegating to a
+  script's `rating_to_rank` / `rank_to_rating_range`; the bracket table is
+  `config.brackets`.
+- `plugins/ranking/brackets.lua` — `rating_to_rank` finds the first bracket
+  where `min <= rating < max`; ratings outside all brackets clamp to the
+  **last** bracket (the spec's reference behavior, not the first);
+  `rank_to_rating_range` returns `{0,0}` for unknown ranks.
 - `leaderboard.rs` — `Leaderboard` (spec §10.2) with `update(player_id,
   rating, rank, games_played)` (insert-or-replace, then re-sort by rating
   descending), `rank_of(player_id) -> Option<usize>`, `top_n(n) -> &[LeaderboardEntry]`
   (clamps when `n > len`), `entries()`/`len()`/`is_empty()`. `LeaderboardEntry {
   player_id, rating, rank, games_played }`.
-- `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `BracketRankMapper`,
-  `Rank`, `RankBracket`, `RankMapper`.
+- `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `LuaRankMapper`,
+  `Rank`, `RankMapper`.
 
 **`matchlab-objective` is implemented with the utility scoring:**
 - `utility.rs` — `ObjectiveWeights` (serde `Deserialize`: `match_quality`,
@@ -601,7 +642,7 @@ besides the simulation):
   is returned by reference and never discarded (§12.2 — the "never discard raw
   metrics" rule). `lib.rs` re-exports `ObjectiveFunction`, `ObjectiveWeights`.
 
-**`matchlab-adversarial` is implemented with the agent types:**
+**`matchlab-adversarial` is implemented with the Lua-native agent types:**
 - `agent.rs` — `AdversarialAgent` trait (spec §15.1): `tick(&mut self,
   player_id, world)` + `objective() -> AdversarialObjective` (6-variant enum:
   `MaximizeRating`, `MinimizeGamesPlayed`, `MaximizeWinRate { target_games }`,
@@ -609,32 +650,41 @@ besides the simulation):
   player's behavior controller (like the outcome model), so they may adjust
   reality behavior params (e.g. `quit_probability`) as well as observable
   signals.
-- `booster.rs` — `BoosterAgent { boost_target, boostee }`: links the duo into a
-  party and boosts the boostee's `win_rate` to 1.0. Objective `MaximizeRating`.
-- `deranker.rs` — `DerankerAgent { target_rating }`: while rating is above the
-  target, raises `quit_probability` to 0.9 and `tilt_level` to 1.0 to throw
-  matches. Objective `MaintainLowRating`.
-- `win_trader.rs` — `WinTraderAgent { partner, alternating }`: links the pair
-  into a party and toggles `alternating`. Objective `WinTrade { partner }`.
-- `afk.rs` — `AfkAgent { go_afk_probability }`: with `world.rng.gen_bool` sets
-  `quit_probability = 1.0` (AFK/disconnect). Objective `MinimizeGamesPlayed`.
-- `rating_farmer.rs` — `RatingFarmerAgent { quit_probability,
-  quit_after_minutes }`: quits/offline after queueing to keep `games_played`
-  minimal. Objective `MaximizeWinRate { target_games: 10 }`.
-- `lib.rs` — re-exports all agents + `AdversarialAgent`/`AdversarialObjective`.
+- `lua.rs` — `LuaAdversarialAgent`: implements `AdversarialAgent` by
+  delegating to a script's `tick` / `objective` functions. The adapter exposes
+  a `behavior` table (quit_probability, party_id, tilt_level, win_rate,
+  is_online) plus the player's observation, and writes the returned behavior
+  back to reality/observations. Randomness flows through `matchlab.rng_*` from
+  `world.rng`; the objective is read at load and cached.
+- The agents ship as Lua scripts under `plugins/adversarial/`:
+  - `afk.lua` — with `matchlab.rng_bool(go_afk_probability)` sets
+    `quit_probability = 1.0`. Objective `MinimizeGamesPlayed`.
+  - `deranker.lua` — while rating is above `target_rating`, raises
+    `quit_probability` to 0.9 and `tilt_level` to 1.0. Objective
+    `MaintainLowRating`.
+  - `win_trader.lua` — links the pair into a party. Objective `WinTrade`.
+  - `booster.lua` — links the duo into a party and boosts the boostee's
+    `win_rate` to 1.0. Objective `MaximizeRating`.
+  - `rating_farmer.lua` — with `matchlab.rng_bool(quit_probability)` sets
+    `quit_probability = 1.0` and goes offline to keep `games_played` minimal.
+    Objective `MaximizeWinRate`.
+- `lib.rs` — re-exports `LuaAdversarialAgent` + `AdversarialAgent`/
+  `AdversarialObjective`.
 
-**`matchlab-utility` is implemented with the satisfaction model:**
-- `satisfaction.rs` — `SatisfactionModel` (spec §16.1) with
-  `SatisfactionWeights` (serde `Deserialize`: `match_quality`,
-  `queue_time_penalty`, `win_bonus`, `loss_streak_penalty`,
-  `rank_progression_bonus`, `fairness_sensitivity`, `rematch_bonus`;
-  `Default` matches §16.1) and `PlayerExperience` (recent match qualities,
-  queue times, outcomes, `current_streak`, `rank_change`,
-  `perceived_fairness`, `rematch_rate`; `new()`/`record_match()` helpers).
-  `satisfaction()` is the weighted sum (loss-streak penalty only kicks in
-  below −3), `retention_probability()` is the logistic `1/(1+e^−s)`, and
-  `rematch_probability()` requires a higher threshold (`1/(1+e^−0.5(s−2))`).
-  `lib.rs` re-exports `SatisfactionModel`, `SatisfactionWeights`,
+**`matchlab-utility` is implemented with the Lua-native satisfaction model:**
+- `satisfaction.rs` — `SatisfactionModel` trait (spec §16.1):
+  `satisfaction(&PlayerExperience)`, `retention_probability(f64)`,
+  `rematch_probability(f64)`; and `PlayerExperience` (recent match qualities,
+  queue times, outcomes, `current_streak`, `rank_change`, `perceived_fairness`,
+  `rematch_rate`; `new()`/`record_match()` helpers).
+- `lua.rs` — `LuaSatisfactionModel`: implements the trait by delegating to a
+  script's `satisfaction` / `retention_probability` / `rematch_probability`;
+  the weights live in the script's config.
+- `plugins/utility/satisfaction.lua` — the weighted sum (loss-streak penalty
+  only kicks in below −3), `retention_probability()` is the logistic
+  `1/(1+e^−s)`, and `rematch_probability()` requires a higher threshold
+  (`1/(1+e^−0.5(s−2))`).
+- `lib.rs` — re-exports `LuaSatisfactionModel`, `SatisfactionModel`,
   `PlayerExperience`.
 
 The twelve-step build order is complete and v0.1 is accepted.
@@ -685,8 +735,21 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 - **Unit tests** live in `#[cfg(test)] mod tests` blocks within each source file
 - **Crate naming:** `matchlab-{domain}` (e.g., `matchlab-core`, `matchlab-rating`)
 - **File naming:** `match_.rs` (not `match.rs`, which is a Rust keyword)
-- **Plugin model:** Lua scripts under `plugins/` override specific decision points ("hooks") at runtime via `mlua`. Native Rust implementations remain the default. Scripts use `lua:<trait>` prefix in YAML (e.g., `lua:elo`). Missing hooks fall back to Rust defaults. See `docs/spec.md` §3.3 for hook signatures and design rules.
-- **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`. Scripts receive only observable data, never `PlayerReality`.
+- **Plugin model (Lua-native):** every algorithm is a Lua script under
+  `plugins/<layer>/` implementing a per-layer contract (see `docs/spec.md` §3.3
+  and each crate's `lua.rs`). Rust holds the types, the event loop, and thin
+  trait adapters (`*::lua::Lua*System`); there are **no inherent Rust
+  algorithms**. Manifests reference systems by `script:` path. Scripts receive
+  `config` (YAML params) + a persistent `context` table (passed by reference,
+  stored in the VM) and may draw deterministically via `matchlab.rng_*`.
+- **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`
+  via `matchlab.rng_*`. Scripts receive only observable data, never
+  `PlayerReality` (the outcome model and metric scripts get the ground-truth
+  skill binding / reality fields — metrics are the legitimate reality reader).
+- **Adding a system** = writing one `.lua` file implementing the layer's
+  contract and referencing it by path (or by `name:` for built-in rating
+  systems, which maps to a script). See `plugins/rating/decay_elo.lua` and
+  `plugins/metrics/avg_rating_gap.lua` for examples with no Rust equivalent.
 
 ---
 
@@ -696,12 +759,11 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 |------|---------|
 | Core types (PlayerReality, World, etc.) | `crates/matchlab-core/src/` |
 | How events flow | `crates/matchlab-core/src/event.rs`, `src/lib.rs` (Simulation) |
-| Rating algorithm implementations | `crates/matchlab-rating/src/` |
-| Matchmaker implementations | `crates/matchlab-matchmaking/src/` |
-| Metric collector implementations | `crates/matchlab-metrics/src/` |
-| Lua hook scripts | `plugins/` (organized by trait type) |
-| Hook definitions + loader | `crates/matchlab-{trait}/src/hooks.rs`, `loader.rs` |
-| How to add a Lua hook | Write a `.lua` file in `plugins/`, define hook functions, reference via `lua:<name>` in YAML |
+| Rating algorithm scripts | `plugins/rating/` (elo, flat, glicko2, trueskill, decay_elo) |
+| Matchmaker scripts | `plugins/matchmaking/` (batch, expanding_window, strict, hub_spoke) |
+| Metric collector scripts | `plugins/metrics/` (one per metric, incl. custom) |
+| Lua system contracts + adapter | `crates/matchlab-{trait}/src/lua.rs`, `crates/matchlab-lua/src/` |
+| How to add a system | Write a `.lua` file in `plugins/`, reference via `script:` in YAML |
 | Experiment YAML schema | `docs/spec.md` section 13.1 |
 | Build plan | `docs/spec.md` §17 build order |
 | Adversarial agents (booster, deranker, etc.) | `crates/matchlab-adversarial/src/` |

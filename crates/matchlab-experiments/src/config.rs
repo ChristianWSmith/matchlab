@@ -73,21 +73,29 @@ pub enum DistributionSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameSpec {
     pub team_size: usize,
-    pub outcome_model: String,
-    pub beta: f64,
-    pub noise: f64,
-    #[serde(default)]
-    pub variant: Option<String>,
+    /// Path to the Lua outcome-model script (e.g. plugins/game/logistic.lua).
+    #[serde(default = "default_outcome_script")]
+    pub script: String,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
+fn default_outcome_script() -> String {
+    "plugins/game/logistic.lua".to_string()
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MatchmakingSpec {
-    pub algorithm: String,
+    /// Path to the Lua matchmaker script (e.g. plugins/matchmaking/batch.lua).
+    #[serde(default = "default_matchmaker_script")]
+    pub script: String,
     pub max_queue_time: f64,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+fn default_matchmaker_script() -> String {
+    "plugins/matchmaking/batch.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -97,7 +105,13 @@ pub struct RatingSpec {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RatingSystemSpec {
-    pub name: String,
+    /// Optional label; when present it resolves to a built-in script
+    /// (e.g. "elo" → plugins/rating/elo.lua). When absent, `script` is used.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Path to the Lua rating-system script.
+    #[serde(default)]
+    pub script: Option<String>,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -105,32 +119,28 @@ pub struct RatingSystemSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DetectionSpec {
     pub enabled: bool,
-    pub smurf: Option<SmurfDetectionSpec>,
+    /// Path to the Lua detection script (e.g. plugins/detection/smurf.lua).
+    #[serde(default = "default_detection_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SmurfDetectionSpec {
-    pub acceleration_threshold: f64,
-    pub ban_threshold: f64,
-    pub min_games_before_action: u64,
+fn default_detection_script() -> String {
+    "plugins/detection/smurf.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RankingSpec {
-    pub brackets: Vec<RankBracketSpec>,
+    /// Path to the Lua rank mapper script (e.g. plugins/ranking/brackets.lua).
+    #[serde(default = "default_ranking_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RankSpec {
-    pub tier: String,
-    pub division: u8,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RankBracketSpec {
-    pub rank: RankSpec,
-    pub min: f64,
-    pub max: f64,
+fn default_ranking_script() -> String {
+    "plugins/ranking/brackets.lua".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -141,10 +151,11 @@ pub struct AdversarialSpec {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdversarialAgentSpec {
-    pub agent_type: String,
     /// Player id the agent is attached to (for single-player agents).
     #[serde(default)]
     pub player: Option<u64>,
+    /// Path to the Lua agent script (e.g. plugins/adversarial/afk.lua).
+    pub script: String,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -152,19 +163,15 @@ pub struct AdversarialAgentSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SatisfactionSpec {
     pub enabled: bool,
-    #[serde(default)]
-    pub weights: Option<SatisfactionWeightsSpec>,
+    /// Path to the Lua satisfaction script (e.g. plugins/utility/satisfaction.lua).
+    #[serde(default = "default_satisfaction_script")]
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SatisfactionWeightsSpec {
-    pub match_quality: Option<f64>,
-    pub queue_time_penalty: Option<f64>,
-    pub win_bonus: Option<f64>,
-    pub loss_streak_penalty: Option<f64>,
-    pub rank_progression_bonus: Option<f64>,
-    pub fairness_sensitivity: Option<f64>,
-    pub rematch_bonus: Option<f64>,
+fn default_satisfaction_script() -> String {
+    "plugins/utility/satisfaction.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -244,11 +251,11 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 5
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
@@ -279,7 +286,10 @@ experiment:
         assert_eq!(config.experiment.population.size, 10000);
         assert_eq!(config.experiment.population.archetypes.len(), 1);
         assert_eq!(config.experiment.game.team_size, 5);
-        assert_eq!(config.experiment.matchmaking.algorithm, "batch");
+        assert_eq!(
+            config.experiment.matchmaking.script,
+            "plugins/matchmaking/batch.lua"
+        );
         let batch = config
             .experiment
             .matchmaking
@@ -288,7 +298,10 @@ experiment:
             .and_then(|v| v.as_u64());
         assert_eq!(batch, Some(10));
         assert_eq!(config.experiment.rating.systems.len(), 1);
-        assert_eq!(config.experiment.rating.systems[0].name, "elo");
+        assert_eq!(
+            config.experiment.rating.systems[0].name,
+            Some("elo".to_string())
+        );
         assert_eq!(
             config.experiment.rating.systems[0]
                 .params
@@ -324,11 +337,11 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
@@ -376,13 +389,12 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
-    variant: fatigue
+    script: plugins/game/fatigue.lua
     beta: 400.0
     noise: 0.05
     fatigue_decay_rate: 0.01
   matchmaking:
-    algorithm: expanding_window
+    script: plugins/matchmaking/expanding_window.lua
     batch_interval: 10
     max_queue_time: 60.0
     tiers: [[5.0, 25.0], [10.0, 50.0]]
@@ -394,23 +406,22 @@ experiment:
         beta: 400.0
   detection:
     enabled: true
-    smurf:
-      acceleration_threshold: 0.8
-      ban_threshold: 0.99
-      min_games_before_action: 3
+    script: plugins/detection/smurf.lua
+    min_games_before_action: 3
   ranking:
+    script: plugins/ranking/brackets.lua
     brackets:
-      - { rank: { tier: bronze, division: 1 }, min: 0, max: 1200 }
+      - { tier: bronze, division: 1, min: 0, max: 1200 }
   adversarial:
     agents:
-      - agent_type: afk
+      - script: plugins/adversarial/afk.lua
         player: 1
         go_afk_probability: 0.5
   satisfaction:
     enabled: true
-    weights:
-      match_quality: 1.0
-      queue_time_penalty: -0.01
+    script: plugins/utility/satisfaction.lua
+    match_quality: 1.0
+    queue_time_penalty: -0.01
   metrics: []
   objectives:
     match_quality: 1.0
@@ -425,7 +436,7 @@ experiment:
     report: false
 "#;
         let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.experiment.game.variant.as_deref(), Some("fatigue"));
+        assert_eq!(config.experiment.game.script, "plugins/game/fatigue.lua");
         assert_eq!(
             config
                 .experiment
@@ -435,11 +446,22 @@ experiment:
                 .and_then(|v| v.as_f64()),
             Some(0.01)
         );
-        assert_eq!(config.experiment.matchmaking.algorithm, "expanding_window");
+        assert_eq!(
+            config.experiment.matchmaking.script,
+            "plugins/matchmaking/expanding_window.lua"
+        );
         assert!(config.experiment.detection.as_ref().unwrap().enabled);
         assert_eq!(
-            config.experiment.ranking.as_ref().unwrap().brackets.len(),
-            1
+            config
+                .experiment
+                .ranking
+                .as_ref()
+                .unwrap()
+                .params
+                .get("brackets")
+                .and_then(|v| v.as_sequence())
+                .map(|s| s.len()),
+            Some(1)
         );
         assert_eq!(
             config.experiment.adversarial.as_ref().unwrap().agents.len(),
@@ -469,11 +491,11 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.0
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:

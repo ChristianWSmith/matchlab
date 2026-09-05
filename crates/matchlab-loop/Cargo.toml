@@ -16,3 +16,6 @@ matchlab-detection = { path = "../matchlab-detection" }
 matchlab-ranking = { path = "../matchlab-ranking" }
 matchlab-adversarial = { path = "../matchlab-adversarial" }
 matchlab-utility = { path = "../matchlab-utility" }
+
+[dev-dependencies]
+serde_yaml.workspace = true

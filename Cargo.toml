@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/matchlab-core",
+    "crates/matchlab-lua",
     "crates/matchlab-players",
     "crates/matchlab-game",
     "crates/matchlab-matchmaking",

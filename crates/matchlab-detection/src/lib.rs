@@ -1,13 +1,13 @@
-//! matchlab-detection: smurf detection, interventions, and anomaly detection.
+//! matchlab-detection: Lua-native detection systems.
 //!
-//! Implements the `DetectionSystem` trait (spec §9) with a concrete
-//! `SmurfDetector` that tracks consecutive anomalous performances and
-//! recommends intervention actions via an `InterventionPolicy`.
+//! Implements the `DetectionSystem` trait (spec §9). Detection algorithms are
+//! Lua scripts under `plugins/detection/` (the smurf detector ships as
+//! `smurf.lua`); the `InterventionAction` enum stays in Rust.
 
 pub mod detector;
 pub mod intervention;
-pub mod smurf;
+pub mod lua;
 
 pub use detector::{DetectionResult, DetectionSystem};
-pub use intervention::{InterventionAction, InterventionPolicy, PlayerInterventionState};
-pub use smurf::SmurfDetector;
+pub use intervention::InterventionAction;
+pub use lua::LuaDetectionSystem;

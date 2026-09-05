@@ -101,20 +101,18 @@ mod tests {
                 },
                 game: GameSpec {
                     team_size: 5,
-                    outcome_model: "logistic".to_string(),
-                    beta: 400.0,
-                    noise: 0.05,
-                    variant: None,
+                    script: "plugins/game/logistic.lua".to_string(),
                     params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
-                    algorithm: "batch".to_string(),
+                    script: "plugins/matchmaking/batch.lua".to_string(),
                     max_queue_time: 60.0,
                     params: BTreeMap::new(),
                 },
                 rating: RatingSpec {
                     systems: vec![RatingSystemSpec {
-                        name: "elo".to_string(),
+                        name: Some("elo".to_string()),
+                        script: None,
                         params: BTreeMap::new(),
                     }],
                 },
@@ -175,7 +173,15 @@ mod tests {
             }],
         };
         let configs = design.generate_configs(&base());
-        assert_eq!(configs[0].experiment.game.beta, 300.0);
+        assert_eq!(
+            configs[0]
+                .experiment
+                .game
+                .params
+                .get("beta")
+                .and_then(|v| v.as_f64()),
+            Some(300.0)
+        );
     }
 
     #[test]
@@ -188,7 +194,13 @@ mod tests {
         };
         let configs = design.generate_configs(&base());
         assert_eq!(configs.len(), 2);
-        assert_eq!(configs[0].experiment.rating.systems[0].name, "elo");
-        assert_eq!(configs[1].experiment.rating.systems[0].name, "flatpoints");
+        assert_eq!(
+            configs[0].experiment.rating.systems[0].name,
+            Some("elo".to_string())
+        );
+        assert_eq!(
+            configs[1].experiment.rating.systems[0].name,
+            Some("flatpoints".to_string())
+        );
     }
 }

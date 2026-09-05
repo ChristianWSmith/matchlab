@@ -1,0 +1,76 @@
+# novel_rating — a system with no Rust equivalent.
+#
+# Demonstrates the core dogfooding claim: a genuinely novel rating system can be
+# added by writing one Lua file and referencing it by path. `decay_elo.lua`
+# models rating decay for returning players (a player who has been idle drifts
+# back toward the initial rating) — there is no Rust implementation of this.
+#
+# Also exercises the custom metric `avg_rating_gap` (mean absolute deviation of
+# participant ratings from the cohort average), added the same way.
+
+experiment:
+  name: novel_rating
+  description: "Novel Lua-only rating system (decay_elo) + custom metric (avg_rating_gap)"
+  seed: 7
+
+  population:
+    size: 2000
+    seed: 7
+    archetypes:
+      - name: stable
+        proportion: 0.8
+        skill_distribution: { type: normal, mean: 1000, stddev: 250 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+        initial_rating: 1000.0
+      - name: returning
+        proportion: 0.2
+        skill_distribution: { type: normal, mean: 1200, stddev: 200 }
+        skill_volatility: 0.0
+        improvement_rate: 0.0
+        play_frequency: 0.6
+        session_length: 1500.0
+        quit_probability: 0.0
+        initial_rating: 700.0
+
+  game:
+    team_size: 5
+    script: plugins/game/logistic.lua
+    beta: 400.0
+    noise: 0.05
+
+  matchmaking:
+    script: plugins/matchmaking/batch.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+
+  rating:
+    systems:
+      - script: plugins/rating/decay_elo.lua
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+        decay_rate: 0.0001
+
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy
+    - avg_rating_gap
+
+  cohorts:
+    - name: all
+      filter: { type: all }
+
+  duration:
+    matches: 50000
+    max_time: 604800.0
+
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: true

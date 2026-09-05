@@ -160,7 +160,10 @@ name = "matchlab-adversarial"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -188,7 +191,10 @@ name = "matchlab-detection"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -200,6 +206,7 @@ dependencies = [
  "matchlab-detection",
  "matchlab-game",
  "matchlab-loop",
+ "matchlab-lua",
  "matchlab-matchmaking",
  "matchlab-metrics",
  "matchlab-objective",
@@ -217,7 +224,9 @@ name = "matchlab-game"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -234,6 +243,16 @@ dependencies = [
  "matchlab-ranking",
  "matchlab-rating",
  "matchlab-utility",
+ "serde_yaml",
+]
+
+[[package]]
+name = "matchlab-lua"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "mlua",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -241,7 +260,9 @@ name = "matchlab-matchmaking"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -249,8 +270,10 @@ name = "matchlab-metrics"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
  "serde",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -276,6 +299,8 @@ name = "matchlab-ranking"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
  "serde_yaml",
 ]
@@ -285,6 +310,7 @@ name = "matchlab-rating"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
  "serde_yaml",
 ]
@@ -294,7 +320,10 @@ name = "matchlab-utility"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
+ "mlua",
  "serde",
+ "serde_yaml",
 ]
 
 [[package]]

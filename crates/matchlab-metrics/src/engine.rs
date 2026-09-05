@@ -50,9 +50,7 @@ impl MetricsEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accuracy::RatingAccuracyCollector;
-    use crate::quality::MatchQualityCollector;
-    use crate::queue::QueueTimeCollector;
+    use crate::lua::LuaMetricCollector;
     use matchlab_core::match_::{MatchId, MatchResult, Team};
     use matchlab_core::player::{
         PlayerId, PlayerObservation, PlayerReality, SkillVector, VisibleRank,
@@ -126,6 +124,14 @@ mod tests {
         }
     }
 
+    fn lua_collector(name: &str) -> LuaMetricCollector {
+        LuaMetricCollector::load(
+            &format!("plugins/metrics/{name}.lua"),
+            &serde_yaml::Value::Null,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn engine_finalize_aggregates_all_registered_collectors() {
         let mut world = World::new(SimRng::from_seed(1));
@@ -137,9 +143,9 @@ mod tests {
         }
 
         let mut engine = MetricsEngine::new();
-        engine.register(Box::new(RatingAccuracyCollector::new()));
-        engine.register(Box::new(MatchQualityCollector::new()));
-        engine.register(Box::new(QueueTimeCollector::new()));
+        engine.register(Box::new(lua_collector("rating_accuracy")));
+        engine.register(Box::new(lua_collector("match_quality")));
+        engine.register(Box::new(lua_collector("queue_time")));
 
         for _ in 0..3 {
             engine.record_match(

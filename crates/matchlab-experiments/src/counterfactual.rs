@@ -93,9 +93,21 @@ mod tests {
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
     use matchlab_core::world::World;
-    use matchlab_rating::elo::{EloConfig, EloRatingSystem};
-    use matchlab_rating::flat::{FlatPointsConfig, FlatPointsRatingSystem};
+    use matchlab_rating::registry;
     use std::collections::VecDeque;
+
+    fn lua_elo() -> Box<dyn RatingSystem> {
+        let params =
+            serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
+        registry::from_script("plugins/rating/elo.lua", &params).expect("elo.lua loads")
+    }
+
+    fn lua_flat() -> Box<dyn RatingSystem> {
+        let params =
+            serde_yaml::from_str("win_points: 10.0\nloss_points: 10.0\ninitial_rating: 1000.0")
+                .unwrap();
+        registry::from_script("plugins/rating/flat.lua", &params).expect("flat.lua loads")
+    }
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
@@ -155,16 +167,8 @@ mod tests {
     #[test]
     fn same_system_twice_is_identical() {
         let h = history();
-        let sys_a = Box::new(EloRatingSystem::new(EloConfig {
-            k_factor: 32.0,
-            initial_rating: 1000.0,
-            beta: 400.0,
-        })) as Box<dyn RatingSystem>;
-        let sys_b = Box::new(EloRatingSystem::new(EloConfig {
-            k_factor: 32.0,
-            initial_rating: 1000.0,
-            beta: 400.0,
-        })) as Box<dyn RatingSystem>;
+        let sys_a = lua_elo();
+        let sys_b = lua_elo();
 
         let a = counterfactual_eval(&h, &[("elo", sys_a)]);
         let b = counterfactual_eval(&h, &[("elo", sys_b)]);
@@ -180,16 +184,8 @@ mod tests {
     #[test]
     fn different_systems_produce_different_results() {
         let h = history();
-        let elo = Box::new(EloRatingSystem::new(EloConfig {
-            k_factor: 32.0,
-            initial_rating: 1000.0,
-            beta: 400.0,
-        })) as Box<dyn RatingSystem>;
-        let flat = Box::new(FlatPointsRatingSystem::new(FlatPointsConfig {
-            win_points: 10.0,
-            loss_points: 10.0,
-            initial_rating: 1000.0,
-        })) as Box<dyn RatingSystem>;
+        let elo = lua_elo();
+        let flat = lua_flat();
 
         let a = counterfactual_eval(&h, &[("elo", elo)]);
         let b = counterfactual_eval(&h, &[("flat", flat)]);
@@ -204,11 +200,7 @@ mod tests {
     #[test]
     fn winner_ends_higher_than_loser() {
         let h = history();
-        let elo = Box::new(EloRatingSystem::new(EloConfig {
-            k_factor: 32.0,
-            initial_rating: 1000.0,
-            beta: 400.0,
-        })) as Box<dyn RatingSystem>;
+        let elo = lua_elo();
         let res = counterfactual_eval(&h, &[("elo", elo)]);
         let states: HashMap<PlayerId, _> = res["elo"].iter().cloned().collect();
         // Player 1 won 2 of 3 → higher rating than player 2.

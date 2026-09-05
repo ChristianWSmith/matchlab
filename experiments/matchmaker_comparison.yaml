@@ -4,7 +4,7 @@ experiment:
   name: matchmaker_comparison
   description: "Batch vs ExpandingWindow vs Strict matchmakers on the same population"
   matchmaking:
-    algorithm: expanding_window
+    script: plugins/matchmaking/expanding_window.lua
     max_queue_time: 60.0
     tiers:
       - [5.0, 25.0]

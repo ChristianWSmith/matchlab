@@ -38,10 +38,51 @@ pub fn derive(seed: u64, index: u64) -> u64 {
 }
 
 pub fn hash_config(config: &ExperimentConfig) -> String {
-    let serialized = serde_yaml::to_string(config).unwrap_or_default();
     let mut h = DefaultHasher::new();
+    let serialized = serde_yaml::to_string(config).unwrap_or_default();
     serialized.hash(&mut h);
+    // Fold in the contents of every referenced Lua script so an uncommitted
+    // script edit still changes the experiment identity (scripts are the
+    // algorithms now; the manifest alone no longer pins behavior).
+    for path in collect_script_paths(config) {
+        path.hash(&mut h);
+        let resolved = matchlab_lua::resolve::resolve_script_path(&path);
+        let content = std::fs::read_to_string(&resolved).unwrap_or_default();
+        content.hash(&mut h);
+    }
     format!("{:016x}", h.finish())
+}
+
+/// Collect every Lua script path a config references: `.lua` string values
+/// anywhere in the serialized config, plus the metric names resolved to
+/// `plugins/metrics/<name>.lua`. Sorted + deduplicated for determinism.
+fn collect_script_paths(config: &ExperimentConfig) -> Vec<String> {
+    let mut paths = Vec::new();
+    let value = serde_yaml::to_value(config).unwrap_or_default();
+    fn walk(v: &serde_yaml::Value, out: &mut Vec<String>) {
+        match v {
+            serde_yaml::Value::String(s) if s.ends_with(".lua") => out.push(s.clone()),
+            serde_yaml::Value::Sequence(seq) => {
+                for item in seq {
+                    walk(item, out);
+                }
+            }
+            serde_yaml::Value::Mapping(map) => {
+                for (_, val) in map {
+                    walk(val, out);
+                }
+            }
+            serde_yaml::Value::Tagged(t) => walk(&t.value, out),
+            _ => {}
+        }
+    }
+    walk(&value, &mut paths);
+    for name in &config.experiment.metrics {
+        paths.push(format!("plugins/metrics/{name}.lua"));
+    }
+    paths.sort();
+    paths.dedup();
+    paths
 }
 
 /// Best-effort: capture the current git commit hash so each `ExperimentResult`
@@ -106,6 +147,38 @@ mod tests {
         assert!(h == "unknown" || h.len() >= 7, "got {h:?}");
     }
 
+    #[test]
+    fn hash_config_changes_with_script_contents() {
+        let a: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
+        let b: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
+        let ha = hash_config(&a);
+        let hb = hash_config(&b);
+        assert_eq!(ha, hb, "identical configs hash identically");
+    }
+
+    #[test]
+    fn hash_config_detects_script_body_edits() {
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("matchlab_hash_test_{}.lua", std::process::id()));
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"k = 1\n").unwrap();
+
+        let mut config: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
+        config.experiment.rating.systems[0].script = Some(path.to_str().unwrap().to_string());
+        let first = hash_config(&config);
+
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"k = 2\n").unwrap();
+        let second = hash_config(&config);
+
+        assert_ne!(
+            first, second,
+            "script body edit must change the config hash"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
     const TINY_CONFIG: &str = r#"
 experiment:
   name: tiny
@@ -124,11 +197,11 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:

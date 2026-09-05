@@ -10,20 +10,10 @@ use std::collections::BTreeMap;
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
-use matchlab_game::logistic::LogisticOutcomeModel;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
-use matchlab_matchmaking::batch::BatchMatchmaker;
-use matchlab_matchmaking::expanding::ExpandingWindowMatchmaker;
-use matchlab_matchmaking::hub_spoke::HubSpokeMatchmaker;
 use matchlab_matchmaking::matchmaker::Matchmaker;
-use matchlab_matchmaking::strict::StrictMatchmaker;
-use matchlab_metrics::{
-    ConvergenceCollector, DimensionalityFidelityCollector, MatchInequalityCollector,
-    MatchQualityCollector, MetricResult, MetricsEngine, NDCGCollector, PopulationHealthCollector,
-    QueueTimeCollector, RatingAccuracyCollector, ResponsivenessCollector, SmurfMetricsCollector,
-    StabilityCollector, StreakCollector,
-};
+use matchlab_metrics::{MetricResult, MetricsEngine};
 use matchlab_objective::utility::{ObjectiveFunction, ObjectiveWeights};
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
@@ -73,9 +63,9 @@ impl ExperimentRunner {
 
         let seed = seeds.population_seed;
         let detection_system = build_detection_system(config.experiment.detection.as_ref())?;
-        let ranker = build_ranker(config.experiment.ranking.as_ref());
-        let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref());
-        let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref());
+        let ranker = build_ranker(config.experiment.ranking.as_ref())?;
+        let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref())?;
+        let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref())?;
 
         let mut loop_ = MatchLoop::with_extras(
             population,
@@ -184,145 +174,36 @@ fn build_rating_system(systems: &[RatingSystemSpec]) -> Result<Box<dyn RatingSys
         Some(s) => s,
         None => return Err("rating.systems must declare at least one system".to_string()),
     };
+    let params = flatten_params(&spec.params);
+    if let Some(name) = &spec.name {
+        registry::from_name(name, &params)
+    } else if let Some(script) = &spec.script {
+        registry::from_script(script, &params)
+    } else {
+        Err("rating system must declare a `name` or `script`".to_string())
+    }
+}
+
+fn flatten_params(
+    params: &std::collections::BTreeMap<String, serde_yaml::Value>,
+) -> serde_yaml::Value {
     let mut mapping = serde_yaml::Mapping::new();
-    for (key, value) in spec.params.iter() {
+    for (key, value) in params {
         mapping.insert(serde_yaml::Value::String(key.clone()), value.clone());
     }
-    let params = serde_yaml::Value::Mapping(mapping);
-    registry::from_name(&spec.name, &params)
-        .ok_or_else(|| format!("unknown rating system: {}", spec.name))
+    serde_yaml::Value::Mapping(mapping)
 }
 
 fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String> {
-    let base = match spec.outcome_model.as_str() {
-        "logistic" => {
-            Box::new(LogisticOutcomeModel::new(spec.beta, spec.noise)) as Box<dyn OutcomeModel>
-        }
-        other => return Err(format!("unknown outcome model: {other}")),
-    };
-    let variant = spec.variant.as_deref().unwrap_or("");
-    match variant {
-        "" => Ok(base),
-        "variance" => {
-            let multiplier = spec
-                .params
-                .get("variance_multiplier")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0);
-            Ok(Box::new(
-                matchlab_game::variance::VarianceOutcomeModel::new(
-                    spec.beta, spec.noise, multiplier,
-                ),
-            ))
-        }
-        "composition" => {
-            let weights = spec
-                .params
-                .get("dimension_weights")
-                .and_then(|v| v.as_mapping())
-                .map(|m| {
-                    m.iter()
-                        .map(|(k, v)| {
-                            (
-                                k.as_str().unwrap_or("").to_string(),
-                                v.as_f64().unwrap_or(1.0),
-                            )
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let synergy = spec
-                .params
-                .get("synergy_bonus")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-            Ok(Box::new(
-                matchlab_game::composition::CompositionOutcomeModel::new(
-                    weights, synergy, spec.beta,
-                ),
-            ))
-        }
-        "performance" => {
-            let weight = spec
-                .params
-                .get("performance_weight")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0);
-            Ok(Box::new(
-                matchlab_game::performance::PerformanceOutcomeModel::new(spec.beta, weight),
-            ))
-        }
-        "fatigue" => {
-            let decay = spec
-                .params
-                .get("fatigue_decay_rate")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.001);
-            Ok(Box::new(matchlab_game::fatigue::FatigueOutcomeModel::new(
-                base, decay,
-            )))
-        }
-        "momentum" => {
-            let factor = spec
-                .params
-                .get("momentum_factor")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.1);
-            Ok(Box::new(
-                matchlab_game::momentum::MomentumOutcomeModel::new(base, factor),
-            ))
-        }
-        other => Err(format!("unknown outcome model variant: {other}")),
-    }
+    let params = flatten_params(&spec.params);
+    matchlab_game::lua::LuaOutcomeModel::load(&spec.script, &params)
+        .map(|m| Box::new(m) as Box<dyn OutcomeModel>)
 }
 
 fn build_matchmaker(spec: &MatchmakingSpec) -> Result<Box<dyn Matchmaker>, String> {
-    match spec.algorithm.as_str() {
-        "batch" => Ok(Box::new(BatchMatchmaker::new(batch_interval_secs(spec)))),
-        "expanding_window" => {
-            let tiers: Vec<(f64, f64)> = spec
-                .params
-                .get("tiers")
-                .and_then(|v| v.as_sequence())
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|t| {
-                            let arr = t.as_sequence()?;
-                            let a = arr.first()?.as_f64()?;
-                            let b = arr.get(1)?.as_f64()?;
-                            Some((a, b))
-                        })
-                        .collect()
-                })
-                .unwrap_or_else(|| vec![(5.0, 25.0), (10.0, 50.0), (20.0, 100.0), (30.0, 200.0)]);
-            let max_window = spec
-                .params
-                .get("max_window")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(400.0);
-            Ok(Box::new(ExpandingWindowMatchmaker::with_tiers(
-                tiers, max_window,
-            )))
-        }
-        "strict" => {
-            let max_diff = spec
-                .params
-                .get("max_skill_diff")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(50.0);
-            Ok(Box::new(StrictMatchmaker::new(max_diff)))
-        }
-        "hub_spoke" => {
-            let capacity = spec
-                .params
-                .get("spoke_capacity")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(100) as usize;
-            let spokes = std::collections::HashMap::new();
-            Ok(Box::new(HubSpokeMatchmaker::new(spokes, capacity)))
-        }
-        other => Err(format!("unknown matchmaker algorithm: {other}")),
-    }
+    let params = flatten_params(&spec.params);
+    matchlab_matchmaking::lua::LuaMatchmaker::load(&spec.script, &params)
+        .map(|m| Box::new(m) as Box<dyn Matchmaker>)
 }
 
 fn batch_interval_secs(spec: &MatchmakingSpec) -> u64 {
@@ -340,23 +221,11 @@ fn batch_interval_secs(spec: &MatchmakingSpec) -> u64 {
 
 fn register_metrics(engine: &mut MetricsEngine, names: &[String]) -> Result<(), String> {
     for name in names {
-        match name.as_str() {
-            "rating_accuracy" => engine.register(Box::new(RatingAccuracyCollector::new())),
-            "match_quality" => engine.register(Box::new(MatchQualityCollector::new())),
-            "queue_time" => engine.register(Box::new(QueueTimeCollector::new())),
-            "match_inequality" => engine.register(Box::new(MatchInequalityCollector::new())),
-            "ndcg" => engine.register(Box::new(NDCGCollector::new())),
-            "dimensionality_fidelity" => {
-                engine.register(Box::new(DimensionalityFidelityCollector::new()))
-            }
-            "convergence" => engine.register(Box::new(ConvergenceCollector::default())),
-            "responsiveness" => engine.register(Box::new(ResponsivenessCollector::new())),
-            "stability" => engine.register(Box::new(StabilityCollector::new())),
-            "streaks" => engine.register(Box::new(StreakCollector::new())),
-            "population_health" => engine.register(Box::new(PopulationHealthCollector::new())),
-            "smurf" => engine.register(Box::new(SmurfMetricsCollector::new())),
-            other => return Err(format!("unknown metric collector: {other}")),
-        }
+        let path = format!("plugins/metrics/{name}.lua");
+        let collector =
+            matchlab_metrics::lua::LuaMetricCollector::load(&path, &serde_yaml::Value::Null)
+                .map_err(|_| format!("unknown metric collector: {name}"))?;
+        engine.register(Box::new(collector));
     }
     Ok(())
 }
@@ -370,146 +239,56 @@ fn build_detection_system(
     if !spec.enabled {
         return Ok(None);
     }
-    let Some(smurf) = spec.smurf.as_ref() else {
-        return Ok(None);
-    };
-    let mut policy = matchlab_detection::intervention::InterventionPolicy::default_ladder();
-    policy.min_games_before_action = smurf.min_games_before_action;
-    let mut detector = matchlab_detection::smurf::SmurfDetector::new(policy);
-    detector.sigma_threshold = 3.0;
-    detector.min_anomalous_games = smurf.min_games_before_action.max(1);
+    let params = flatten_params(&spec.params);
+    let detector = matchlab_detection::lua::LuaDetectionSystem::load(&spec.script, &params)?;
     Ok(Some(Box::new(detector)))
 }
 
 fn build_ranker(
     spec: Option<&RankingSpec>,
-) -> Option<Box<dyn matchlab_ranking::ranker::RankMapper>> {
-    let spec = spec?;
-    let brackets = spec
-        .brackets
-        .iter()
-        .map(|b| matchlab_ranking::ranker::RankBracket {
-            rank: matchlab_ranking::ranker::Rank {
-                tier: b.rank.tier.clone(),
-                division: b.rank.division,
-            },
-            min: b.min,
-            max: b.max,
-        })
-        .collect();
-    Some(Box::new(matchlab_ranking::ranker::BracketRankMapper::new(
-        brackets,
-    )))
+) -> Result<Option<Box<dyn matchlab_ranking::ranker::RankMapper>>, String> {
+    let Some(spec) = spec else {
+        return Ok(None);
+    };
+    let params = flatten_params(&spec.params);
+    let mapper = matchlab_ranking::lua::LuaRankMapper::load(&spec.script, &params)?;
+    Ok(Some(Box::new(mapper)))
 }
 
 fn build_adversarial_agents(
     spec: Option<&crate::config::AdversarialSpec>,
-) -> std::collections::HashMap<PlayerId, Box<dyn matchlab_adversarial::agent::AdversarialAgent>> {
+) -> Result<
+    std::collections::HashMap<PlayerId, Box<dyn matchlab_adversarial::agent::AdversarialAgent>>,
+    String,
+> {
     use matchlab_adversarial::agent::AdversarialAgent;
     let mut agents: std::collections::HashMap<PlayerId, Box<dyn AdversarialAgent>> =
         std::collections::HashMap::new();
     let Some(spec) = spec else {
-        return agents;
+        return Ok(agents);
     };
     for agent_spec in &spec.agents {
-        let agent: Option<Box<dyn AdversarialAgent>> = match agent_spec.agent_type.as_str() {
-            "afk" => {
-                let p = agent_spec
-                    .params
-                    .get("go_afk_probability")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.1);
-                Some(Box::new(matchlab_adversarial::afk::AfkAgent::new(p)))
-            }
-            "deranker" => {
-                let target = agent_spec
-                    .params
-                    .get("target_rating")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(500.0);
-                Some(Box::new(
-                    matchlab_adversarial::deranker::DerankerAgent::new(target),
-                ))
-            }
-            "rating_farmer" => {
-                let qp = agent_spec
-                    .params
-                    .get("quit_probability")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.5);
-                let minutes = agent_spec
-                    .params
-                    .get("quit_after_minutes")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(5.0);
-                Some(Box::new(
-                    matchlab_adversarial::rating_farmer::RatingFarmerAgent::new(qp, minutes),
-                ))
-            }
-            "booster" => {
-                let boost_target = agent_spec
-                    .params
-                    .get("boost_target")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(agent_spec.player.unwrap_or(0));
-                let boostee = agent_spec
-                    .params
-                    .get("boostee")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(boost_target + 1);
-                Some(Box::new(matchlab_adversarial::booster::BoosterAgent::new(
-                    PlayerId(boost_target),
-                    PlayerId(boostee),
-                )))
-            }
-            "win_trader" => {
-                let partner = agent_spec
-                    .params
-                    .get("partner")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(agent_spec.player.unwrap_or(0) + 1);
-                let alternating = agent_spec
-                    .params
-                    .get("alternating")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                Some(Box::new(
-                    matchlab_adversarial::win_trader::WinTraderAgent::new(
-                        PlayerId(partner),
-                        alternating,
-                    ),
-                ))
-            }
-            _ => None,
-        };
-        if let Some(agent) = agent {
-            let pid = agent_spec.player.unwrap_or(0);
-            agents.insert(PlayerId(pid), agent);
-        }
+        let params = flatten_params(&agent_spec.params);
+        let pid = PlayerId(agent_spec.player.unwrap_or(0));
+        let agent =
+            matchlab_adversarial::lua::LuaAdversarialAgent::load(&agent_spec.script, &params, pid)?;
+        agents.insert(pid, Box::new(agent));
     }
-    agents
+    Ok(agents)
 }
 
 fn build_satisfaction_model(
     spec: Option<&crate::config::SatisfactionSpec>,
-) -> Option<matchlab_utility::satisfaction::SatisfactionModel> {
-    let spec = spec?;
-    if !spec.enabled {
-        return None;
-    }
-    let w = spec.weights.as_ref();
-    let weights = matchlab_utility::satisfaction::SatisfactionWeights {
-        match_quality: w.and_then(|w| w.match_quality).unwrap_or(1.0),
-        queue_time_penalty: w.and_then(|w| w.queue_time_penalty).unwrap_or(-0.01),
-        win_bonus: w.and_then(|w| w.win_bonus).unwrap_or(0.5),
-        loss_streak_penalty: w.and_then(|w| w.loss_streak_penalty).unwrap_or(-0.3),
-        rank_progression_bonus: w.and_then(|w| w.rank_progression_bonus).unwrap_or(0.2),
-        fairness_sensitivity: w.and_then(|w| w.fairness_sensitivity).unwrap_or(-0.8),
-        rematch_bonus: w.and_then(|w| w.rematch_bonus).unwrap_or(0.1),
+) -> Result<Option<Box<dyn matchlab_utility::satisfaction::SatisfactionModel>>, String> {
+    let Some(spec) = spec else {
+        return Ok(None);
     };
-    Some(matchlab_utility::satisfaction::SatisfactionModel::new(
-        weights,
-    ))
+    if !spec.enabled {
+        return Ok(None);
+    }
+    let params = flatten_params(&spec.params);
+    let model = matchlab_utility::lua::LuaSatisfactionModel::load(&spec.script, &params)?;
+    Ok(Some(Box::new(model)))
 }
 
 /// ISO-8601 UTC timestamp without external dependencies.
@@ -566,16 +345,16 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 1
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
     systems:
-      - name: elo
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
@@ -628,7 +407,8 @@ experiment:
     #[test]
     fn unknown_rating_system_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems[0].name = "bogus".to_string();
+        config.experiment.rating.systems[0].name = Some("bogus".to_string());
+        config.experiment.rating.systems[0].script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
 
@@ -681,7 +461,7 @@ experiment:
     fn expanding_window_matchmaker_runs() {
         let mut config = mini_config();
         config.experiment.matchmaking = MatchmakingSpec {
-            algorithm: "expanding_window".to_string(),
+            script: "plugins/matchmaking/expanding_window.lua".to_string(),
             max_queue_time: 60.0,
             params: BTreeMap::from([
                 (
@@ -706,13 +486,17 @@ experiment:
     }
 
     #[test]
-    fn fatigue_outcome_variant_runs() {
+    fn fatigue_outcome_script_runs() {
         let mut config = mini_config();
-        config.experiment.game.variant = Some("fatigue".to_string());
-        config.experiment.game.params = BTreeMap::from([(
-            "fatigue_decay_rate".to_string(),
-            serde_yaml::Value::from(0.001),
-        )]);
+        config.experiment.game.script = "plugins/game/fatigue.lua".to_string();
+        config.experiment.game.params = BTreeMap::from([
+            ("beta".to_string(), serde_yaml::Value::from(400.0)),
+            ("noise".to_string(), serde_yaml::Value::from(0.05)),
+            (
+                "fatigue_decay_rate".to_string(),
+                serde_yaml::Value::from(0.001),
+            ),
+        ]);
         let result = ExperimentRunner::run(&config).unwrap();
         assert_eq!(result.matches_completed, 40);
     }

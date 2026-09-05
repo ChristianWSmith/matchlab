@@ -82,7 +82,7 @@ match-lab/
 ├── design.md
 ├── docs/
 │   └── spec.md
-├── plugins/                    # Lua hook scripts
+├── plugins/                    # Lua system scripts (one per algorithm)
 │   ├── rating/
 │   ├── matchmaking/
 │   ├── game/
@@ -112,13 +112,23 @@ match-lab/
 │   │       ├── population.rs
 │   │       └── skill.rs
 │   │
+│   ├── matchlab-lua/           # Lua-native system foundation (VM, context, rng)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── vm.rs
+│   │       ├── context.rs
+│   │       ├── rng.rs
+│   │       ├── convert.rs
+│   │       ├── validate.rs
+│   │       └── resolve.rs
+│   │
 │   ├── matchlab-game/          # outcome models, match execution
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── outcome.rs
-│   │       ├── logistic.rs
-│   │       └── hooks.rs        # Lua hooks for outcome models
+│   │       └── lua.rs          # Lua outcome-model adapter
 │   │
 │   ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search
 │   │   ├── Cargo.toml
@@ -129,36 +139,31 @@ match-lab/
 │   │       ├── constraint.rs
 │   │       ├── objective.rs    # per-match optimization scoring
 │   │       ├── search.rs       # SearchStrategy trait
-│   │       ├── expanding.rs
-│   │       ├── strict.rs
-│   │       └── hooks.rs        # Lua hooks for matchmakers
+│   │       └── lua.rs          # Lua matchmaker adapter
 │   │
 │   ├── matchlab-rating/        # rating systems (Elo, Glicko, TrueSkill, Flat)
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── system.rs
-│   │       ├── elo.rs
-│   │       ├── flat.rs
-│   │       ├── glicko.rs
-│   │       ├── trueskill.rs
-│   │       ├── hooks.rs        # LuaHooks struct, hook definitions
-│   │       └── loader.rs       # ScriptLoader (validates .lua files)
+│   │       ├── filter.rs
+│   │       ├── plugins.rs
+│   │       └── lua.rs          # Lua rating-system adapter
 │   │
 │   ├── matchlab-detection/     # smurf detection, interventions
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── detector.rs
-│   │       ├── smurf.rs
 │   │       ├── intervention.rs
-│   │       └── hooks.rs        # Lua hooks for detection systems
+│   │       └── lua.rs          # Lua detection-system adapter
 │   │
 │   ├── matchlab-ranking/       # rank mapping, leaderboard
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── ranker.rs
+│   │       ├── lua.rs          # Lua rank-mapper adapter
 │   │       └── leaderboard.rs
 │   │
 │   ├── matchlab-metrics/       # metric collectors
@@ -167,18 +172,9 @@ match-lab/
 │   │       ├── lib.rs
 │   │       ├── engine.rs
 │   │       ├── collector.rs
-│   │       ├── accuracy.rs
-│   │       ├── quality.rs
-│   │       ├── inequality.rs
-│   │       ├── queue.rs
-│   │       ├── convergence.rs
-│   │       ├── responsiveness.rs
-│   │       ├── stability.rs
-│   │       ├── streaks.rs
-│   │       ├── population.rs
-│   │       ├── correlation.rs
-│   │       ├── smurf.rs
-│   │       └── hooks.rs        # Lua hooks for metric collectors
+│   │       ├── stats.rs
+│   │       ├── cohort.rs
+│   │       └── lua.rs          # Lua metric-collector adapter
 │   │
 │   ├── matchlab-objective/     # weighted utility, multi-objective scoring
 │   │   ├── Cargo.toml
@@ -259,225 +255,97 @@ rand_chacha = "0.3"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 ```
 
-### 3.3 Plugin Model: Lua Hooks
+### 3.3 Plugin Model: Lua-Native Systems
 
-Plugins are implemented as Lua scripts loaded at runtime via `mlua` (Lua 5.4, vendored). Native Rust implementations remain the default; Lua scripts override specific decision points ("hooks") while Rust handles all heavy computation. This enables zero-recompilation experimentation while maintaining near-native performance.
+**Algorithms are Lua scripts; Rust is a thin binding layer.** Every algorithm
+lives under `plugins/<layer>/` as a set of pure Lua functions implementing a
+per-layer contract. Rust holds the types, the event loop, and thin trait
+adapters (`*::lua::Lua*System`) that marshal arguments to/from Lua. There are
+**no inherent Rust algorithms** — a system is selected by its `script:` path.
 
 ```
 match-lab/
 ├── Cargo.toml
-├── plugins/                    # Lua hook scripts
-│   ├── rating/
-│   │   ├── dynamic_elo.lua     # dynamic K factor, custom bounds
-│   │   └── adaptive_glicko.lua
-│   ├── matchmaking/
-│   │   ├── adaptive_quality.lua
-│   │   └── custom_formation.lua
-│   ├── game/
-│   │   └── fatigue_model.lua
-│   ├── detection/
-│   │   └── smurf_thresholds.lua
-│   └── metrics/
-│       └── custom_metric.lua
+├── plugins/                    # Lua system scripts (one per algorithm)
+│   ├── rating/                 # elo, flat, glicko2, trueskill, decay_elo, ...
+│   ├── matchmaking/            # batch, expanding_window, strict, hub_spoke
+│   ├── game/                   # logistic, variance, composition, fatigue, ...
+│   ├── detection/              # smurf
+│   ├── metrics/                # one script per metric
+│   ├── adversarial/            # afk, deranker, win_trader, booster, ...
+│   ├── utility/                # satisfaction
+│   └── ranking/                # brackets
 ├── experiments/
 └── crates/
-    ├── matchlab-rating/
-    │   └── src/
-    │       ├── hooks.rs        # LuaHooks struct, hook definitions
-    │       ├── loader.rs       # ScriptLoader (validates .lua files)
-    │       └── ...
-    ├── matchlab-matchmaking/
-    │   └── src/
-    │       ├── hooks.rs
-    │       └── ...
+    ├── matchlab-lua/           # shared foundation (VM, context, rng, validation)
     └── ...
 ```
 
-#### Hook Architecture
+#### Shared foundation (`matchlab-lua`)
 
-Each trait implementation carries an optional `LuaHooks` field. The Rust code handles the heavy computation; Lua scripts customize decision points at specific hook locations. Missing hooks fall back to native Rust defaults.
+- **`LuaVm`** — loads a script, stores its `config` (YAML params), registers the
+  `matchlab.rng_*` helpers, and calls named functions. Every function receives
+  its inputs, then `config`, then `context` (a persistent Lua table passed by
+  reference and stored in the VM, so scripts keep arbitrary state with O(1)
+  per-call cost).
+- **`matchlab.rng_*`** — deterministic randomness drawn from the in-flight
+  `SimRng`. Scripts must never call `math.random` (the loader bans it).
+- **Validation** — required-function presence, the `math.random` source ban,
+  and workspace-root path resolution for `plugins/...` paths.
 
-```rust
-// crates/matchlab-rating/src/hooks.rs
+#### Call convention
 
-use mlua::{Lua, Table, Function};
+A script function receives `(inputs..., config, context)` and may either mutate
+`context` in place or return `(value, context)`. The adapter reads the result
+back and (when a second table is returned) stores it as the new context.
 
-pub struct LuaHooks {
-    lua: Lua,
-    script_path: String,
-}
+#### Truth separation
 
-impl LuaHooks {
-    pub fn load(path: &str) -> Result<Self, String> {
-        let lua = Lua::new();
-        let script = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read {}: {}", path, e))?;
-        lua.load(&script).exec()
-            .map_err(|e| format!("lua error in {}: {}", path, e))?;
-        Ok(Self { lua, script_path: path.to_string() })
-    }
+Scripts receive only observable data — never `PlayerReality`. Exceptions: the
+outcome model gets the ground-truth skill binding (`skill_overall` /
+`skill_vector`) carried in the observation, and metric scripts get reality
+fields (`true_skill`, `improvement_rate`, ...) — metrics are the legitimate
+reality reader.
 
-    pub fn call_k_factor(
-        &self,
-        player_id: u64,
-        rating: f64,
-        games_played: u64,
-        recent_win_rate: f64,
-    ) -> Option<f64> {
-        let func = self.lua.globals().get::<_, Function>("on_k_factor").ok()?;
-        func.call::<_, f64>((player_id, rating, games_played as f64, recent_win_rate)).ok()
-    }
+#### Design rules
 
-    pub fn call_rating_bounds(&self) -> Option<(f64, f64)> {
-        let func = self.lua.globals().get::<_, Function>("on_rating_bounds").ok()?;
-        let table: Table = func.call::<_, Table>(()).ok()?;
-        let floor: f64 = table.get("floor").ok()?;
-        let ceiling: f64 = table.get("ceiling").ok()?;
-        Some((floor, ceiling))
-    }
-}
-```
-
-#### Registry Syntax
-
-The plugin registry uses a `lua:` prefix to select a Lua-hooked variant:
-
-```rust
-// crates/matchlab-rating/src/plugins.rs
-
-pub fn from_name(name: &str, config: &serde_yaml::Value) -> Option<Box<dyn RatingSystem>> {
-    match name {
-        "elo" => Some(Box::new(crate::elo::EloRatingSystem::from_yaml(config)?)),
-        "glicko2" => Some(Box::new(crate::glicko::Glicko2RatingSystem::from_yaml(config)?)),
-        "trueskill" => Some(Box::new(crate::trueskill::TrueSkillRatingSystem::from_yaml(config)?)),
-        "flatpoints" => Some(Box::new(crate::flat::FlatPointsRatingSystem::from_yaml(config)?)),
-        "lua:elo" => {
-            let path = config.get("script")?.as_str()?;
-            let hooks = crate::hooks::LuaHooks::load(path).ok()?;
-            Some(Box::new(crate::elo::EloRatingSystem::with_hooks(config, hooks)))
-        }
-        _ => None,
-    }
-}
-```
-
-YAML config:
-```yaml
-rating:
-  systems:
-    - name: lua:elo
-      script: plugins/rating/dynamic_elo.lua
-      k_factor: 32.0  # fallback default
-      initial_rating: 1000.0
-      beta: 400.0
-```
-
-#### Hook Points by Trait
-
-**RatingSystem hooks:**
-| Hook | Signature | Purpose |
-|------|-----------|---------|
-| `on_k_factor` | `(player_id, rating, games_played, recent_win_rate) → f64` | Dynamic K factor per player |
-| `on_rating_bounds` | `() → { floor: f64, ceiling: f64 }` | Rating floor/ceiling |
-| `on_initial_rating` | `(archetype_name) → f64` | Per-archetype starting rating |
-| `on_volatility` | `(games_played, rating_change) → f64` | Dynamic volatility for Glicko/TS |
-
-**Matchmaker hooks:**
-| Hook | Signature | Purpose |
-|------|-----------|---------|
-| `on_match_quality` | `(team_a_avg, team_b_avg, queue_times) → f64` | Custom quality formula |
-| `on_accept_match` | `(team_a, team_b, quality, now) → bool` | Accept/reject proposed match |
-| `on_queue_priority` | `(entry, now) → f64` | Reorder queue (higher = first) |
-| `on_max_skill_diff` | `(longest_wait_secs) → f64` | Expanding window logic |
-| `on_team_assignment` | `(candidates, team_size) → { team_a, team_b }` | Custom team formation |
-
-**OutcomeModel hooks:**
-| Hook | Signature | Purpose |
-|------|-----------|---------|
-| `on_effective_skill` | `(observation) → f64` | How to compute skill from obs |
-| `on_noise` | `(match_context) → f64` | Dynamic noise |
-| `on_post_process` | `(match_result) → MatchResult` | Modify outcome after simulation |
-
-**MetricCollector hooks:**
-| Hook | Signature | Purpose |
-|------|-----------|---------|
-| `on_record` | `(match_result, world_snapshot) → Option<f64>` | Custom metric value |
-| `on_bucket_config` | `() → Vec<f64>` | Custom time bucket boundaries |
-
-**DetectionSystem hooks:**
-| Hook | Signature | Purpose |
-|------|-----------|---------|
-| `on_anomaly_threshold` | `(player_id, games_played) → f64` | Per-player sigma threshold |
-| `on_confidence` | `(consecutive_anomalies, evidence_count) → f64` | Custom confidence calculation |
-| `on_intervention` | `(probability, prior_actions) → String` | Custom intervention action name |
-
-#### Lua Script Examples
-
-```lua
--- plugins/rating/dynamic_elo.lua
-function on_k_factor(player_id, rating, games_played, recent_win_rate)
-    if games_played < 10 then
-        return 64.0
-    elseif recent_win_rate > 0.7 then
-        return 48.0
-    elseif games_played > 100 then
-        return 16.0
-    end
-    return 32.0
-end
-
-function on_rating_bounds()
-    return { floor = 100.0, ceiling = 3000.0 }
-end
-```
-
-```lua
--- plugins/matchmaking/adaptive_quality.lua
-function on_match_quality(team_a_avg, team_b_avg, queue_times)
-    local diff = math.abs(team_a_avg - team_b_avg)
-    local max_wait = 0
-    for _, t in ipairs(queue_times) do
-        if t > max_wait then max_wait = t end
-    end
-    local tolerance = 200.0 + max_wait * 5.0
-    return 1.0 - math.min(diff / tolerance, 1.0)
-end
-
-function on_accept_match(team_a, team_b, quality, now)
-    return quality > 0.85
-end
-```
-
-#### Design Rules
-
-1. **Lua never does heavy math.** Rust computes win probabilities, rating updates, team averages. Lua only makes decisions (thresholds, multipliers, accept/reject).
-2. **Missing hooks are safe.** If a script doesn't define `on_k_factor`, the native Rust default is used. No errors, no fallback chains.
-3. **Scripts are validated at load time.** `ScriptLoader` checks that the file parses and that any defined functions have correct arity.
-4. **Determinism is preserved.** Lua's `math.random` is not used; all randomness comes from the simulation's `SimRng`. Scripts must be pure functions of their inputs.
-5. **Truth separation is enforced.** Lua hooks receive only observable data (ratings, queue times, match results). They never see `PlayerReality`.
+1. **Lua is the algorithm.** A user adds a system by writing one `.lua` file
+   and referencing it by `script:` path. No recompilation.
+2. **Scripts are pure.** No `math.random`; all randomness via `matchlab.rng_*`
+   (deterministic). State lives in the `context` table.
+3. **Scripts are validated at load.** Required functions must be present;
+   `math.random` is banned by source scan.
+4. **Determinism is preserved.** The `SimRng` sequence is consumed identically;
+   scripts avoid nondeterministic table iteration for output ordering (adapters
+   sort where order matters).
+5. **Truth separation is enforced.** Only the outcome model and metrics receive
+   ground-truth-derived fields.
 
 ### 3.4 Plugin Directory Structure
 
-Lua scripts live under `plugins/` at the workspace root, organized by trait type:
+Lua scripts live under `plugins/` at the workspace root, organized by layer. Each script implements the full algorithm for its layer (not just decision hooks):
 
 ```
 plugins/
-├── rating/          # RatingSystem hooks (dynamic K, custom bounds, etc.)
-├── matchmaking/     # Matchmaker hooks (quality, acceptance, formation)
-├── game/            # OutcomeModel hooks (skill computation, noise, post-processing)
-├── detection/       # DetectionSystem hooks (thresholds, confidence, interventions)
-└── metrics/         # MetricCollector hooks (custom metrics, bucket config)
+├── rating/          # RatingSystem scripts (elo, flat, glicko2, trueskill, ...)
+├── matchmaking/     # Matchmaker scripts (batch, expanding_window, strict, ...)
+├── game/            # OutcomeModel scripts (logistic, variance, composition, ...)
+├── detection/       # DetectionSystem scripts (smurf)
+├── metrics/         # MetricCollector scripts (one per metric)
+├── adversarial/     # AdversarialAgent scripts (afk, deranker, win_trader, ...)
+├── utility/         # SatisfactionModel scripts (satisfaction)
+└── ranking/         # RankMapper scripts (brackets)
 ```
 
 Scripts are referenced in YAML manifests with relative paths:
 ```yaml
 rating:
   systems:
-    - name: lua:elo
-      script: plugins/rating/dynamic_elo.lua
+    - script: plugins/rating/elo.lua
+      k_factor: 32.0
 ```
 
-The `ScriptLoader` resolves these paths relative to the workspace root at experiment startup.
+Paths are resolved relative to the workspace root at experiment startup.
 
 ---
 
@@ -2251,6 +2119,8 @@ impl Matchmaker for HubSpokeMatchmaker {
 
 ## 8. Rating Systems
 
+> **Reference implementations ship as Lua scripts** under `plugins/rating/` (elo, flat, glicko2, trueskill, ...), implementing the `initialize` / `predict` / `update` contract. The trait, `RatingState`, and budget sanitization stay in Rust.
+
 ### 8.1 RatingSystem Trait
 
 ```rust
@@ -2702,6 +2572,8 @@ impl RatingSystem for TrueSkillRatingSystem {
 
 ## 9. Detection
 
+> **Reference implementation ships as a Lua script** under `plugins/detection/` (`smurf.lua`), implementing the `observe` / `evaluate` / `recommend_action` contract; the escalation ladder lives in the script.
+
 ### 9.1 Detection System Trait
 
 ```rust
@@ -2935,6 +2807,8 @@ impl DetectionSystem for SmurfDetector {
 
 ## 10. Ranking
 
+> **Reference implementation ships as a Lua script** under `plugins/ranking/` (`brackets.lua`), implementing `rating_to_rank` / `rank_to_rating_range`.
+
 ### 10.1 Rank Mapper Trait
 
 ```rust
@@ -3031,6 +2905,8 @@ impl Leaderboard {
 ---
 
 ## 11. Metrics
+
+> **Metric collectors ship as Lua scripts** under `plugins/metrics/` (one per metric), implementing the `on_record` / `compute` contract; the canonical summary statistics stay in Rust.
 
 ### 11.1 Metrics Engine
 
@@ -3982,12 +3858,12 @@ experiment:
 
   game:
     team_size: 5
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
 
   matchmaking:
-    algorithm: expanding_window
+    script: plugins/matchmaking/expanding_window.lua
     max_queue_time: 60.0
     tiers:
       - [5.0, 25.0]
@@ -3995,16 +3871,15 @@ experiment:
       - [20.0, 100.0]
       - [30.0, 200.0]
     max_window: 300.0
-    search_strategy: greedy
 
   rating:
     systems:
-      - name: elo
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
 
-      - name: glicko2
+      - script: plugins/rating/glicko2.lua
         initial_rating: 1500.0
         initial_rd: 350.0
         initial_volatility: 0.06
@@ -4013,25 +3888,25 @@ experiment:
 
   detection:
     enabled: true
-    smurf:
-      acceleration_threshold: 0.8
-      ban_threshold: 0.99
-      min_games_before_action: 3
+    script: plugins/detection/smurf.lua
+    min_games_before_action: 3
 
   ranking:
+    script: plugins/ranking/brackets.lua
     brackets:
-      - { rank: { tier: Bronze, division: 1 }, min: 0, max: 800 }
-      - { rank: { tier: Bronze, division: 2 }, min: 800, max: 1000 }
-      - { rank: { tier: Silver, division: 1 }, min: 1000, max: 1200 }
-      - { rank: { tier: Gold, division: 1 }, min: 1200, max: 1500 }
-      - { rank: { tier: Platinum, division: 1 }, min: 1500, max: 2000 }
+      - { tier: Bronze, division: 1, min: 0, max: 800 }
+      - { tier: Bronze, division: 2, min: 800, max: 1000 }
+      - { tier: Silver, division: 1, min: 1000, max: 1200 }
+      - { tier: Gold, division: 1, min: 1200, max: 1500 }
+      - { tier: Platinum, division: 1, min: 1500, max: 2000 }
 
   metrics:
     - match_quality
     - match_inequality
     - queue_time
     - rating_accuracy
-    - spearman_correlation
+    - ndcg
+    - dimensionality_fidelity
     - convergence
     - responsiveness
     - stability
@@ -4138,17 +4013,17 @@ pub enum DistributionSpec {
 #[derive(Debug, Deserialize)]
 pub struct GameSpec {
     pub team_size: usize,
-    pub outcome_model: String,
-    pub beta: f64,
-    pub noise: f64,
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MatchmakingSpec {
-    pub algorithm: String,
+    pub script: String,
     pub max_queue_time: f64,
     #[serde(flatten)]
-    pub params: HashMap<String, serde_yaml::Value>,
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4158,40 +4033,25 @@ pub struct RatingSpec {
 
 #[derive(Debug, Deserialize)]
 pub struct RatingSystemSpec {
-    pub name: String,
+    pub name: Option<String>,
+    pub script: Option<String>,
     #[serde(flatten)]
-    pub params: HashMap<String, serde_yaml::Value>,
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct DetectionSpec {
     pub enabled: bool,
-    pub smurf: Option<SmurfDetectionSpec>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SmurfDetectionSpec {
-    pub acceleration_threshold: f64,
-    pub ban_threshold: f64,
-    pub min_games_before_action: u64,
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RankingSpec {
-    pub brackets: Vec<RankBracketSpec>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RankSpec {
-    pub tier: String,
-    pub division: u8,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RankBracketSpec {
-    pub rank: RankSpec,
-    pub min: f64,
-    pub max: f64,
+    pub script: String,
+    #[serde(flatten)]
+    pub params: BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4962,6 +4822,8 @@ pub struct MetricComparison {
 
 ## 15. Adversarial Agents
 
+> **Agents ship as Lua scripts** under `plugins/adversarial/` (afk, deranker, win_trader, booster, rating_farmer), implementing the `tick` / `objective` contract.
+
 Players that actively try to exploit or manipulate the rating system. These are not passive behavioral archetypes — they optimize against the system.
 
 ### 15.1 Agent Trait
@@ -5116,6 +4978,8 @@ impl AdversarialAgent for AfkAgent {
 
 ## 16. Player Utility
 
+> **The satisfaction model ships as a Lua script** under `plugins/utility/` (`satisfaction.lua`); `PlayerExperience` (loop-maintained data) stays in Rust.
+
 ### 16.1 Satisfaction Model
 
 Player satisfaction is modeled through observable proxies, not a fake "fun" number. The model predicts retention probability based on experience history.
@@ -5215,7 +5079,12 @@ When player utility is modeled, matchmaking becomes an ecological system, not me
 
 ## 17. v0.1 Implementation
 
-The v0.1 build order (Steps 1–12) is complete. The implementation delivers a working discrete-event simulation with 10,000 players, 1D static skill, logistic outcomes, rating-balanced batch matchmaking, Elo rating, and metric collectors. See `experiments/v0_1_basic.yaml` for the minimal experiment manifest and `AGENTS.md` for the full implementation state.
+The v0.1 build order (Steps 1–12) is complete. The implementation delivers a
+working discrete-event simulation with 10,000 players, 1D static skill, logistic
+outcomes, rating-balanced batch matchmaking, Elo rating, and metric collectors —
+all through the Lua-native system path (no inherent Rust algorithms). See
+`experiments/v0_1_basic.yaml` for the minimal experiment manifest and
+`AGENTS.md` for the full implementation state.
 
 ### Reference: Minimal Experiment Manifest
 
@@ -5241,18 +5110,18 @@ experiment:
 
   game:
     team_size: 5
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
 
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
 
   rating:
     systems:
-      - name: elo
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0

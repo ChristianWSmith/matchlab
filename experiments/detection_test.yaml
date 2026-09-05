@@ -5,10 +5,8 @@ experiment:
   description: "Smurf detection on a population with a smurf archetype"
   detection:
     enabled: true
-    smurf:
-      acceleration_threshold: 0.8
-      ban_threshold: 0.99
-      min_games_before_action: 3
+    script: plugins/detection/smurf.lua
+    min_games_before_action: 3
   metrics:
     - match_quality
     - queue_time

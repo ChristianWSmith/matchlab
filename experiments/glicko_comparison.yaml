@@ -5,7 +5,7 @@ experiment:
   description: "Elo vs Glicko-2 on identical population and matchmaking"
   rating:
     systems:
-      - name: glicko2
+      - script: plugins/rating/glicko2.lua
         initial_rating: 1500.0
         initial_rd: 350.0
         initial_volatility: 0.06

@@ -63,7 +63,7 @@ impl MatchLoop {
         detection_system: Option<Box<dyn DetectionSystem>>,
         ranker: Option<Box<dyn RankMapper>>,
         adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
-        satisfaction_model: Option<SatisfactionModel>,
+        satisfaction_model: Option<Box<dyn SatisfactionModel>>,
     ) -> Self {
         let state = Arc::new(Mutex::new(MachineState::with_extras(
             population,

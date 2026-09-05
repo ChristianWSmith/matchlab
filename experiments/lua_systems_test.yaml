@@ -1,0 +1,19 @@
+base: base/standard.yaml
+
+experiment:
+  name: lua_systems_test
+  description: "Lua-native systems: elo + logistic + batch (smoke test)"
+  rating:
+    systems:
+      - script: plugins/rating/elo.lua
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  matchmaking:
+    script: plugins/matchmaking/batch.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+  metrics:
+    - match_quality
+    - queue_time
+    - rating_accuracy

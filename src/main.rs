@@ -108,11 +108,11 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     {
         parts.push("satisfaction".to_string());
     }
-    if let Some(variant) = exp.game.variant.as_deref() {
-        parts.push(format!("outcome:{variant}"));
+    if exp.game.script != "plugins/game/logistic.lua" {
+        parts.push(format!("outcome:{}", exp.game.script));
     }
-    if exp.matchmaking.algorithm != "batch" {
-        parts.push(format!("matchmaker:{}", exp.matchmaking.algorithm));
+    if exp.matchmaking.script != "plugins/matchmaking/batch.lua" {
+        parts.push(format!("matchmaker:{}", exp.matchmaking.script));
     }
     parts.join(", ")
 }

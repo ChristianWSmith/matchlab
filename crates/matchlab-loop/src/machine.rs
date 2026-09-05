@@ -47,7 +47,7 @@ pub struct MachineState {
     pub detection_system: Option<Box<dyn DetectionSystem>>,
     pub ranker: Option<Box<dyn RankMapper>>,
     pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
-    pub satisfaction_model: Option<SatisfactionModel>,
+    pub satisfaction_model: Option<Box<dyn SatisfactionModel>>,
     pub player_experiences: HashMap<PlayerId, PlayerExperience>,
     pending_queue_times: HashMap<PlayerId, f64>,
 }
@@ -86,7 +86,7 @@ impl MachineState {
         detection_system: Option<Box<dyn DetectionSystem>>,
         ranker: Option<Box<dyn RankMapper>>,
         adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
-        satisfaction_model: Option<SatisfactionModel>,
+        satisfaction_model: Option<Box<dyn SatisfactionModel>>,
     ) -> Self {
         let pop_map: HashMap<PlayerId, (PlayerReality, PlayerObservation)> = population
             .into_iter()
@@ -474,13 +474,48 @@ mod tests {
     use matchlab_core::match_::Team;
     use matchlab_core::player::{DetectionFlag, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
-    use matchlab_game::logistic::LogisticOutcomeModel;
-    use matchlab_matchmaking::batch::BatchMatchmaker;
-    use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
+    use matchlab_game::lua::LuaOutcomeModel;
+    use matchlab_game::outcome::OutcomeModel;
+    use matchlab_matchmaking::lua::LuaMatchmaker;
+    use matchlab_matchmaking::matchmaker::Matchmaker;
+    use matchlab_metrics::MetricsEngine;
+    use matchlab_metrics::lua::LuaMetricCollector;
+
+    fn lua_metric(name: &str) -> Box<dyn matchlab_metrics::MetricCollector> {
+        Box::new(
+            LuaMetricCollector::load(
+                &format!("plugins/metrics/{name}.lua"),
+                &serde_yaml::Value::Null,
+            )
+            .expect("metric script loads"),
+        )
+    }
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
-    use matchlab_rating::elo::{EloConfig, EloRatingSystem};
+    use matchlab_rating::registry;
+    use matchlab_rating::system::RatingSystem;
     use std::collections::VecDeque;
+
+    fn lua_elo() -> Box<dyn RatingSystem> {
+        let params =
+            serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
+        registry::from_script("plugins/rating/elo.lua", &params).expect("elo.lua loads")
+    }
+
+    fn lua_logistic() -> Box<dyn OutcomeModel> {
+        let params = serde_yaml::from_str("beta: 400.0\nnoise: 0.1").unwrap();
+        Box::new(
+            LuaOutcomeModel::load("plugins/game/logistic.lua", &params)
+                .expect("logistic.lua loads"),
+        )
+    }
+
+    fn lua_batch() -> Box<dyn Matchmaker> {
+        Box::new(
+            LuaMatchmaker::load("plugins/matchmaking/batch.lua", &serde_yaml::Value::Null)
+                .expect("batch.lua loads"),
+        )
+    }
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
@@ -533,13 +568,9 @@ mod tests {
     fn default_state(pop: Vec<(PlayerReality, PlayerObservation)>) -> MachineState {
         MachineState::new(
             pop,
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
-            Box::new(BatchMatchmaker::new(10)),
+            lua_elo(),
+            lua_logistic(),
+            lua_batch(),
             MetricsEngine::new(),
             LoopConfig {
                 team_size: 1,
@@ -753,13 +784,9 @@ mod tests {
         };
         let mut loop_a = MatchLoop::new(
             pop.clone(),
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
-            Box::new(BatchMatchmaker::new(60)),
+            lua_elo(),
+            lua_logistic(),
+            lua_batch(),
             MetricsEngine::new(),
             cfg,
             1234,
@@ -820,13 +847,9 @@ mod tests {
         let build = |pop: Vec<(PlayerReality, PlayerObservation)>, cfg: LoopConfig| {
             MatchLoop::new(
                 pop,
-                Box::new(EloRatingSystem::new(EloConfig {
-                    k_factor: 32.0,
-                    initial_rating: 1000.0,
-                    beta: 400.0,
-                })),
-                Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
-                Box::new(BatchMatchmaker::new(60)),
+                lua_elo(),
+                lua_logistic(),
+                lua_batch(),
                 MetricsEngine::new(),
                 cfg,
                 1234,
@@ -886,7 +909,7 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let mut metrics = MetricsEngine::new();
-        metrics.register(Box::new(MatchQualityCollector::new()));
+        metrics.register(lua_metric("match_quality"));
 
         let cfg = LoopConfig {
             team_size: 5,
@@ -896,13 +919,9 @@ mod tests {
         };
         let mut loop_a = MatchLoop::new(
             pop,
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
-            Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
-            Box::new(BatchMatchmaker::new(60)),
+            lua_elo(),
+            lua_logistic(),
+            lua_batch(),
             metrics,
             cfg,
             1234,
@@ -920,27 +939,14 @@ mod tests {
 
     #[test]
     fn ranking_updates_visible_rank_on_match_end() {
-        use matchlab_ranking::ranker::{BracketRankMapper, Rank, RankBracket};
+        use matchlab_ranking::lua::LuaRankMapper;
         let mut state = default_state(vec![]);
-        let brackets = vec![
-            RankBracket {
-                rank: Rank {
-                    tier: "bronze".into(),
-                    division: 1,
-                },
-                min: 0.0,
-                max: 1200.0,
-            },
-            RankBracket {
-                rank: Rank {
-                    tier: "silver".into(),
-                    division: 1,
-                },
-                min: 1200.0,
-                max: 2000.0,
-            },
-        ];
-        state.ranker = Some(Box::new(BracketRankMapper::new(brackets)));
+        let brackets = serde_yaml::from_str(
+            "brackets:\n  - { tier: bronze, division: 1, min: 0.0, max: 1200.0 }\n  - { tier: silver, division: 1, min: 1200.0, max: 2000.0 }",
+        )
+        .unwrap();
+        let mapper = LuaRankMapper::load("plugins/ranking/brackets.lua", &brackets).unwrap();
+        state.ranker = Some(Box::new(mapper));
 
         let mut world = World::new(SimRng::from_seed(6));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));
@@ -1011,11 +1017,17 @@ mod tests {
 
     #[test]
     fn adversarial_agent_ticks_modify_world() {
-        use matchlab_adversarial::afk::AfkAgent;
+        use matchlab_adversarial::lua::LuaAdversarialAgent;
         let mut state = default_state(vec![]);
+        let agent = LuaAdversarialAgent::load(
+            "plugins/adversarial/afk.lua",
+            &serde_yaml::from_str("go_afk_probability: 1.0").unwrap(),
+            PlayerId(1),
+        )
+        .unwrap();
         state
             .adversarial_agents
-            .insert(PlayerId(1), Box::new(AfkAgent::new(1.0)));
+            .insert(PlayerId(1), Box::new(agent));
         let mut world = World::new(SimRng::from_seed(8));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));
 
@@ -1046,17 +1058,17 @@ mod tests {
 
     #[test]
     fn low_satisfaction_schedules_quit_instead_of_requeue() {
-        use matchlab_utility::satisfaction::{SatisfactionModel, SatisfactionWeights};
+        use matchlab_utility::lua::LuaSatisfactionModel;
         let mut state = default_state(vec![]);
-        state.satisfaction_model = Some(SatisfactionModel::new(SatisfactionWeights {
-            match_quality: 1.0,
-            queue_time_penalty: -1.0,
-            win_bonus: 0.0,
-            loss_streak_penalty: -5.0,
-            rank_progression_bonus: 0.0,
-            fairness_sensitivity: 0.0,
-            rematch_bonus: 0.0,
-        }));
+        let model = LuaSatisfactionModel::load(
+            "plugins/utility/satisfaction.lua",
+            &serde_yaml::from_str(
+                "match_quality: 1.0\nqueue_time_penalty: -1.0\nwin_bonus: 0.0\nloss_streak_penalty: -5.0\nrank_progression_bonus: 0.0\nfairness_sensitivity: 0.0\nrematch_bonus: 0.0",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        state.satisfaction_model = Some(Box::new(model));
 
         let mut world = World::new(SimRng::from_seed(9));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));
