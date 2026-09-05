@@ -248,10 +248,17 @@ crates/
 - `flat.rs` — `FlatPointsRatingSystem` (spec §8.3) with `FlatPointsConfig {
   win_points, loss_points, initial_rating }` and `from_yaml`; fixed ±points
   baseline.
+- `glicko.rs` — `Glicko2RatingSystem` (spec §8.5) with `GlickoConfig {
+  initial_rating, initial_rd, initial_volatility, tau, epsilon }` and
+  `from_yaml`. Full 6-step Glicko-2: scale to (μ, φ, σ) → `g`/`E` per
+  opponent → `v`, `Δ` → Newton-Raphson volatility iteration → `φ*` → `φ'`,
+  `μ'` → scale back. Team matches treat each player's opponents as the
+  opposing team's players, one opponent tuple per player. Verified against
+  Glickman's paper worked example (r'=1464.06, RD'=151.52, σ'=0.05999).
 - `plugins.rs` — `registry` module with `all_systems()` (`["elo",
-  "flatpoints"]`) and `from_name(name, &serde_yaml::Value) ->
-  Option<Box<dyn RatingSystem>>`. Glicko-2/TrueSkill are **not** registered in
-  v0.1; unknown names return `None`.
+  "flatpoints", "glicko2"]`) and `from_name(name, &serde_yaml::Value) ->
+  Option<Box<dyn RatingSystem>>`, plus `lua:elo`/`lua:glicko2` hook-hooked
+  variants. TrueSkill is **not** registered; unknown names return `None`.
 
 **`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,

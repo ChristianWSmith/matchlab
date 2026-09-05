@@ -2,7 +2,7 @@ pub mod registry {
     use crate::system::RatingSystem;
 
     pub fn all_systems() -> Vec<&'static str> {
-        vec!["elo", "flatpoints"]
+        vec!["elo", "flatpoints", "glicko2"]
     }
 
     pub fn from_name(name: &str, config: &serde_yaml::Value) -> Option<Box<dyn RatingSystem>> {
@@ -11,11 +11,23 @@ pub mod registry {
             "flatpoints" => Some(Box::new(crate::flat::FlatPointsRatingSystem::from_yaml(
                 config,
             )?)),
+            "glicko2" => Some(Box::new(crate::glicko::Glicko2RatingSystem::from_yaml(
+                config,
+            )?)),
             "lua:elo" => {
                 let path = config.get("script")?.as_str()?;
                 let hooks = crate::hooks::LuaHooks::load(path).ok()?;
                 let sys = crate::elo::EloRatingSystem::from_yaml(config)?;
                 Some(Box::new(crate::elo::EloRatingSystem::with_hooks(
+                    sys.config,
+                    hooks,
+                )))
+            }
+            "lua:glicko2" => {
+                let path = config.get("script")?.as_str()?;
+                let hooks = crate::hooks::LuaHooks::load(path).ok()?;
+                let sys = crate::glicko::Glicko2RatingSystem::from_yaml(config)?;
+                Some(Box::new(crate::glicko::Glicko2RatingSystem::with_hooks(
                     sys.config,
                     hooks,
                 )))
@@ -57,10 +69,43 @@ mod tests {
     }
 
     #[test]
-    fn glicko2_is_not_implemented() {
+    fn glicko2_registers_from_name() {
+        let yaml = serde_yaml::from_str("initial_rating: 1500.0\n").unwrap();
+        let sys = registry::from_name("glicko2", &yaml).expect("glicko2 should register");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1500.0);
+        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+    }
+
+    #[test]
+    fn trueskill_is_not_implemented() {
         let yaml = serde_yaml::from_str("rating: 1000.0\n").unwrap();
-        assert!(registry::from_name("glicko2", &yaml).is_none());
         assert!(registry::from_name("trueskill", &yaml).is_none());
+    }
+
+    #[test]
+    fn lua_glicko2_registers_from_name() {
+        let script = "function on_rating_bounds() return { floor = 100.0, ceiling = 3000.0 } end";
+        let path = temp_path("test_plugin_lua_glicko2");
+        std::fs::write(&path, script).unwrap();
+
+        let yaml = serde_yaml::from_str(&format!(
+            "script: {}\ninitial_rating: 1500.0\ninitial_rd: 350.0\n",
+            path.to_str().unwrap()
+        ))
+        .unwrap();
+        let sys = registry::from_name("lua:glicko2", &yaml).expect("lua:glicko2 should register");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1500.0);
+        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lua_glicko2_missing_script_returns_none() {
+        let yaml = serde_yaml::from_str("initial_rating: 1500.0\n").unwrap();
+        assert!(registry::from_name("lua:glicko2", &yaml).is_none());
     }
 
     #[test]
@@ -70,11 +115,11 @@ mod tests {
     }
 
     #[test]
-    fn all_systems_lists_v01_systems() {
+    fn all_systems_lists_implemented_systems() {
         let systems = registry::all_systems();
         assert!(systems.contains(&"elo"));
         assert!(systems.contains(&"flatpoints"));
-        assert!(!systems.contains(&"glicko2"));
+        assert!(systems.contains(&"glicko2"));
         assert!(!systems.contains(&"trueskill"));
     }
 
