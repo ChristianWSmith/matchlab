@@ -3,14 +3,12 @@
 //! `LuaRatingSystem` implements the `RatingSystem` trait by delegating to a
 //! script's `initialize` / `predict` / `update` functions. The script declares
 //! its `information_budget` global at load; per-player state that the script
-//! wants to keep lives in the `Context` the adapter threads through every call.
+//! wants to keep lives in the VM's context table (passed by reference).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::{PlayerId, PlayerObservation};
-use matchlab_lua::context::{self, Context};
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
@@ -20,7 +18,6 @@ use crate::system::{ObservationType, RatingState, RatingSystem};
 /// A rating system whose algorithm lives entirely in a Lua script.
 pub struct LuaRatingSystem {
     vm: LuaVm,
-    context: Mutex<Context>,
     budget: Vec<ObservationType>,
 }
 
@@ -31,11 +28,7 @@ impl LuaRatingSystem {
             .get_global::<Vec<String>>("information_budget")?
             .map(|names| names.iter().filter_map(|n| observation_type(n)).collect())
             .unwrap_or_else(|| vec![ObservationType::WinLoss]);
-        Ok(Self {
-            vm,
-            context: Mutex::new(context::empty()),
-            budget,
-        })
+        Ok(Self { vm, budget })
     }
 
     pub fn script_path(&self) -> &str {
@@ -80,12 +73,10 @@ impl RatingSystem for LuaRatingSystem {
 
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let args = vec![mlua::Value::Integer(player_id.0 as i64)];
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (state_tbl, new_ctx): (Table, Context) = self
+        let state_tbl: Table = self
             .vm
-            .call_with_context("initialize", &args, &ctx)
+            .call_with_context("initialize", &args)
             .expect("rating initialize failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
         state_from_table(&state_tbl)
     }
 
@@ -98,13 +89,9 @@ impl RatingSystem for LuaRatingSystem {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, false))
             .expect("build team_b table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (prob, new_ctx): (f64, Context) = self
-            .vm
-            .call_with_context("predict", &[team_a_val, team_b_val], &ctx)
-            .expect("rating predict failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
-        prob
+        self.vm
+            .call_with_context("predict", &[team_a_val, team_b_val])
+            .expect("rating predict failed")
     }
 
     fn update(
@@ -126,12 +113,10 @@ impl RatingSystem for LuaRatingSystem {
             .with_lua(|lua| convert::observations_to_map(lua, &obs_list, false))
             .expect("build observations table");
 
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (updates_tbl, new_ctx): (Table, Context) = self
+        let updates_tbl: Table = self
             .vm
-            .call_with_context("update", &[mr_val, obs_val], &ctx)
+            .call_with_context("update", &[mr_val, obs_val])
             .expect("rating update failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
 
         let mut updates = HashMap::new();
         for pair in updates_tbl.clone().pairs::<mlua::Value, Table>() {

@@ -6,13 +6,10 @@
 //! observation tables carry the ground-truth skill binding (`include_skill`),
 //! so match winners are decided by true skill.
 
-use std::sync::Mutex;
-
 use matchlab_core::match_::{MatchId, MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
-use matchlab_lua::context::{self, Context};
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
@@ -22,16 +19,12 @@ use crate::outcome::OutcomeModel;
 /// An outcome model whose algorithm lives entirely in a Lua script.
 pub struct LuaOutcomeModel {
     vm: LuaVm,
-    context: Mutex<Context>,
 }
 
 impl LuaOutcomeModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["win_probability", "simulate"])?;
-        Ok(Self {
-            vm,
-            context: Mutex::new(context::empty()),
-        })
+        Ok(Self { vm })
     }
 
     pub fn script_path(&self) -> &str {
@@ -110,13 +103,9 @@ impl OutcomeModel for LuaOutcomeModel {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
             .expect("build team_b table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (prob, new_ctx): (f64, Context) = self
-            .vm
-            .call_with_context("win_probability", &[a_val, b_val], &ctx)
-            .expect("outcome win_probability failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
-        prob
+        self.vm
+            .call_with_context("win_probability", &[a_val, b_val])
+            .expect("outcome win_probability failed")
     }
 
     fn simulate(
@@ -134,17 +123,14 @@ impl OutcomeModel for LuaOutcomeModel {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
             .expect("build team_b table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
 
-        let (result_tbl, new_ctx): (Table, Context) = self.vm.with_rng(rng, |vm| {
+        let result_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "simulate",
                 &[mlua::Value::Integer(match_id.0 as i64), a_val, b_val],
-                &ctx,
             )
             .expect("outcome simulate failed")
         });
-        *self.context.lock().expect("context poisoned") = new_ctx;
 
         let mut result = parse_result(&result_tbl);
         result.match_id = match_id;

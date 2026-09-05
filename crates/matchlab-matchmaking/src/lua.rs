@@ -5,13 +5,10 @@
 //! (observations only — never `PlayerReality`); randomness flows through
 //! `matchlab.rng_*` when a script wants it.
 
-use std::sync::Mutex;
-
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
-use matchlab_lua::context::{self, Context};
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Lua, Table, Value};
@@ -22,16 +19,12 @@ use crate::queue::Queue;
 /// A matchmaker whose algorithm lives entirely in a Lua script.
 pub struct LuaMatchmaker {
     vm: LuaVm,
-    context: Mutex<Context>,
 }
 
 impl LuaMatchmaker {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["find_matches"])?;
-        Ok(Self {
-            vm,
-            context: Mutex::new(context::empty()),
-        })
+        Ok(Self { vm })
     }
 
     pub fn script_path(&self) -> &str {
@@ -98,9 +91,8 @@ impl Matchmaker for LuaMatchmaker {
             .vm
             .with_lua(|lua| queue_to_table(lua, queue, now))
             .expect("build queue table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
 
-        let (matches_tbl, new_ctx): (Table, Context) = self.vm.with_rng(rng, |vm| {
+        let matches_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "find_matches",
                 &[
@@ -108,11 +100,9 @@ impl Matchmaker for LuaMatchmaker {
                     Value::Integer(team_size as i64),
                     Value::Number(now.as_secs_f64()),
                 ],
-                &ctx,
             )
             .expect("matchmaker find_matches failed")
         });
-        *self.context.lock().expect("context poisoned") = new_ctx;
 
         let mut matches = Vec::new();
         for pair in matches_tbl.pairs::<mlua::Value, Table>() {

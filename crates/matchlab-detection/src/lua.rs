@@ -6,12 +6,9 @@
 //! persists across matches. Scripts return an action string that the adapter
 //! maps to `InterventionAction`.
 
-use std::sync::Mutex;
-
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::PlayerId;
 use matchlab_core::world::World;
-use matchlab_lua::context::{self, Context};
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
@@ -22,16 +19,12 @@ use crate::intervention::InterventionAction;
 /// A detection system whose algorithm lives entirely in a Lua script.
 pub struct LuaDetectionSystem {
     vm: LuaVm,
-    context: Mutex<Context>,
 }
 
 impl LuaDetectionSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["observe", "evaluate", "recommend_action"])?;
-        Ok(Self {
-            vm,
-            context: Mutex::new(context::empty()),
-        })
+        Ok(Self { vm })
     }
 
     pub fn script_path(&self) -> &str {
@@ -97,12 +90,10 @@ impl DetectionSystem for LuaDetectionSystem {
             .vm
             .with_lua(|lua| convert::observations_to_map(lua, &obs, false))
             .expect("build observations table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (_ctx_val, new_ctx): (Value, Context) = self
+        let _: Value = self
             .vm
-            .call_with_context("observe", &[mr_val, obs_val], &ctx)
+            .call_with_context("observe", &[mr_val, obs_val])
             .expect("detection observe failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
     }
 
     fn evaluate(&self, player_id: PlayerId, world: &World) -> DetectionResult {
@@ -118,16 +109,13 @@ impl DetectionSystem for LuaDetectionSystem {
                 convert::observations_to_map(lua, &list, false)
             })
             .expect("build observation table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (result_tbl, new_ctx): (Table, Context) = self
+        let result_tbl: Table = self
             .vm
             .call_with_context(
                 "evaluate",
                 &[Value::Integer(player_id.0 as i64), obs_val],
-                &ctx,
             )
             .expect("detection evaluate failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
         result_from_table(&result_tbl, player_id)
     }
 
@@ -150,12 +138,10 @@ impl DetectionSystem for LuaDetectionSystem {
                 Ok(Value::Table(t))
             })
             .expect("build detection result table");
-        let ctx = self.context.lock().expect("context poisoned").clone();
-        let (action, new_ctx): (String, Context) = self
+        let action: String = self
             .vm
-            .call_with_context("recommend_action", &[result_tbl], &ctx)
+            .call_with_context("recommend_action", &[result_tbl])
             .expect("detection recommend_action failed");
-        *self.context.lock().expect("context poisoned") = new_ctx;
         action_from_str(&action).unwrap_or(InterventionAction::None)
     }
 }

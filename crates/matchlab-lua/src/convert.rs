@@ -47,6 +47,11 @@ pub fn observation_to_table(
         "queue_joined_at_secs",
         obs.queue_joined_at.map(|s| s.as_secs_f64()),
     )?;
+    set_opt_int(
+        &t,
+        "queue_joined_at_ticks",
+        obs.queue_joined_at.map(|s| s.ticks()),
+    )?;
     set_opt_int(&t, "party_id", obs.party_id)?;
     if include_skill {
         t.set("skill_overall", obs.skill_vector.overall())
@@ -164,12 +169,22 @@ pub fn match_result_to_table(lua: &Lua, mr: &MatchResult) -> Result<Table, Strin
     Ok(t)
 }
 
-/// The metrics-only snapshot: the match result plus per-participant tables that
-/// carry both observation and reality fields (true skill, improvement rate).
+/// The metrics-only snapshot: the match result, the current tick, and
+/// per-participant tables carrying observation + reality fields.
 pub fn metric_snapshot(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     t.set("match_result", match_result_to_table(lua, mr)?)
         .map_err(|e| e.to_string())?;
+    t.set("tick", world.time.ticks())
+        .map_err(|e| e.to_string())?;
+    t.set("time_secs", world.time.as_secs_f64())
+        .map_err(|e| e.to_string())?;
+    let players = participant_players(lua, mr, world)?;
+    t.set("players", players).map_err(|e| e.to_string())?;
+    Ok(Value::Table(t))
+}
+
+fn participant_players(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Value, String> {
     let players = lua.create_table().map_err(|e| e.to_string())?;
     let mut ids: Vec<PlayerId> = mr.team_a.iter().chain(mr.team_b.iter()).copied().collect();
     ids.sort_by_key(|id| id.0);
@@ -179,8 +194,22 @@ pub fn metric_snapshot(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Val
             players.set(i + 1, row).map_err(|e| e.to_string())?;
         }
     }
-    t.set("players", players).map_err(|e| e.to_string())?;
-    Ok(Value::Table(t))
+    Ok(Value::Table(players))
+}
+
+/// The full population snapshot for population-level metrics (metrics only):
+/// every observation + reality pair, sorted by player id.
+pub fn population_snapshot(lua: &Lua, world: &World) -> Result<Value, String> {
+    let players = lua.create_table().map_err(|e| e.to_string())?;
+    let mut ids: Vec<PlayerId> = world.observations.keys().copied().collect();
+    ids.sort_by_key(|id| id.0);
+    for (i, pid) in ids.iter().enumerate() {
+        if let Some(obs) = world.observations.get(pid) {
+            let row = participant_to_table(lua, obs, world.players.get(pid))?;
+            players.set(i + 1, row).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(Value::Table(players))
 }
 
 /// Region to a stable string for matchmaking scripts.

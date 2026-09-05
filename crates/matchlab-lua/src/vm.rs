@@ -12,8 +12,11 @@ use crate::context::{self, Context};
 use crate::rng;
 use crate::validate;
 use matchlab_core::rng::SimRng;
-use mlua::{FromLua, Function, Lua, Value};
+use mlua::{Function, FromLua, Lua, Table, Value};
 use std::sync::Mutex;
+
+/// Global under which the persistent context table is stored.
+const CONTEXT_GLOBAL: &str = "_matchlab_context";
 
 /// A loaded Lua script with its config and deterministic helpers.
 pub struct LuaVm {
@@ -43,7 +46,11 @@ impl LuaVm {
         Ok(Self {
             lua: Mutex::new(lua),
             script_path: resolved_str,
-            config: params.clone(),
+            config: if params.is_null() {
+                context::empty()
+            } else {
+                params.clone()
+            },
         })
     }
 
@@ -88,15 +95,17 @@ impl LuaVm {
 
     /// Call `name` with `args ++ [config, context]`.
     ///
-    /// The script may return `(value, context)` or a single value; in the
-    /// latter case the passed context table is read back by reference (Lua
-    /// tables are mutable), so in-place mutation is preserved either way.
+    /// The context is a persistent Lua table stored as the `_matchlab_context`
+    /// global (created empty on first use) and passed by reference to every
+    /// call, so scripts accumulate state in place at O(1) per call. If the
+    /// script returns a table as its second value, that table becomes the new
+    /// context. This avoids round-tripping a growing accumulator through
+    /// `serde_yaml` on every call.
     pub fn call_with_context<T: FromLua>(
         &self,
         name: &str,
         args: &[Value],
-        context: &Context,
-    ) -> Result<(T, Context), String> {
+    ) -> Result<T, String> {
         let lua = self
             .lua
             .lock()
@@ -106,12 +115,22 @@ impl LuaVm {
             .get(name)
             .map_err(|_| format!("{} not defined in {}", name, self.script_path))?;
 
+        let ctx_table: Table = match lua.globals().get::<Value>(CONTEXT_GLOBAL).map_err(|e| e.to_string())? {
+            Value::Table(t) => t,
+            _ => {
+                let t = lua.create_table().map_err(|e| e.to_string())?;
+                lua.globals()
+                    .set(CONTEXT_GLOBAL, t.clone())
+                    .map_err(|e| e.to_string())?;
+                t
+            }
+        };
+
         let config_value = context::yaml_to_lua(&lua, &self.config)?;
-        let ctx_value = context::yaml_to_lua(&lua, context)?;
 
         let mut call_args = args.to_vec();
         call_args.push(config_value);
-        call_args.push(ctx_value.clone());
+        call_args.push(Value::Table(ctx_table.clone()));
 
         let results = func
             .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args))
@@ -124,13 +143,40 @@ impl LuaVm {
         let value: T = T::from_lua(first, &lua)
             .map_err(|e| format!("{name} result in {}: {}", self.script_path, e))?;
 
-        let new_ctx_value = match iter.next() {
-            Some(Value::Table(t)) => Value::Table(t),
-            _ => ctx_value,
-        };
-        let new_context = context::from_lua(&new_ctx_value)?;
+        if let Some(Value::Table(t)) = iter.next() {
+            lua.globals()
+                .set(CONTEXT_GLOBAL, t)
+                .map_err(|e| e.to_string())?;
+        }
 
-        Ok((value, new_context))
+        Ok(value)
+    }
+
+    /// Read the current context back as a serializable value (for inspection
+    /// and tests). Returns an empty mapping when no call has run yet.
+    pub fn read_context(&self) -> Result<Context, String> {
+        let lua = self
+            .lua
+            .lock()
+            .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
+        let value: Value = lua.globals().get(CONTEXT_GLOBAL).map_err(|e| e.to_string())?;
+        if matches!(value, Value::Nil) {
+            return Ok(context::empty());
+        }
+        context::from_lua(&value)
+    }
+
+    /// Reset the context to an empty table (used by tests and re-entrant callers).
+    pub fn reset_context(&self) -> Result<(), String> {
+        let lua = self
+            .lua
+            .lock()
+            .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
+        let t = lua.create_table().map_err(|e| e.to_string())?;
+        lua.globals()
+            .set(CONTEXT_GLOBAL, t)
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 
@@ -175,11 +221,8 @@ mod tests {
         )
         .unwrap();
         let args = [Value::Integer(5)];
-        let (result, ctx): (f64, Context) = vm
-            .call_with_context("compute", &args, &context::empty())
-            .unwrap();
+        let result: f64 = vm.call_with_context("compute", &args).unwrap();
         assert_eq!(result, 15.0);
-        assert!(matches!(ctx, serde_yaml::Value::Mapping(_)));
         let _ = std::fs::remove_file(&p);
     }
 
@@ -189,12 +232,12 @@ mod tests {
             "function bump(config, context)\n  context.count = (context.count or 0) + 1\n  return context.count\nend",
         );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["bump"]).unwrap();
-        let mut ctx = context::empty();
         for expected in 1..=3 {
-            let (count, new_ctx): (i64, Context) = vm.call_with_context("bump", &[], &ctx).unwrap();
+            let count: i64 = vm.call_with_context("bump", &[]).unwrap();
             assert_eq!(count, expected);
-            ctx = new_ctx;
         }
+        let ctx = vm.read_context().unwrap();
+        assert_eq!(ctx["count"].as_i64(), Some(3));
         let _ = std::fs::remove_file(&p);
     }
 
@@ -203,11 +246,9 @@ mod tests {
         let p =
             write_temp("function fresh(config, context)\n  return 1, { value = config.n }\nend");
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[("n", 42.0)]), &["fresh"]).unwrap();
-        let (_, ctx): (i64, Context) = vm
-            .call_with_context("fresh", &[], &context::empty())
-            .unwrap();
-        let m = ctx.as_mapping().unwrap();
-        let v = m.get(serde_yaml::Value::String("value".into())).unwrap();
+        let _: i64 = vm.call_with_context("fresh", &[]).unwrap();
+        let ctx = vm.read_context().unwrap();
+        let v = ctx.get("value").unwrap();
         assert_eq!(v.as_f64().unwrap(), 42.0);
         let _ = std::fs::remove_file(&p);
     }
@@ -216,9 +257,7 @@ mod tests {
     fn missing_function_errors() {
         let p = write_temp("function other() return 1 end");
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &[]).unwrap();
-        let err = vm
-            .call_with_context::<f64>("nope", &[], &context::empty())
-            .unwrap_err();
+        let err = vm.call_with_context::<f64>("nope", &[]).unwrap_err();
         assert!(err.contains("nope"));
         let _ = std::fs::remove_file(&p);
     }
@@ -258,14 +297,10 @@ mod tests {
         );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["draw"]).unwrap();
         let mut rng = SimRng::from_seed(42);
-        let (first, _): (f64, Context) = vm.with_rng(&mut rng, |vm| {
-            vm.call_with_context("draw", &[], &context::empty())
-                .unwrap()
-        });
-        let (second, _): (f64, Context) = vm.with_rng(&mut rng, |vm| {
-            vm.call_with_context("draw", &[], &context::empty())
-                .unwrap()
-        });
+        let first: f64 = vm
+            .with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
+        let second: f64 = vm
+            .with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
         assert!(first >= 0.0 && first < 100.0);
         assert_ne!(first, second);
         let _ = std::fs::remove_file(&p);

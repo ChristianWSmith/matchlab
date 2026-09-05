@@ -443,9 +443,8 @@ crates/
   order + equal-time heap pops make the whole experiment deterministic for a
   given seed. Re-exports `LoopConfig`, `MachineState`, and the `handle_*` fns.
 
-**`matchlab-metrics` is implemented with the collectors** (depends on
-`matchlab-core` only; metrics are the sole legitimate reader of `PlayerReality`
-besides the simulation):
+**`matchlab-metrics` is implemented with the Lua-native collectors** (metrics
+are the sole legitimate reader of `PlayerReality` besides the simulation):
 - `collector.rs` — `MetricCollector` trait (spec §11.2): `name()`,
   `record_match(mr, world)`, `compute() -> MetricResult`, and an optional
   `time_buckets() -> Option<Vec<f64>>` (default `None`) that the engine folds
@@ -462,47 +461,19 @@ besides the simulation):
   canonical statistics implementation; `matchlab-analysis` re-exports it
   (`matchlab_analysis::stats`) and it lives here to keep collectors on the
   metrics-only-core boundary.
-- Determinism: collectors that aggregate HashMap-derived data (convergence,
-  stability, dimensionality_fidelity, population_health) sort by a composite
-  key (value + player id) before summing — `HashMap` iteration order is
-  randomized per process via `RandomState`, which would otherwise corrupt
-  byte-identical reproducibility.
-- `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
-  `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
-  summarized (spec §11.3; participant-sampled rather than whole-population
-  snapshots so memory/steps scale with matches, not matches × players). Each
-  sample is time-stamped; `MetricCollector::time_buckets` (default
-  `None`) yields a 20 equal-duration-bucket mean series that the engine folds
-  into a `rating_accuracy_by_time` `TimeSeries` — the "MAE decreases over
-  time" convergence evidence for the v0.1 acceptance ticket. Reads ground
-  truth — allowed for metrics.
-- `quality.rs` — `MatchQualityCollector` ("match_quality"):
-  `1 − (|avg_a − avg_b|/400).clamp(0,1)` from observation ratings, summarized.
-- `queue.rs` — `QueueTimeCollector` ("queue_time"): wait = `world.time
-  .duration_since(obs.queue_joined_at)` per participant — real join→formation
-  wait, **not** match duration (v0.1 exit condition).
-- `inequality.rs` — `MatchInequalityCollector` ("match_inequality"):
-  distribution of expected win probabilities (clusters near 0.5 for good
-  matchmaking; fat-tailed for poor).
-- `ndcg.rs` — `NDCGCollector` ("ndcg"): normalized discounted cumulative gain
-  over match qualities — does good match quality appear early?
-- `dimensionality.rs` — `DimensionalityFidelityCollector`
-  ("dimensionality_fidelity"): Pearson correlation of 1D ratings vs true skill
-  and of SkillVector prediction vs true skill; fidelity = multiD improvement.
-- `convergence.rs` — `ConvergenceCollector` ("convergence"): games until
-  `|rating − true_skill|` drops below a threshold (fewer is better).
-- `responsiveness.rs` — `ResponsivenessCollector` ("responsiveness"): fraction
-  of rating updates moving in the direction the outcome predicts.
-- `stability.rs` — `StabilityCollector` ("stability"): rating stddev for
-  stable players (low `improvement_rate`); drifting players excluded.
-- `streaks.rs` — `StreakCollector` ("streaks"): probability of 3/5/8/10-game
-  streaks as a `Distribution`.
-- `population.rs` — `PopulationHealthCollector` ("population_health"): rating
-  inflation/deflation and compression as `[inflation, compression,
-  initial_mean, final_mean]`.
-- `smurf.rs` — `SmurfMetricsCollector` ("smurf"): per-smurf damage
-  (unfairness), games at detection, and archetype; identifies smurfs by
-  properties (high skill + low games) — never a boolean flag.
+- `lua.rs` — `LuaMetricCollector`: implements `MetricCollector` by delegating
+  to a script's `on_record` / `compute`; reads the script's `name` global
+  (required) and optional `time_buckets` function and `needs_population = true`
+  global (which makes the snapshot carry the full population, not just match
+  participants). The snapshot includes observation + reality fields (`true_skill`,
+  `improvement_rate`, `reality_games_played`) — metrics only. Scripts accumulate
+  samples in the VM context table (O(1) per call, no per-call round-trip).
+- Metric scripts ship under `plugins/metrics/` (one per built-in metric):
+  match_quality, queue_time, rating_accuracy (with `time_buckets` → the
+  `rating_accuracy_by_time` convergence series), match_inequality, ndcg,
+  dimensionality_fidelity, convergence, responsiveness, stability, streaks,
+  population_health, smurf. Each reproduces the reference collector's semantics
+  (rating_accuracy_by_time is byte-identical through the all-Lua path).
 - `cohort.rs` — `CohortFilter` enum (All, SkillRange, Archetype,
   GamesPlayedRange, Region, PartySize, SessionLength, RankTier,
   IsSmurfByProperties) + `tier_for_skill(skill) -> tier` string mapping.

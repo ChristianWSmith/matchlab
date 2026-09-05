@@ -478,7 +478,18 @@ mod tests {
     use matchlab_game::outcome::OutcomeModel;
     use matchlab_matchmaking::lua::LuaMatchmaker;
     use matchlab_matchmaking::matchmaker::Matchmaker;
-    use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
+    use matchlab_metrics::MetricsEngine;
+    use matchlab_metrics::lua::LuaMetricCollector;
+
+    fn lua_metric(name: &str) -> Box<dyn matchlab_metrics::MetricCollector> {
+        Box::new(
+            LuaMetricCollector::load(
+                &format!("plugins/metrics/{name}.lua"),
+                &serde_yaml::Value::Null,
+            )
+            .expect("metric script loads"),
+        )
+    }
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
     use matchlab_rating::registry;
@@ -898,7 +909,7 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let mut metrics = MetricsEngine::new();
-        metrics.register(Box::new(MatchQualityCollector::new()));
+        metrics.register(lua_metric("match_quality"));
 
         let cfg = LoopConfig {
             team_size: 5,

@@ -13,12 +13,7 @@ use matchlab_core::time::SimTime;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
 use matchlab_matchmaking::matchmaker::Matchmaker;
-use matchlab_metrics::{
-    ConvergenceCollector, DimensionalityFidelityCollector, MatchInequalityCollector,
-    MatchQualityCollector, MetricResult, MetricsEngine, NDCGCollector, PopulationHealthCollector,
-    QueueTimeCollector, RatingAccuracyCollector, ResponsivenessCollector, SmurfMetricsCollector,
-    StabilityCollector, StreakCollector,
-};
+use matchlab_metrics::{MetricResult, MetricsEngine};
 use matchlab_objective::utility::{ObjectiveFunction, ObjectiveWeights};
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
@@ -226,23 +221,11 @@ fn batch_interval_secs(spec: &MatchmakingSpec) -> u64 {
 
 fn register_metrics(engine: &mut MetricsEngine, names: &[String]) -> Result<(), String> {
     for name in names {
-        match name.as_str() {
-            "rating_accuracy" => engine.register(Box::new(RatingAccuracyCollector::new())),
-            "match_quality" => engine.register(Box::new(MatchQualityCollector::new())),
-            "queue_time" => engine.register(Box::new(QueueTimeCollector::new())),
-            "match_inequality" => engine.register(Box::new(MatchInequalityCollector::new())),
-            "ndcg" => engine.register(Box::new(NDCGCollector::new())),
-            "dimensionality_fidelity" => {
-                engine.register(Box::new(DimensionalityFidelityCollector::new()))
-            }
-            "convergence" => engine.register(Box::new(ConvergenceCollector::default())),
-            "responsiveness" => engine.register(Box::new(ResponsivenessCollector::new())),
-            "stability" => engine.register(Box::new(StabilityCollector::new())),
-            "streaks" => engine.register(Box::new(StreakCollector::new())),
-            "population_health" => engine.register(Box::new(PopulationHealthCollector::new())),
-            "smurf" => engine.register(Box::new(SmurfMetricsCollector::new())),
-            other => return Err(format!("unknown metric collector: {other}")),
-        }
+        let path = format!("plugins/metrics/{name}.lua");
+        let collector =
+            matchlab_metrics::lua::LuaMetricCollector::load(&path, &serde_yaml::Value::Null)
+                .map_err(|_| format!("unknown metric collector: {name}"))?;
+        engine.register(Box::new(collector));
     }
     Ok(())
 }

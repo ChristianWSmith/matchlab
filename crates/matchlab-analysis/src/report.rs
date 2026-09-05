@@ -62,12 +62,19 @@ mod tests {
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
     use matchlab_core::world::World;
-    use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
+    use matchlab_metrics::MetricsEngine;
+    use matchlab_metrics::lua::LuaMetricCollector;
     use std::collections::VecDeque;
 
     fn sample_result(name: &str, config_hash: &str) -> ExperimentResult {
         let mut engine = MetricsEngine::new();
-        engine.register(Box::new(MatchQualityCollector::new()));
+        engine.register(Box::new(
+            LuaMetricCollector::load(
+                "plugins/metrics/match_quality.lua",
+                &serde_yaml::Value::Null,
+            )
+            .unwrap(),
+        ));
 
         let mut world = World::new(SimRng::from_seed(1));
         let pid = PlayerId(1);
