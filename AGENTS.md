@@ -703,6 +703,6 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 | Hook definitions + loader | `crates/matchlab-{trait}/src/hooks.rs`, `loader.rs` |
 | How to add a Lua hook | Write a `.lua` file in `plugins/`, define hook functions, reference via `lua:<name>` in YAML |
 | Experiment YAML schema | `docs/spec.md` section 13.1 |
-| Build plan | `tickets/` directory |
+| Build plan | `docs/spec.md` §17 build order |
 | Adversarial agents (booster, deranker, etc.) | `crates/matchlab-adversarial/src/` |
 | Player satisfaction model | `crates/matchlab-utility/src/satisfaction.rs` |
