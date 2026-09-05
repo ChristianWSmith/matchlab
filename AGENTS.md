@@ -411,8 +411,31 @@ besides the simulation):
 - `queue.rs` — `QueueTimeCollector` ("queue_time"): wait = `world.time
   .duration_since(obs.queue_joined_at)` per participant — real join→formation
   wait, **not** match duration (v0.1 exit condition).
-No collectors besides these three are in scope for v0.1 (spec §11.3's
-inequality/ndcg/correlation/convergence/etc. are out).
+- `inequality.rs` — `MatchInequalityCollector` ("match_inequality"):
+  distribution of expected win probabilities (clusters near 0.5 for good
+  matchmaking; fat-tailed for poor).
+- `ndcg.rs` — `NDCGCollector` ("ndcg"): normalized discounted cumulative gain
+  over match qualities — does good match quality appear early?
+- `dimensionality.rs` — `DimensionalityFidelityCollector`
+  ("dimensionality_fidelity"): Pearson correlation of 1D ratings vs true skill
+  and of SkillVector prediction vs true skill; fidelity = multiD improvement.
+- `convergence.rs` — `ConvergenceCollector` ("convergence"): games until
+  `|rating − true_skill|` drops below a threshold (fewer is better).
+- `responsiveness.rs` — `ResponsivenessCollector` ("responsiveness"): fraction
+  of rating updates moving in the direction the outcome predicts.
+- `stability.rs` — `StabilityCollector` ("stability"): rating stddev for
+  stable players (low `improvement_rate`); drifting players excluded.
+- `streaks.rs` — `StreakCollector` ("streaks"): probability of 3/5/8/10-game
+  streaks as a `Distribution`.
+- `population.rs` — `PopulationHealthCollector` ("population_health"): rating
+  inflation/deflation and compression as `[inflation, compression,
+  initial_mean, final_mean]`.
+- `smurf.rs` — `SmurfMetricsCollector` ("smurf"): per-smurf damage
+  (unfairness), games at detection, and archetype; identifies smurfs by
+  properties (high skill + low games) — never a boolean flag.
+- `cohort.rs` — `CohortFilter` enum (All, SkillRange, Archetype,
+  GamesPlayedRange, Region, PartySize, SessionLength, RankTier,
+  IsSmurfByProperties) + `tier_for_skill(skill) -> tier` string mapping.
 
 **`matchlab-experiments` is implemented with the config + runner:**
 - `config.rs` — serde types for the full experiment manifest (spec §13.2):
