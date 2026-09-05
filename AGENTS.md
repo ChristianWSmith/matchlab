@@ -621,7 +621,7 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   is returned by reference and never discarded (§12.2 — the "never discard raw
   metrics" rule). `lib.rs` re-exports `ObjectiveFunction`, `ObjectiveWeights`.
 
-**`matchlab-adversarial` is implemented with the agent types:**
+**`matchlab-adversarial` is implemented with the Lua-native agent types:**
 - `agent.rs` — `AdversarialAgent` trait (spec §15.1): `tick(&mut self,
   player_id, world)` + `objective() -> AdversarialObjective` (6-variant enum:
   `MaximizeRating`, `MinimizeGamesPlayed`, `MaximizeWinRate { target_games }`,
@@ -629,19 +629,26 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   player's behavior controller (like the outcome model), so they may adjust
   reality behavior params (e.g. `quit_probability`) as well as observable
   signals.
-- `booster.rs` — `BoosterAgent { boost_target, boostee }`: links the duo into a
-  party and boosts the boostee's `win_rate` to 1.0. Objective `MaximizeRating`.
-- `deranker.rs` — `DerankerAgent { target_rating }`: while rating is above the
-  target, raises `quit_probability` to 0.9 and `tilt_level` to 1.0 to throw
-  matches. Objective `MaintainLowRating`.
-- `win_trader.rs` — `WinTraderAgent { partner, alternating }`: links the pair
-  into a party and toggles `alternating`. Objective `WinTrade { partner }`.
-- `afk.rs` — `AfkAgent { go_afk_probability }`: with `world.rng.gen_bool` sets
-  `quit_probability = 1.0` (AFK/disconnect). Objective `MinimizeGamesPlayed`.
-- `rating_farmer.rs` — `RatingFarmerAgent { quit_probability,
-  quit_after_minutes }`: quits/offline after queueing to keep `games_played`
-  minimal. Objective `MaximizeWinRate { target_games: 10 }`.
-- `lib.rs` — re-exports all agents + `AdversarialAgent`/`AdversarialObjective`.
+- `lua.rs` — `LuaAdversarialAgent`: implements `AdversarialAgent` by
+  delegating to a script's `tick` / `objective` functions. The adapter exposes
+  a `behavior` table (quit_probability, party_id, tilt_level, win_rate,
+  is_online) plus the player's observation, and writes the returned behavior
+  back to reality/observations. Randomness flows through `matchlab.rng_*` from
+  `world.rng`; the objective is read at load and cached.
+- The agents ship as Lua scripts under `plugins/adversarial/`:
+  - `afk.lua` — with `matchlab.rng_bool(go_afk_probability)` sets
+    `quit_probability = 1.0`. Objective `MinimizeGamesPlayed`.
+  - `deranker.lua` — while rating is above `target_rating`, raises
+    `quit_probability` to 0.9 and `tilt_level` to 1.0. Objective
+    `MaintainLowRating`.
+  - `win_trader.lua` — links the pair into a party. Objective `WinTrade`.
+  - `booster.lua` — links the duo into a party and boosts the boostee's
+    `win_rate` to 1.0. Objective `MaximizeRating`.
+  - `rating_farmer.lua` — with `matchlab.rng_bool(quit_probability)` sets
+    `quit_probability = 1.0` and goes offline to keep `games_played` minimal.
+    Objective `MaximizeWinRate`.
+- `lib.rs` — re-exports `LuaAdversarialAgent` + `AdversarialAgent`/
+  `AdversarialObjective`.
 
 **`matchlab-utility` is implemented with the satisfaction model:**
 - `satisfaction.rs` — `SatisfactionModel` (spec §16.1) with

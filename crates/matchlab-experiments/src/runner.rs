@@ -64,7 +64,7 @@ impl ExperimentRunner {
         let seed = seeds.population_seed;
         let detection_system = build_detection_system(config.experiment.detection.as_ref())?;
         let ranker = build_ranker(config.experiment.ranking.as_ref());
-        let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref());
+        let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref())?;
         let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref());
 
         let mut loop_ = MatchLoop::with_extras(
@@ -267,90 +267,24 @@ fn build_ranker(
 
 fn build_adversarial_agents(
     spec: Option<&crate::config::AdversarialSpec>,
-) -> std::collections::HashMap<PlayerId, Box<dyn matchlab_adversarial::agent::AdversarialAgent>> {
+) -> Result<
+    std::collections::HashMap<PlayerId, Box<dyn matchlab_adversarial::agent::AdversarialAgent>>,
+    String,
+> {
     use matchlab_adversarial::agent::AdversarialAgent;
     let mut agents: std::collections::HashMap<PlayerId, Box<dyn AdversarialAgent>> =
         std::collections::HashMap::new();
     let Some(spec) = spec else {
-        return agents;
+        return Ok(agents);
     };
     for agent_spec in &spec.agents {
-        let agent: Option<Box<dyn AdversarialAgent>> = match agent_spec.agent_type.as_str() {
-            "afk" => {
-                let p = agent_spec
-                    .params
-                    .get("go_afk_probability")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.1);
-                Some(Box::new(matchlab_adversarial::afk::AfkAgent::new(p)))
-            }
-            "deranker" => {
-                let target = agent_spec
-                    .params
-                    .get("target_rating")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(500.0);
-                Some(Box::new(
-                    matchlab_adversarial::deranker::DerankerAgent::new(target),
-                ))
-            }
-            "rating_farmer" => {
-                let qp = agent_spec
-                    .params
-                    .get("quit_probability")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.5);
-                let minutes = agent_spec
-                    .params
-                    .get("quit_after_minutes")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(5.0);
-                Some(Box::new(
-                    matchlab_adversarial::rating_farmer::RatingFarmerAgent::new(qp, minutes),
-                ))
-            }
-            "booster" => {
-                let boost_target = agent_spec
-                    .params
-                    .get("boost_target")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(agent_spec.player.unwrap_or(0));
-                let boostee = agent_spec
-                    .params
-                    .get("boostee")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(boost_target + 1);
-                Some(Box::new(matchlab_adversarial::booster::BoosterAgent::new(
-                    PlayerId(boost_target),
-                    PlayerId(boostee),
-                )))
-            }
-            "win_trader" => {
-                let partner = agent_spec
-                    .params
-                    .get("partner")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(agent_spec.player.unwrap_or(0) + 1);
-                let alternating = agent_spec
-                    .params
-                    .get("alternating")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                Some(Box::new(
-                    matchlab_adversarial::win_trader::WinTraderAgent::new(
-                        PlayerId(partner),
-                        alternating,
-                    ),
-                ))
-            }
-            _ => None,
-        };
-        if let Some(agent) = agent {
-            let pid = agent_spec.player.unwrap_or(0);
-            agents.insert(PlayerId(pid), agent);
-        }
+        let params = flatten_params(&agent_spec.params);
+        let pid = PlayerId(agent_spec.player.unwrap_or(0));
+        let agent =
+            matchlab_adversarial::lua::LuaAdversarialAgent::load(&agent_spec.script, &params, pid)?;
+        agents.insert(pid, Box::new(agent));
     }
-    agents
+    Ok(agents)
 }
 
 fn build_satisfaction_model(

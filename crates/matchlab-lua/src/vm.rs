@@ -12,7 +12,7 @@ use crate::context::{self, Context};
 use crate::rng;
 use crate::validate;
 use matchlab_core::rng::SimRng;
-use mlua::{Function, FromLua, Lua, Table, Value};
+use mlua::{FromLua, Function, Lua, Table, Value};
 use std::sync::Mutex;
 
 /// Global under which the persistent context table is stored.
@@ -101,11 +101,7 @@ impl LuaVm {
     /// script returns a table as its second value, that table becomes the new
     /// context. This avoids round-tripping a growing accumulator through
     /// `serde_yaml` on every call.
-    pub fn call_with_context<T: FromLua>(
-        &self,
-        name: &str,
-        args: &[Value],
-    ) -> Result<T, String> {
+    pub fn call_with_context<T: FromLua>(&self, name: &str, args: &[Value]) -> Result<T, String> {
         let lua = self
             .lua
             .lock()
@@ -115,7 +111,11 @@ impl LuaVm {
             .get(name)
             .map_err(|_| format!("{} not defined in {}", name, self.script_path))?;
 
-        let ctx_table: Table = match lua.globals().get::<Value>(CONTEXT_GLOBAL).map_err(|e| e.to_string())? {
+        let ctx_table: Table = match lua
+            .globals()
+            .get::<Value>(CONTEXT_GLOBAL)
+            .map_err(|e| e.to_string())?
+        {
             Value::Table(t) => t,
             _ => {
                 let t = lua.create_table().map_err(|e| e.to_string())?;
@@ -159,7 +159,10 @@ impl LuaVm {
             .lua
             .lock()
             .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
-        let value: Value = lua.globals().get(CONTEXT_GLOBAL).map_err(|e| e.to_string())?;
+        let value: Value = lua
+            .globals()
+            .get(CONTEXT_GLOBAL)
+            .map_err(|e| e.to_string())?;
         if matches!(value, Value::Nil) {
             return Ok(context::empty());
         }
@@ -297,10 +300,8 @@ mod tests {
         );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["draw"]).unwrap();
         let mut rng = SimRng::from_seed(42);
-        let first: f64 = vm
-            .with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
-        let second: f64 = vm
-            .with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
+        let first: f64 = vm.with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
+        let second: f64 = vm.with_rng(&mut rng, |vm| vm.call_with_context("draw", &[]).unwrap());
         assert!(first >= 0.0 && first < 100.0);
         assert_ne!(first, second);
         let _ = std::fs::remove_file(&p);

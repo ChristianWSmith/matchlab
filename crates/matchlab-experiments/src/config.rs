@@ -156,10 +156,11 @@ pub struct AdversarialSpec {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdversarialAgentSpec {
-    pub agent_type: String,
     /// Player id the agent is attached to (for single-player agents).
     #[serde(default)]
     pub player: Option<u64>,
+    /// Path to the Lua agent script (e.g. plugins/adversarial/afk.lua).
+    pub script: String,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -421,7 +422,7 @@ experiment:
       - { rank: { tier: bronze, division: 1 }, min: 0, max: 1200 }
   adversarial:
     agents:
-      - agent_type: afk
+      - script: plugins/adversarial/afk.lua
         player: 1
         go_afk_probability: 0.5
   satisfaction:

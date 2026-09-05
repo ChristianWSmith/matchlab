@@ -111,10 +111,7 @@ impl DetectionSystem for LuaDetectionSystem {
             .expect("build observation table");
         let result_tbl: Table = self
             .vm
-            .call_with_context(
-                "evaluate",
-                &[Value::Integer(player_id.0 as i64), obs_val],
-            )
+            .call_with_context("evaluate", &[Value::Integer(player_id.0 as i64), obs_val])
             .expect("detection evaluate failed");
         result_from_table(&result_tbl, player_id)
     }

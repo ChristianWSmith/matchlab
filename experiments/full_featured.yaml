@@ -24,10 +24,10 @@ experiment:
       - { rank: { tier: radiant, division: 1 }, min: 2100, max: 100000 }
   adversarial:
     agents:
-      - agent_type: afk
+      - script: plugins/adversarial/afk.lua
         player: 1
         go_afk_probability: 0.05
-      - agent_type: deranker
+      - script: plugins/adversarial/deranker.lua
         player: 2
         target_rating: 400.0
   satisfaction:

@@ -1030,11 +1030,17 @@ mod tests {
 
     #[test]
     fn adversarial_agent_ticks_modify_world() {
-        use matchlab_adversarial::afk::AfkAgent;
+        use matchlab_adversarial::lua::LuaAdversarialAgent;
         let mut state = default_state(vec![]);
+        let agent = LuaAdversarialAgent::load(
+            "plugins/adversarial/afk.lua",
+            &serde_yaml::from_str("go_afk_probability: 1.0").unwrap(),
+            PlayerId(1),
+        )
+        .unwrap();
         state
             .adversarial_agents
-            .insert(PlayerId(1), Box::new(AfkAgent::new(1.0)));
+            .insert(PlayerId(1), Box::new(agent));
         let mut world = World::new(SimRng::from_seed(8));
         world.add_player(reality(1, 1000.0), obs(1, 1000.0));
 
