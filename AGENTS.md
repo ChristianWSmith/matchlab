@@ -554,11 +554,26 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   enabled subsystems (detection/ranking/adversarial/satisfaction/outcome
   variant/non-batch matchmaker) and the utility score when configured.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
-  players, team size 5, cold ladder start with `initial_rating: 1000`, flat
-  skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
-  The `initial_rating` deviates from the literal §17 snippet to provide a
-  meaningful convergence scenario: visible ratings start at 1000 while true
-  skill is sampled from N(1000, 250), so Elo has something to learn.
+   players, team size 5, cold ladder start with `initial_rating: 1000`, flat
+   skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
+   The `initial_rating` deviates from the literal §17 snippet to provide a
+   meaningful convergence scenario: visible ratings start at 1000 while true
+   skill is sampled from N(1000, 250), so Elo has something to learn.
+ - `experiments/base/standard.yaml` — inherited base config (2,000 players,
+   mixed archetypes incl. a smurf archetype, elo + logistic + batch).
+ - `experiments/lua_systems_test.yaml` — smoke test that Lua-native systems
+   (elo/logistic/batch) run through the standard population.
+ - `experiments/glicko_comparison.yaml` — Glicko-2 (script) on the standard
+   population.
+ - `experiments/matchmaker_comparison.yaml` — expanding_window (script) on the
+   standard population.
+ - `experiments/detection_test.yaml` — smurf detection enabled.
+ - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
+   smurf detection, Lua rank brackets, adversarial agents (afk + deranker),
+   satisfaction, all 12 metrics, objectives.
+ - `experiments/novel_rating.yaml` — the dogfood example: a rating system with
+   no Rust equivalent (`plugins/rating/decay_elo.lua`, Elo + idle decay) and a
+   custom metric (`plugins/metrics/avg_rating_gap.lua`) added purely as Lua.
 
 **`matchlab-analysis` is implemented with the reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/

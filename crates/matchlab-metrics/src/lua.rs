@@ -20,6 +20,10 @@ pub struct LuaMetricCollector {
     vm: LuaVm,
     metric_name: String,
     needs_population: bool,
+    /// Population snapshots are expensive to marshal; attach one every N
+    /// matches (configurable via `sample_every`, default 50).
+    sample_every: u64,
+    match_count: u64,
 }
 
 impl LuaMetricCollector {
@@ -29,10 +33,18 @@ impl LuaMetricCollector {
             .get_global::<String>("name")?
             .ok_or_else(|| format!("metric script {} must declare `name`", vm.script_path()))?;
         let needs_population = vm.get_global::<bool>("needs_population")?.unwrap_or(false);
+        let sample_every = vm
+            .config()
+            .get("sample_every")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50)
+            .max(1);
         Ok(Self {
             vm,
             metric_name,
             needs_population,
+            sample_every,
+            match_count: 0,
         })
     }
 
@@ -77,13 +89,16 @@ impl MetricCollector for LuaMetricCollector {
     }
 
     fn record_match(&mut self, match_result: &MatchResult, world: &World) {
+        self.match_count += 1;
+        let sample_population = self.needs_population
+            && (self.match_count % self.sample_every == 0 || self.match_count == 1);
         let (mr_val, snapshot) = self
             .vm
             .with_lua(|lua| {
                 let mr_val =
                     convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
                 let snap = convert::metric_snapshot(lua, match_result, world)?;
-                if self.needs_population {
+                if sample_population {
                     let population = convert::population_snapshot(lua, world)?;
                     snap.as_table()
                         .expect("metric snapshot is a table")

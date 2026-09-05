@@ -7,6 +7,9 @@ needs_population = true
 
 function on_record(match_result, snapshot, config, context)
     context.samples = context.samples or {}
+    if snapshot.population == nil then
+        return context
+    end
     for _, p in ipairs(snapshot.population) do
         if p.true_skill ~= nil then
             table.insert(context.samples, { p.rating, p.skill_overall, p.true_skill })

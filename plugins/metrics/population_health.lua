@@ -6,6 +6,9 @@ name = "population_health"
 needs_population = true
 
 function on_record(match_result, snapshot, config, context)
+    if snapshot.population == nil then
+        return context
+    end
     if not context.snapshots then
         context.snapshots = {}
     end

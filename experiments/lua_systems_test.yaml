@@ -1,8 +1,8 @@
 base: base/standard.yaml
 
 experiment:
-  name: lua_hooks_test
-  description: "Lua-native Elo rating system"
+  name: lua_systems_test
+  description: "Lua-native systems: elo + logistic + batch (smoke test)"
   rating:
     systems:
       - script: plugins/rating/elo.lua
