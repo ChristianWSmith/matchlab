@@ -369,7 +369,11 @@ crates/
     adversarial-agent `tick` per participant, satisfaction-based retention
     (if a `SatisfactionModel` is present: `retention_probability` below the
     threshold schedules `PlayerQuit` instead of re-queue), and emits
-    `RatingUpdateEvent` + `DetectionCheckEvent`s.
+    `RatingUpdateEvent` + `DetectionCheckEvent`s. The satisfaction queue-time
+    input is the real join→formation wait captured at **formation** time in a
+    `pending_queue_times` map (`handle_match_formed`) — computing it at MatchEnd
+    would measure the match duration and drive every player's satisfaction to
+    quit.
   Forming is capped by `matches_formed` (guarantees the loop terminates at
   exactly `max_matches` completed matches); `find_matches` is invoked with the
   world's rng temporarily swapped out because the matchmaker signature takes
@@ -412,6 +416,11 @@ besides the simulation):
   canonical statistics implementation; `matchlab-analysis` re-exports it
   (`matchlab_analysis::stats`) and it lives here to keep collectors on the
   metrics-only-core boundary.
+- Determinism: collectors that aggregate HashMap-derived data (convergence,
+  stability, dimensionality_fidelity, population_health) sort by a composite
+  key (value + player id) before summing — `HashMap` iteration order is
+  randomized per process via `RandomState`, which would otherwise corrupt
+  byte-identical reproducibility.
 - `accuracy.rs` — `RatingAccuracyCollector` ("rating_accuracy"): MAE of
   `obs.rating` vs `reality.skill.overall()` over each match's **participants**,
   summarized (spec §11.3; participant-sampled rather than whole-population

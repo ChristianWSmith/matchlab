@@ -9,8 +9,8 @@ pub struct LuaHooks {
 impl LuaHooks {
     pub fn load(path: &str) -> Result<Self, String> {
         let lua = Lua::new();
-        let script = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read {}: {}", path, e))?;
+        let script =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
         lua.load(&script)
             .exec()
             .map_err(|e| format!("lua error in {}: {}", path, e))?;
@@ -67,10 +67,7 @@ impl LuaHooks {
 
     pub fn call_max_skill_diff(&self, longest_wait_secs: f64) -> Option<f64> {
         let lua = self.lua.lock().ok()?;
-        let func = lua
-            .globals()
-            .get::<Function>("on_max_skill_diff")
-            .ok()?;
+        let func = lua.globals().get::<Function>("on_max_skill_diff").ok()?;
         func.call::<f64>(longest_wait_secs).ok()
     }
 }

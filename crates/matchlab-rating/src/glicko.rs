@@ -26,7 +26,10 @@ pub struct Glicko2RatingSystem {
 
 impl Glicko2RatingSystem {
     pub fn new(config: GlickoConfig) -> Self {
-        Self { config, hooks: None }
+        Self {
+            config,
+            hooks: None,
+        }
     }
 
     pub fn with_hooks(config: GlickoConfig, hooks: LuaHooks) -> Self {
@@ -84,8 +87,7 @@ impl Glicko2RatingSystem {
         let a = sigma.powi(2).ln();
         let big_f = |x: f64| {
             let ex = x.exp();
-            (ex * (delta.powi(2) - phi.powi(2) - v - ex))
-                / (2.0 * (phi.powi(2) + v + ex).powi(2))
+            (ex * (delta.powi(2) - phi.powi(2) - v - ex)) / (2.0 * (phi.powi(2) + v + ex).powi(2))
                 - (x - a) / tau.powi(2)
         };
 
@@ -111,7 +113,7 @@ impl Glicko2RatingSystem {
                 a_val = b_val;
                 fa = fb;
             } else {
-                fa = fa / 2.0;
+                fa /= 2.0;
             }
             b_val = c;
             fb = fc;
@@ -194,26 +196,33 @@ impl RatingSystem for Glicko2RatingSystem {
         let epsilon = self.config.epsilon;
         let tau = self.config.tau;
 
-        let collect_opponents = |ids: &[PlayerId], outcome: f64, obs: &HashMap<PlayerId, PlayerObservation>| {
-            let mut opponents = Vec::new();
-            for pid in ids {
-                if let Some(o) = obs.get(pid) {
-                    let (mu, phi, _) = Self::scale(o.rating, o.rating_deviation, o.volatility);
-                    opponents.push((mu, phi, outcome));
+        let collect_opponents =
+            |ids: &[PlayerId], outcome: f64, obs: &HashMap<PlayerId, PlayerObservation>| {
+                let mut opponents = Vec::new();
+                for pid in ids {
+                    if let Some(o) = obs.get(pid) {
+                        let (mu, phi, _) = Self::scale(o.rating, o.rating_deviation, o.volatility);
+                        opponents.push((mu, phi, outcome));
+                    }
                 }
-            }
-            opponents
-        };
+                opponents
+            };
 
-        let outcome_a = if match_result.winner == Team::A { 1.0 } else { 0.0 };
+        let outcome_a = if match_result.winner == Team::A {
+            1.0
+        } else {
+            0.0
+        };
         let outcome_b = 1.0 - outcome_a;
         let opp_b = collect_opponents(&match_result.team_b, outcome_a, observations);
         let opp_a = collect_opponents(&match_result.team_a, outcome_b, observations);
 
         for &pid in &match_result.team_a {
             if let Some(obs) = observations.get(&pid) {
-                let (mu, phi, sigma) = Self::scale(obs.rating, obs.rating_deviation, obs.volatility);
-                let (mu_p, phi_p, sigma_p) = self.update_player((mu, phi, sigma), &opp_b, epsilon, tau);
+                let (mu, phi, sigma) =
+                    Self::scale(obs.rating, obs.rating_deviation, obs.volatility);
+                let (mu_p, phi_p, sigma_p) =
+                    self.update_player((mu, phi, sigma), &opp_b, epsilon, tau);
                 let (rating, rd) = Self::unscale(mu_p, phi_p);
                 let rating = self
                     .hooks
@@ -234,8 +243,10 @@ impl RatingSystem for Glicko2RatingSystem {
         }
         for &pid in &match_result.team_b {
             if let Some(obs) = observations.get(&pid) {
-                let (mu, phi, sigma) = Self::scale(obs.rating, obs.rating_deviation, obs.volatility);
-                let (mu_p, phi_p, sigma_p) = self.update_player((mu, phi, sigma), &opp_a, epsilon, tau);
+                let (mu, phi, sigma) =
+                    Self::scale(obs.rating, obs.rating_deviation, obs.volatility);
+                let (mu_p, phi_p, sigma_p) =
+                    self.update_player((mu, phi, sigma), &opp_a, epsilon, tau);
                 let (rating, rd) = Self::unscale(mu_p, phi_p);
                 let rating = self
                     .hooks
@@ -271,7 +282,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: rd,
             volatility: 0.06,
             games_played: 10,
@@ -389,11 +403,7 @@ mod tests {
             "rating {} != ~1464.06",
             rating
         );
-        assert!(
-            (rd - 151.52).abs() < 1.0,
-            "RD {} != ~151.52",
-            rd
-        );
+        assert!((rd - 151.52).abs() < 1.0, "RD {} != ~151.52", rd);
         assert!(
             (sigma_p - 0.05999).abs() < 0.002,
             "vol {} != ~0.05999",

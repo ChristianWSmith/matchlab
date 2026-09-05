@@ -9,8 +9,8 @@ pub struct LuaHooks {
 impl LuaHooks {
     pub fn load(path: &str) -> Result<Self, String> {
         let lua = Lua::new();
-        let script = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read {}: {}", path, e))?;
+        let script =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
         lua.load(&script)
             .exec()
             .map_err(|e| format!("lua error in {}: {}", path, e))?;

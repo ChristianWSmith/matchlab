@@ -24,4 +24,6 @@ pub mod strict;
 pub use hooks::LuaHooks;
 pub use loader::{ScriptLoader, ScriptValidationResult};
 pub use objective::MatchObjective;
-pub use search::{BeamSearch, GreedySearch, RandomSamplingSearch, SearchStrategy, SearchStrategyKind};
+pub use search::{
+    BeamSearch, GreedySearch, RandomSamplingSearch, SearchStrategy, SearchStrategyKind,
+};

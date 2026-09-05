@@ -35,23 +35,14 @@ impl SmurfDetector {
         self.intervention_states.get(&player_id)
     }
 
-    pub fn intervention_state_mut(
-        &mut self,
-        player_id: PlayerId,
-    ) -> &mut PlayerInterventionState {
-        self.intervention_states
-            .entry(player_id)
-            .or_insert_with(PlayerInterventionState::default)
+    pub fn intervention_state_mut(&mut self, player_id: PlayerId) -> &mut PlayerInterventionState {
+        self.intervention_states.entry(player_id).or_default()
     }
 }
 
 impl DetectionSystem for SmurfDetector {
     fn observe(&mut self, match_result: &MatchResult, world: &World) {
-        for pid in match_result
-            .team_a
-            .iter()
-            .chain(match_result.team_b.iter())
-        {
+        for pid in match_result.team_a.iter().chain(match_result.team_b.iter()) {
             let Some(obs) = world.observations.get(pid) else {
                 continue;
             };
@@ -103,7 +94,7 @@ impl DetectionSystem for SmurfDetector {
                     probability_of_anomaly: 0.0,
                     confidence: 0.0,
                     evidence: Vec::new(),
-                }
+                };
             }
         };
 

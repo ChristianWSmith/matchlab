@@ -14,16 +14,15 @@ pub mod registry {
             "glicko2" => Some(Box::new(crate::glicko::Glicko2RatingSystem::from_yaml(
                 config,
             )?)),
-            "trueskill" => Some(Box::new(crate::trueskill::TrueSkillRatingSystem::from_yaml(
-                config,
-            )?)),
+            "trueskill" => Some(Box::new(
+                crate::trueskill::TrueSkillRatingSystem::from_yaml(config)?,
+            )),
             "lua:elo" => {
                 let path = config.get("script")?.as_str()?;
                 let hooks = crate::hooks::LuaHooks::load(path).ok()?;
                 let sys = crate::elo::EloRatingSystem::from_yaml(config)?;
                 Some(Box::new(crate::elo::EloRatingSystem::with_hooks(
-                    sys.config,
-                    hooks,
+                    sys.config, hooks,
                 )))
             }
             "lua:glicko2" => {
@@ -31,18 +30,16 @@ pub mod registry {
                 let hooks = crate::hooks::LuaHooks::load(path).ok()?;
                 let sys = crate::glicko::Glicko2RatingSystem::from_yaml(config)?;
                 Some(Box::new(crate::glicko::Glicko2RatingSystem::with_hooks(
-                    sys.config,
-                    hooks,
+                    sys.config, hooks,
                 )))
             }
             "lua:trueskill" => {
                 let path = config.get("script")?.as_str()?;
                 let hooks = crate::hooks::LuaHooks::load(path).ok()?;
                 let sys = crate::trueskill::TrueSkillRatingSystem::from_yaml(config)?;
-                Some(Box::new(crate::trueskill::TrueSkillRatingSystem::with_hooks(
-                    sys.config,
-                    hooks,
-                )))
+                Some(Box::new(
+                    crate::trueskill::TrueSkillRatingSystem::with_hooks(sys.config, hooks),
+                ))
             }
             _ => None,
         }
@@ -109,7 +106,8 @@ mod tests {
             path.to_str().unwrap()
         ))
         .unwrap();
-        let sys = registry::from_name("lua:trueskill", &yaml).expect("lua:trueskill should register");
+        let sys =
+            registry::from_name("lua:trueskill", &yaml).expect("lua:trueskill should register");
         let state = sys.initialize(matchlab_core::player::PlayerId(1));
         assert_eq!(sys.rating(&state), 1500.0);
 

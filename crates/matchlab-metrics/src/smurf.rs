@@ -12,6 +12,7 @@ pub struct SmurfMetricsCollector {
     detection_events: Vec<DetectionEvent>,
 }
 
+#[allow(dead_code)]
 struct DetectionEvent {
     player_id: PlayerId,
     detected: bool,
@@ -92,8 +93,8 @@ impl MetricCollector for SmurfMetricsCollector {
             / total;
 
         MetricResult::Summary {
-            mean: 0.0,      // detection rate (no detection wired yet → 0)
-            median: 0.0,    // false-positive rate
+            mean: 0.0,   // detection rate (no detection wired yet → 0)
+            median: 0.0, // false-positive rate
             p75: mean_damage,
             p90: mean_games,
             p95: self.smurf_ids.len() as f64,
@@ -136,7 +137,10 @@ mod tests {
                 id: PlayerId(id),
                 rating,
                 hidden_mmr: rating,
-                visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+                visible_rank: VisibleRank {
+                    tier: "unranked".into(),
+                    division: 1,
+                },
                 rating_deviation: 350.0,
                 volatility: 0.06,
                 games_played: games,

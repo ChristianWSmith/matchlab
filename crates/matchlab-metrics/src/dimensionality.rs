@@ -14,7 +14,9 @@ pub struct DimensionalityFidelityCollector {
 
 impl DimensionalityFidelityCollector {
     pub fn new() -> Self {
-        Self { samples: Vec::new() }
+        Self {
+            samples: Vec::new(),
+        }
     }
 }
 
@@ -36,11 +38,7 @@ fn pearson(pairs: &[(f64, f64)]) -> f64 {
     let sum_y2: f64 = pairs.iter().map(|(_, y)| y * y).sum();
     let num = n * sum_xy - sum_x * sum_y;
     let den = ((n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y)).sqrt();
-    if den == 0.0 {
-        0.0
-    } else {
-        num / den
-    }
+    if den == 0.0 { 0.0 } else { num / den }
 }
 
 impl MetricCollector for DimensionalityFidelityCollector {
@@ -49,8 +47,16 @@ impl MetricCollector for DimensionalityFidelityCollector {
     }
 
     fn record_match(&mut self, _mr: &MatchResult, world: &World) {
-        for (pid, obs) in &world.observations {
-            if let Some(reality) = world.players.get(pid) {
+        // Iterate in sorted player-id order so samples are independent of the
+        // HashMap's (per-process randomized) iteration order.
+        let mut pids: Vec<matchlab_core::player::PlayerId> =
+            world.observations.keys().cloned().collect();
+        pids.sort_by_key(|pid| pid.0);
+        for pid in pids {
+            let Some(obs) = world.observations.get(&pid) else {
+                continue;
+            };
+            if let Some(reality) = world.players.get(&pid) {
                 let true_overall = reality.skill.overall();
                 let oned_pred = obs.rating;
                 let multid_pred = obs.skill_vector.overall();
@@ -104,7 +110,10 @@ mod tests {
                 id: PlayerId(id),
                 rating,
                 hidden_mmr: rating,
-                visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+                visible_rank: VisibleRank {
+                    tier: "unranked".into(),
+                    division: 1,
+                },
                 rating_deviation: 350.0,
                 volatility: 0.06,
                 games_played: 0,

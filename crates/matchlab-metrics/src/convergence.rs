@@ -48,16 +48,24 @@ impl MetricCollector for ConvergenceCollector {
     }
 
     fn compute(&self) -> MetricResult {
-        let games: Vec<f64> = self
+        // Sort by (games, player_id) so aggregation is independent of the
+        // HashMap's (per-process randomized) iteration order. The player id
+        // breaks ties between equal game counts, giving a total order.
+        let mut games: Vec<(PlayerId, f64)> = self
             .convergence_games
-            .values()
-            .filter_map(|v| *v)
-            .map(|g| g as f64)
+            .iter()
+            .filter_map(|(pid, v)| v.map(|g| (*pid, g as f64)))
             .collect();
-        if games.is_empty() {
+        games.sort_by(|(p1, g1), (p2, g2)| {
+            g1.partial_cmp(g2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| p1.0.cmp(&p2.0))
+        });
+        let values: Vec<f64> = games.into_iter().map(|(_, g)| g).collect();
+        if values.is_empty() {
             return MetricResult::Scalar(f64::INFINITY);
         }
-        summary_to_result(&games)
+        summary_to_result(&values)
     }
 }
 
@@ -94,7 +102,10 @@ mod tests {
                 id: PlayerId(id),
                 rating,
                 hidden_mmr: rating,
-                visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+                visible_rank: VisibleRank {
+                    tier: "unranked".into(),
+                    division: 1,
+                },
                 rating_deviation: 350.0,
                 volatility: 0.06,
                 games_played: games,

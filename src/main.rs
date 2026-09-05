@@ -92,10 +92,20 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     if exp.ranking.is_some() {
         parts.push("ranking".to_string());
     }
-    if exp.adversarial.as_ref().map(|a| !a.agents.is_empty()).unwrap_or(false) {
+    if exp
+        .adversarial
+        .as_ref()
+        .map(|a| !a.agents.is_empty())
+        .unwrap_or(false)
+    {
         parts.push("adversarial".to_string());
     }
-    if exp.satisfaction.as_ref().map(|s| s.enabled).unwrap_or(false) {
+    if exp
+        .satisfaction
+        .as_ref()
+        .map(|s| s.enabled)
+        .unwrap_or(false)
+    {
         parts.push("satisfaction".to_string());
     }
     if let Some(variant) = exp.game.variant.as_deref() {

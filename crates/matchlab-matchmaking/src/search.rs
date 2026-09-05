@@ -19,13 +19,23 @@ pub trait SearchStrategy: Send + Sync {
 
 pub enum SearchStrategyKind {
     Greedy,
-    RandomSampling { samples: usize },
-    BeamSearch { width: usize },
+    RandomSampling {
+        samples: usize,
+    },
+    BeamSearch {
+        width: usize,
+    },
     NearestNeighbor,
     HungarianAssignment,
-    GeneticAlgorithm { population: usize, generations: usize },
+    GeneticAlgorithm {
+        population: usize,
+        generations: usize,
+    },
     IntegerProgramming,
-    SimulatedAnnealing { initial_temp: f64, cooling_rate: f64 },
+    SimulatedAnnealing {
+        initial_temp: f64,
+        cooling_rate: f64,
+    },
 }
 
 /// For each entry, greedily fill teams with the nearest available players by
@@ -86,11 +96,7 @@ impl SearchStrategy for GreedySearch {
                     {
                         team_a.push(pick.player_id);
                         anchor_rating = team_a.iter().fold(0.0, |acc, p| {
-                            acc + world
-                                .observations
-                                .get(p)
-                                .map(|o| o.rating)
-                                .unwrap_or(0.0)
+                            acc + world.observations.get(p).map(|o| o.rating).unwrap_or(0.0)
                         }) / team_a.len() as f64;
                     } else {
                         break;
@@ -227,7 +233,10 @@ impl SearchStrategy for BeamSearch {
             let mut beam: Vec<(Vec<PlayerId>, Vec<PlayerId>)> =
                 vec![(vec![anchor.player_id], Vec::new())];
 
-            while beam.iter().any(|(a, b)| a.len() < team_size || b.len() < team_size) {
+            while beam
+                .iter()
+                .any(|(a, b)| a.len() < team_size || b.len() < team_size)
+            {
                 let mut next_beam: Vec<(Vec<PlayerId>, Vec<PlayerId>)> = Vec::new();
                 for (team_a, team_b) in &beam {
                     if team_a.len() == team_size && team_b.len() == team_size {
@@ -307,7 +316,9 @@ fn partial_score(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{DetectionFlag, PlayerObservation, Region, SkillVector, VisibleRank};
+    use matchlab_core::player::{
+        DetectionFlag, PlayerObservation, Region, SkillVector, VisibleRank,
+    };
     use matchlab_core::time::SimTime;
     use std::collections::VecDeque;
 
@@ -316,7 +327,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

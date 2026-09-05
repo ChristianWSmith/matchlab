@@ -21,7 +21,8 @@ fn normal_cdf(x: f64) -> f64 {
     const B5: f64 = 1.330274429;
     if x >= 0.0 {
         let t = 1.0 / (1.0 + P * x);
-        1.0 - normal_pdf(x) * (B1 * t + B2 * t.powi(2) + B3 * t.powi(3) + B4 * t.powi(4) + B5 * t.powi(5))
+        1.0 - normal_pdf(x)
+            * (B1 * t + B2 * t.powi(2) + B3 * t.powi(3) + B4 * t.powi(4) + B5 * t.powi(5))
     } else {
         1.0 - normal_cdf(-x)
     }
@@ -96,7 +97,10 @@ pub struct TrueSkillRatingSystem {
 
 impl TrueSkillRatingSystem {
     pub fn new(config: TrueSkillConfig) -> Self {
-        Self { config, hooks: None }
+        Self {
+            config,
+            hooks: None,
+        }
     }
 
     pub fn with_hooks(config: TrueSkillConfig, hooks: LuaHooks) -> Self {
@@ -110,7 +114,11 @@ impl TrueSkillRatingSystem {
         let initial_mean = value
             .get("initial_mean")
             .and_then(serde_yaml::Value::as_f64)
-            .or_else(|| value.get("initial_rating").and_then(serde_yaml::Value::as_f64))?;
+            .or_else(|| {
+                value
+                    .get("initial_rating")
+                    .and_then(serde_yaml::Value::as_f64)
+            })?;
         Some(Self::new(TrueSkillConfig {
             initial_mean,
             initial_variance: value
@@ -270,7 +278,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: sigma,
             volatility: 0.0,
             games_played: 10,
@@ -371,7 +382,14 @@ mod tests {
         for pid in [PlayerId(4), PlayerId(5), PlayerId(6)] {
             assert!(updates[&pid].rating < 1500.0);
         }
-        for pid in [PlayerId(1), PlayerId(2), PlayerId(3), PlayerId(4), PlayerId(5), PlayerId(6)] {
+        for pid in [
+            PlayerId(1),
+            PlayerId(2),
+            PlayerId(3),
+            PlayerId(4),
+            PlayerId(5),
+            PlayerId(6),
+        ] {
             assert_eq!(updates[&pid].games_played, 11);
         }
     }

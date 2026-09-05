@@ -51,11 +51,9 @@ impl LogisticOutcomeModel {
 
     fn effective_skill(&self, obs: &PlayerObservation) -> f64 {
         if let Some(ref hooks) = self.hooks {
-            if let Some(skill) = hooks.call_effective_skill(
-                obs.rating,
-                obs.rating_deviation,
-                obs.games_played,
-            ) {
+            if let Some(skill) =
+                hooks.call_effective_skill(obs.rating, obs.rating_deviation, obs.games_played)
+            {
                 return skill;
             }
         }

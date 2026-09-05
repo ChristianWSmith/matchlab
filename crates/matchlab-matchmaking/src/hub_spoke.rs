@@ -37,7 +37,10 @@ impl Matchmaker for HubSpokeMatchmaker {
 
         let mut by_region: HashMap<Region, Vec<QueueEntry>> = HashMap::new();
         for entry in queue.entries() {
-            by_region.entry(entry.region).or_default().push(entry.clone());
+            by_region
+                .entry(entry.region)
+                .or_default()
+                .push(entry.clone());
         }
 
         for (region, entries) in &by_region {
@@ -47,7 +50,7 @@ impl Matchmaker for HubSpokeMatchmaker {
                     matches.extend(spoke.find_matches(&sub_queue, world, team_size, now, rng));
                 } else {
                     let mut overflow: Vec<_> = entries.iter().collect();
-                    overflow.sort_by(|a, b| a.joined_at.cmp(&b.joined_at));
+                    overflow.sort_by_key(|a| a.joined_at);
                     let mut team_a: Vec<_> = Vec::new();
                     let mut team_b: Vec<_> = Vec::new();
                     let mut emit = |team_a: &mut Vec<_>, team_b: &mut Vec<_>| {
@@ -85,7 +88,9 @@ impl Matchmaker for HubSpokeMatchmaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{DetectionFlag, PlayerId, PlayerObservation, SkillVector, VisibleRank};
+    use matchlab_core::player::{
+        DetectionFlag, PlayerId, PlayerObservation, SkillVector, VisibleRank,
+    };
     use std::collections::VecDeque;
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
@@ -93,7 +98,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,
@@ -170,8 +178,18 @@ mod tests {
         let world = build_world(&[1, 2, 3, 4, 5, 6, 7, 8]);
 
         let mut spokes: HashMap<Region, Box<dyn Matchmaker>> = HashMap::new();
-        spokes.insert(Region::NA, Box::new(SpokeStub { matches_per_call: 1 }));
-        spokes.insert(Region::EU, Box::new(SpokeStub { matches_per_call: 2 }));
+        spokes.insert(
+            Region::NA,
+            Box::new(SpokeStub {
+                matches_per_call: 1,
+            }),
+        );
+        spokes.insert(
+            Region::EU,
+            Box::new(SpokeStub {
+                matches_per_call: 2,
+            }),
+        );
 
         let mm = HubSpokeMatchmaker::new(spokes, 100);
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);
@@ -189,7 +207,12 @@ mod tests {
 
         let mut spokes: HashMap<Region, Box<dyn Matchmaker>> = HashMap::new();
         // Spoke stub returns 0 matches; capacity 2 means 10 entries overflow.
-        spokes.insert(Region::NA, Box::new(SpokeStub { matches_per_call: 0 }));
+        spokes.insert(
+            Region::NA,
+            Box::new(SpokeStub {
+                matches_per_call: 0,
+            }),
+        );
 
         let mm = HubSpokeMatchmaker::new(spokes, 2);
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);
@@ -207,7 +230,12 @@ mod tests {
         let world = build_world(&[1, 2, 3, 4]);
 
         let mut spokes: HashMap<Region, Box<dyn Matchmaker>> = HashMap::new();
-        spokes.insert(Region::NA, Box::new(SpokeStub { matches_per_call: 2 }));
+        spokes.insert(
+            Region::NA,
+            Box::new(SpokeStub {
+                matches_per_call: 2,
+            }),
+        );
 
         let mm = HubSpokeMatchmaker::new(spokes, 100);
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);

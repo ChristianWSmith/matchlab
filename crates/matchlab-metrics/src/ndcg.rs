@@ -12,7 +12,9 @@ pub struct NDCGCollector {
 
 impl NDCGCollector {
     pub fn new() -> Self {
-        Self { qualities: Vec::new() }
+        Self {
+            qualities: Vec::new(),
+        }
     }
 }
 
@@ -82,7 +84,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

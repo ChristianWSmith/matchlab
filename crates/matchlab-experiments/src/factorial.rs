@@ -141,7 +141,9 @@ mod tests {
 
     #[test]
     fn empty_factors_returns_base() {
-        let design = FactorialDesign { factors: Vec::new() };
+        let design = FactorialDesign {
+            factors: Vec::new(),
+        };
         let configs = design.generate_configs(&base());
         assert_eq!(configs.len(), 1);
     }

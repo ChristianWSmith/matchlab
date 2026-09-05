@@ -30,10 +30,12 @@ impl Comparator {
         let mut out = HashMap::new();
         for result in &self.results {
             for (name, value) in &result.metrics {
-                out.entry(name.clone()).or_insert_with(Vec::new).push(MetricComparison {
-                    experiment: result.name.clone(),
-                    value: value.clone(),
-                });
+                out.entry(name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(MetricComparison {
+                        experiment: result.name.clone(),
+                        value: value.clone(),
+                    });
             }
         }
         out

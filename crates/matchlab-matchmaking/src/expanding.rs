@@ -18,12 +18,7 @@ pub struct ExpandingWindowMatchmaker {
 impl ExpandingWindowMatchmaker {
     pub fn default_tiers() -> Self {
         Self {
-            tiers: vec![
-                (5.0, 25.0),
-                (10.0, 50.0),
-                (20.0, 100.0),
-                (30.0, 200.0),
-            ],
+            tiers: vec![(5.0, 25.0), (10.0, 50.0), (20.0, 100.0), (30.0, 200.0)],
             max_window: 400.0,
             hooks: None,
         }
@@ -121,7 +116,9 @@ impl Matchmaker for ExpandingWindowMatchmaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{DetectionFlag, PlayerId, PlayerObservation, Region, SkillVector, VisibleRank};
+    use matchlab_core::player::{
+        DetectionFlag, PlayerId, PlayerObservation, Region, SkillVector, VisibleRank,
+    };
     use std::collections::VecDeque;
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
@@ -129,7 +126,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

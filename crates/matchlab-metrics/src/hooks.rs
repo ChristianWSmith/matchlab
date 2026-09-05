@@ -9,8 +9,8 @@ pub struct LuaHooks {
 impl LuaHooks {
     pub fn load(path: &str) -> Result<Self, String> {
         let lua = Lua::new();
-        let script = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read {}: {}", path, e))?;
+        let script =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
         lua.load(&script)
             .exec()
             .map_err(|e| format!("lua error in {}: {}", path, e))?;
@@ -24,16 +24,7 @@ impl LuaHooks {
         &self.script_path
     }
 
-    pub(crate) fn lua(&self) -> &Mutex<Lua> {
-        &self.lua
-    }
-
-    pub fn call_on_record(
-        &self,
-        winner: &str,
-        team_a_avg: f64,
-        team_b_avg: f64,
-    ) -> Option<f64> {
+    pub fn call_on_record(&self, winner: &str, team_a_avg: f64, team_b_avg: f64) -> Option<f64> {
         let lua = self.lua.lock().ok()?;
         let func = lua.globals().get::<Function>("on_record").ok()?;
         func.call::<f64>((winner, team_a_avg, team_b_avg)).ok()
@@ -57,7 +48,11 @@ mod tests {
     fn write_temp_lua(content: &str) -> std::path::PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir();
-        let path = dir.join(format!("test_metrics_hooks_{}_{}.lua", std::process::id(), n));
+        let path = dir.join(format!(
+            "test_metrics_hooks_{}_{}.lua",
+            std::process::id(),
+            n
+        ));
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(content.as_bytes()).unwrap();
         path

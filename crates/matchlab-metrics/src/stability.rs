@@ -42,26 +42,34 @@ impl MetricCollector for StabilityCollector {
                 .map(|reality| reality.improvement_rate.abs() < 0.1)
                 .unwrap_or(true);
             if stable {
-                self.rating_history.entry(*pid).or_default().push(obs.rating);
+                self.rating_history
+                    .entry(*pid)
+                    .or_default()
+                    .push(obs.rating);
             }
         }
     }
 
     fn compute(&self) -> MetricResult {
-        let mut variances = Vec::new();
-        for history in self.rating_history.values() {
+        // Sort by (variance, player_id) so aggregation is independent of the
+        // HashMap's (per-process randomized) iteration order; the id breaks
+        // ties between equal variances.
+        let mut variances: Vec<(PlayerId, f64)> = Vec::new();
+        for (pid, history) in &self.rating_history {
             let mean = history.iter().sum::<f64>() / history.len().max(1) as f64;
-            let var = history
-                .iter()
-                .map(|r| (r - mean).powi(2))
-                .sum::<f64>()
+            let var = history.iter().map(|r| (r - mean).powi(2)).sum::<f64>()
                 / history.len().max(1) as f64;
-            variances.push(var);
+            variances.push((*pid, var));
         }
         if variances.is_empty() {
             return MetricResult::Scalar(0.0);
         }
-        let mean_var = variances.iter().sum::<f64>() / variances.len() as f64;
+        variances.sort_by(|(p1, v1), (p2, v2)| {
+            v1.partial_cmp(v2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| p1.0.cmp(&p2.0))
+        });
+        let mean_var = variances.iter().map(|(_, v)| *v).sum::<f64>() / variances.len() as f64;
         MetricResult::Scalar(mean_var.sqrt())
     }
 }
@@ -99,7 +107,10 @@ mod tests {
                 id: PlayerId(id),
                 rating,
                 hidden_mmr: rating,
-                visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+                visible_rank: VisibleRank {
+                    tier: "unranked".into(),
+                    division: 1,
+                },
                 rating_deviation: 350.0,
                 volatility: 0.06,
                 games_played: 0,

@@ -40,7 +40,10 @@ impl MetricCollector for PopulationHealthCollector {
     }
 
     fn record_match(&mut self, _mr: &MatchResult, world: &World) {
-        let ratings: Vec<f64> = world.observations.values().map(|o| o.rating).collect();
+        let mut ratings: Vec<f64> = world.observations.values().map(|o| o.rating).collect();
+        // Sort so the snapshot is independent of the HashMap's (per-process
+        // randomized) iteration order.
+        ratings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         if !ratings.is_empty() {
             self.ratings_over_time.push(ratings);
         }
@@ -94,7 +97,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

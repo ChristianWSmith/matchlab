@@ -92,7 +92,9 @@ impl Matchmaker for StrictMatchmaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{DetectionFlag, PlayerId, PlayerObservation, Region, SkillVector, VisibleRank};
+    use matchlab_core::player::{
+        DetectionFlag, PlayerId, PlayerObservation, Region, SkillVector, VisibleRank,
+    };
     use std::collections::VecDeque;
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
@@ -100,7 +102,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,
@@ -157,10 +162,32 @@ mod tests {
     fn rejects_matches_exceeding_max_skill_diff() {
         let mut queue = Queue::default();
         // Ratings spread 1000..1900 — 900 apart, far beyond max diff 50.
-        for (id, rating) in [(1, 1000.0), (2, 1100.0), (3, 1200.0), (4, 1300.0), (5, 1400.0), (6, 1500.0), (7, 1600.0), (8, 1700.0), (9, 1800.0), (10, 1900.0)] {
+        for (id, rating) in [
+            (1, 1000.0),
+            (2, 1100.0),
+            (3, 1200.0),
+            (4, 1300.0),
+            (5, 1400.0),
+            (6, 1500.0),
+            (7, 1600.0),
+            (8, 1700.0),
+            (9, 1800.0),
+            (10, 1900.0),
+        ] {
             queue.enqueue(entry(id, SimTime::from_secs(id as f64), rating));
         }
-        let world = build_world(&[(1, 1000.0), (2, 1100.0), (3, 1200.0), (4, 1300.0), (5, 1400.0), (6, 1500.0), (7, 1600.0), (8, 1700.0), (9, 1800.0), (10, 1900.0)]);
+        let world = build_world(&[
+            (1, 1000.0),
+            (2, 1100.0),
+            (3, 1200.0),
+            (4, 1300.0),
+            (5, 1400.0),
+            (6, 1500.0),
+            (7, 1600.0),
+            (8, 1700.0),
+            (9, 1800.0),
+            (10, 1900.0),
+        ]);
 
         let mm = StrictMatchmaker::new(50.0);
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);

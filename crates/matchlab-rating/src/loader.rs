@@ -43,11 +43,7 @@ impl ScriptLoader {
         let lua = hooks.lua().lock().ok().unwrap();
         let globals = lua.globals();
 
-        let hook_names = [
-            "on_k_factor",
-            "on_rating_bounds",
-            "on_initial_rating",
-        ];
+        let hook_names = ["on_k_factor", "on_rating_bounds", "on_initial_rating"];
 
         for name in &hook_names {
             if globals.get::<mlua::Function>(*name).is_ok() {
@@ -88,9 +84,11 @@ function on_rating_bounds() return { floor = 100.0, ceiling = 3000.0 } end
         assert!(result.valid);
         assert!(result.error.is_none());
         assert!(result.defined_hooks.contains(&"on_k_factor".to_string()));
-        assert!(result
-            .defined_hooks
-            .contains(&"on_rating_bounds".to_string()));
+        assert!(
+            result
+                .defined_hooks
+                .contains(&"on_rating_bounds".to_string())
+        );
         let _ = std::fs::remove_file(&path);
     }
 

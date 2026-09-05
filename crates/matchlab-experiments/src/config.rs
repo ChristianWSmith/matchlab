@@ -133,16 +133,10 @@ pub struct RankBracketSpec {
     pub max: f64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AdversarialSpec {
     pub agents: Vec<AdversarialAgentSpec>,
-}
-
-impl Default for AdversarialSpec {
-    fn default() -> Self {
-        Self { agents: Vec::new() }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -433,28 +427,22 @@ experiment:
         let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.experiment.game.variant.as_deref(), Some("fatigue"));
         assert_eq!(
-            config.experiment.game.params.get("fatigue_decay_rate").and_then(|v| v.as_f64()),
+            config
+                .experiment
+                .game
+                .params
+                .get("fatigue_decay_rate")
+                .and_then(|v| v.as_f64()),
             Some(0.01)
         );
-        assert_eq!(
-            config.experiment.matchmaking.algorithm,
-            "expanding_window"
-        );
-        assert!(
-            config.experiment.detection.as_ref().unwrap().enabled
-        );
+        assert_eq!(config.experiment.matchmaking.algorithm, "expanding_window");
+        assert!(config.experiment.detection.as_ref().unwrap().enabled);
         assert_eq!(
             config.experiment.ranking.as_ref().unwrap().brackets.len(),
             1
         );
         assert_eq!(
-            config
-                .experiment
-                .adversarial
-                .as_ref()
-                .unwrap()
-                .agents
-                .len(),
+            config.experiment.adversarial.as_ref().unwrap().agents.len(),
             1
         );
         assert!(config.experiment.satisfaction.as_ref().unwrap().enabled);

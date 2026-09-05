@@ -73,7 +73,10 @@ mod tests {
                 id: PlayerId(1),
                 rating: 1000.0,
                 hidden_mmr: 1000.0,
-                visible_rank: VisibleRank { tier: "silver".into(), division: 1 },
+                visible_rank: VisibleRank {
+                    tier: "silver".into(),
+                    division: 1,
+                },
                 rating_deviation: 350.0,
                 volatility: 0.06,
                 games_played: 0,

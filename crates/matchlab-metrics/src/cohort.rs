@@ -40,9 +40,11 @@ impl CohortFilter {
                 reality.games_played >= *low && reality.games_played <= *high
             }
             CohortFilter::Region(region) => reality.region == *region,
-            CohortFilter::PartySize(size) => {
-                reality.party_id.map(|_| *size > 1).or(Some(*size == 1)).unwrap_or_default()
-            }
+            CohortFilter::PartySize(size) => reality
+                .party_id
+                .map(|_| *size > 1)
+                .or(Some(*size == 1))
+                .unwrap_or_default(),
             CohortFilter::SessionLength(min, max) => {
                 let s = reality.session_length;
                 s >= *min && s <= *max

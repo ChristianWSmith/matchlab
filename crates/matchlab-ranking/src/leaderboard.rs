@@ -15,16 +15,12 @@ pub struct LeaderboardEntry {
 
 impl Leaderboard {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
-    pub fn update(
-        &mut self,
-        player_id: PlayerId,
-        rating: f64,
-        rank: Rank,
-        games_played: u64,
-    ) {
+    pub fn update(&mut self, player_id: PlayerId, rating: f64, rank: Rank, games_played: u64) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.player_id == player_id) {
             entry.rating = rating;
             entry.rank = rank;
@@ -37,8 +33,11 @@ impl Leaderboard {
                 games_played,
             });
         }
-        self.entries
-            .sort_by(|a, b| b.rating.partial_cmp(&a.rating).unwrap_or(std::cmp::Ordering::Equal));
+        self.entries.sort_by(|a, b| {
+            b.rating
+                .partial_cmp(&a.rating)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     pub fn rank_of(&self, player_id: PlayerId) -> Option<usize> {

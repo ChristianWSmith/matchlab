@@ -65,7 +65,7 @@ impl ObjectiveFunction {
             }
         }
         if let Some(MetricResult::Distribution(d)) = metrics.get("streaks") {
-            if let Some(&p5) = d.get(0) {
+            if let Some(&p5) = d.first() {
                 score -= self.weights.streak_frustration * p5;
             }
         }
@@ -98,8 +98,14 @@ mod tests {
         metrics.insert("queue_time".to_string(), summary(0.0));
         metrics.insert("rating_accuracy".to_string(), summary(0.0));
         metrics.insert("convergence".to_string(), summary(0.0));
-        metrics.insert("smurf".to_string(), MetricResult::Distribution(vec![0.0, 0.0, 0.0, 0.0]));
-        metrics.insert("streaks".to_string(), MetricResult::Distribution(vec![0.0, 0.0, 0.0, 0.0]));
+        metrics.insert(
+            "smurf".to_string(),
+            MetricResult::Distribution(vec![0.0, 0.0, 0.0, 0.0]),
+        );
+        metrics.insert(
+            "streaks".to_string(),
+            MetricResult::Distribution(vec![0.0, 0.0, 0.0, 0.0]),
+        );
 
         let (score, _) = func.evaluate(&metrics);
         assert!((score - 0.0).abs() < 1e-9, "score = {score}");
@@ -142,7 +148,10 @@ mod tests {
     fn evaluate_smurf_damage_subtracts_score() {
         let func = ObjectiveFunction::new(ObjectiveWeights::default());
         let mut metrics = HashMap::new();
-        metrics.insert("smurf".to_string(), MetricResult::Distribution(vec![0.5, 0.1, 0.5, 0.8]));
+        metrics.insert(
+            "smurf".to_string(),
+            MetricResult::Distribution(vec![0.5, 0.1, 0.5, 0.8]),
+        );
 
         let (score, _) = func.evaluate(&metrics);
         // damage (index 3) = 0.8, weight 2.0 → 1.6 subtracted
@@ -154,7 +163,10 @@ mod tests {
     fn evaluate_streak_frustration_subtracts_score() {
         let func = ObjectiveFunction::new(ObjectiveWeights::default());
         let mut metrics = HashMap::new();
-        metrics.insert("streaks".to_string(), MetricResult::Distribution(vec![0.4, 0.2, 0.1, 0.05]));
+        metrics.insert(
+            "streaks".to_string(),
+            MetricResult::Distribution(vec![0.4, 0.2, 0.1, 0.05]),
+        );
 
         let (score, _) = func.evaluate(&metrics);
         // p5 (index 0) = 0.4, weight 0.3 → 0.12 subtracted

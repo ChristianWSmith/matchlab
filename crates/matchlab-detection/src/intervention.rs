@@ -25,11 +25,29 @@ impl InterventionPolicy {
         Self {
             thresholds: vec![
                 (0.3, InterventionAction::None),
-                (0.5, InterventionAction::AccelerateRating { multiplier: 1.5 }),
+                (
+                    0.5,
+                    InterventionAction::AccelerateRating { multiplier: 1.5 },
+                ),
                 (0.7, InterventionAction::FlagForReview),
-                (0.8, InterventionAction::RestrictQueue { duration_ticks: 100 }),
-                (0.9, InterventionAction::TempBan { duration_ticks: 500 }),
-                (0.95, InterventionAction::Probation { duration_ticks: 1000 }),
+                (
+                    0.8,
+                    InterventionAction::RestrictQueue {
+                        duration_ticks: 100,
+                    },
+                ),
+                (
+                    0.9,
+                    InterventionAction::TempBan {
+                        duration_ticks: 500,
+                    },
+                ),
+                (
+                    0.95,
+                    InterventionAction::Probation {
+                        duration_ticks: 1000,
+                    },
+                ),
                 (0.99, InterventionAction::Ban),
             ],
             escalation_window_ticks: 500,
@@ -51,8 +69,10 @@ impl InterventionPolicy {
             .thresholds
             .iter()
             .map(|(thresh, action)| {
-                let escalated =
-                    thresh * self.escalation_factor.powi(state.prior_interventions as i32);
+                let escalated = thresh
+                    * self
+                        .escalation_factor
+                        .powi(state.prior_interventions as i32);
                 (escalated.min(*thresh), action)
             })
             .collect();
@@ -68,23 +88,12 @@ impl InterventionPolicy {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PlayerInterventionState {
     pub games_played: u64,
     pub prior_interventions: u32,
     pub last_intervention_tick: u64,
     pub escalation_history: Vec<(u64, InterventionAction)>,
-}
-
-impl Default for PlayerInterventionState {
-    fn default() -> Self {
-        Self {
-            games_played: 0,
-            prior_interventions: 0,
-            last_intervention_tick: 0,
-            escalation_history: Vec::new(),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -106,7 +115,10 @@ mod tests {
             games_played: 2,
             ..Default::default()
         };
-        assert!(matches!(policy.apply(&result, &state), InterventionAction::None));
+        assert!(matches!(
+            policy.apply(&result, &state),
+            InterventionAction::None
+        ));
     }
 
     #[test]
@@ -122,7 +134,10 @@ mod tests {
             games_played: 10,
             ..Default::default()
         };
-        assert!(matches!(policy.apply(&result, &state), InterventionAction::None));
+        assert!(matches!(
+            policy.apply(&result, &state),
+            InterventionAction::None
+        ));
     }
 
     #[test]
@@ -157,7 +172,10 @@ mod tests {
             games_played: 10,
             ..Default::default()
         };
-        assert!(matches!(policy.apply(&result, &state), InterventionAction::Ban));
+        assert!(matches!(
+            policy.apply(&result, &state),
+            InterventionAction::Ban
+        ));
     }
 
     #[test]

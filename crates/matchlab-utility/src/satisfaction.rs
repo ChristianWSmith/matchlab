@@ -137,13 +137,8 @@ mod tests {
         let exp = PlayerExperience::new();
         // avg_quality 0.5, avg_queue 30.0, win_rate 0.0, streak 0, rank_change 0,
         // fairness 0.5 → (1-0.5)=0.5, rematch 0
-        let expected = 1.0 * 0.5
-            + (-0.01) * 30.0
-            + 0.5 * 0.0
-            + 0.0
-            + 0.2 * 0.0
-            + (-0.8) * 0.5
-            + 0.1 * 0.0;
+        let expected =
+            1.0 * 0.5 + (-0.01) * 30.0 + 0.5 * 0.0 + 0.0 + 0.2 * 0.0 + (-0.8) * 0.5 + 0.1 * 0.0;
         let score = m.satisfaction(&exp);
         assert!((score - expected).abs() < 1e-9, "score = {score}");
     }
@@ -191,13 +186,8 @@ mod tests {
         let mut exp = PlayerExperience::new();
         exp.current_streak = -2;
         let score = m.satisfaction(&exp);
-        let expected = 1.0 * 0.5
-            + (-0.01) * 30.0
-            + 0.5 * 0.0
-            + 0.0
-            + 0.2 * 0.0
-            + (-0.8) * 0.5
-            + 0.1 * 0.0;
+        let expected =
+            1.0 * 0.5 + (-0.01) * 30.0 + 0.5 * 0.0 + 0.0 + 0.2 * 0.0 + (-0.8) * 0.5 + 0.1 * 0.0;
         assert!((score - expected).abs() < 1e-9, "score = {score}");
     }
 

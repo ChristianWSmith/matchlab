@@ -55,22 +55,34 @@ mod tests {
     fn mapper() -> BracketRankMapper {
         BracketRankMapper::new(vec![
             RankBracket {
-                rank: Rank { tier: "bronze".to_string(), division: 1 },
+                rank: Rank {
+                    tier: "bronze".to_string(),
+                    division: 1,
+                },
                 min: 0.0,
                 max: 800.0,
             },
             RankBracket {
-                rank: Rank { tier: "silver".to_string(), division: 1 },
+                rank: Rank {
+                    tier: "silver".to_string(),
+                    division: 1,
+                },
                 min: 800.0,
                 max: 1200.0,
             },
             RankBracket {
-                rank: Rank { tier: "gold".to_string(), division: 1 },
+                rank: Rank {
+                    tier: "gold".to_string(),
+                    division: 1,
+                },
                 min: 1200.0,
                 max: 1500.0,
             },
             RankBracket {
-                rank: Rank { tier: "platinum".to_string(), division: 1 },
+                rank: Rank {
+                    tier: "platinum".to_string(),
+                    division: 1,
+                },
                 min: 1500.0,
                 max: 2000.0,
             },
@@ -82,19 +94,31 @@ mod tests {
         let m = mapper();
         assert_eq!(
             m.rating_to_rank(500.0),
-            Rank { tier: "bronze".to_string(), division: 1 }
+            Rank {
+                tier: "bronze".to_string(),
+                division: 1
+            }
         );
         assert_eq!(
             m.rating_to_rank(900.0),
-            Rank { tier: "silver".to_string(), division: 1 }
+            Rank {
+                tier: "silver".to_string(),
+                division: 1
+            }
         );
         assert_eq!(
             m.rating_to_rank(1300.0),
-            Rank { tier: "gold".to_string(), division: 1 }
+            Rank {
+                tier: "gold".to_string(),
+                division: 1
+            }
         );
         assert_eq!(
             m.rating_to_rank(1800.0),
-            Rank { tier: "platinum".to_string(), division: 1 }
+            Rank {
+                tier: "platinum".to_string(),
+                division: 1
+            }
         );
     }
 
@@ -103,11 +127,17 @@ mod tests {
         let m = mapper();
         assert_eq!(
             m.rating_to_rank(9999.0),
-            Rank { tier: "platinum".to_string(), division: 1 }
+            Rank {
+                tier: "platinum".to_string(),
+                division: 1
+            }
         );
         assert_eq!(
             m.rating_to_rank(-100.0),
-            Rank { tier: "platinum".to_string(), division: 1 }
+            Rank {
+                tier: "platinum".to_string(),
+                division: 1
+            }
         );
     }
 
@@ -115,11 +145,17 @@ mod tests {
     fn rank_to_rating_range_returns_bounds() {
         let m = mapper();
         assert_eq!(
-            m.rank_to_rating_range(&Rank { tier: "bronze".to_string(), division: 1 }),
+            m.rank_to_rating_range(&Rank {
+                tier: "bronze".to_string(),
+                division: 1
+            }),
             (0.0, 800.0)
         );
         assert_eq!(
-            m.rank_to_rating_range(&Rank { tier: "silver".to_string(), division: 1 }),
+            m.rank_to_rating_range(&Rank {
+                tier: "silver".to_string(),
+                division: 1
+            }),
             (800.0, 1200.0)
         );
     }
@@ -128,7 +164,10 @@ mod tests {
     fn rank_to_rating_range_unknown_rank_returns_zero() {
         let m = mapper();
         assert_eq!(
-            m.rank_to_rating_range(&Rank { tier: "radiant".to_string(), division: 1 }),
+            m.rank_to_rating_range(&Rank {
+                tier: "radiant".to_string(),
+                division: 1
+            }),
             (0.0, 0.0)
         );
     }

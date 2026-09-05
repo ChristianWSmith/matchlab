@@ -25,17 +25,9 @@ impl GameHistory {
 
     /// Record one match along with the observation snapshot in effect when it
     /// resolved. Snapshot stores only the participants.
-    pub fn record(
-        &mut self,
-        match_result: &MatchResult,
-        world: &matchlab_core::world::World,
-    ) {
+    pub fn record(&mut self, match_result: &MatchResult, world: &matchlab_core::world::World) {
         let mut snapshot = HashMap::new();
-        for pid in match_result
-            .team_a
-            .iter()
-            .chain(match_result.team_b.iter())
-        {
+        for pid in match_result.team_a.iter().chain(match_result.team_b.iter()) {
             if let Some(o) = world.observations.get(pid) {
                 snapshot.insert(*pid, o.clone());
             }
@@ -72,19 +64,15 @@ pub fn counterfactual_eval(
         for (i, match_result) in history.matches.iter().enumerate() {
             let observations = &history.player_snapshots[i];
 
-            for pid in match_result
-                .team_a
-                .iter()
-                .chain(match_result.team_b.iter())
-            {
+            for pid in match_result.team_a.iter().chain(match_result.team_b.iter()) {
                 if !states.contains_key(pid) {
                     states.insert(*pid, system.initialize(*pid));
                 }
             }
 
             let budget = system.information_budget();
-            let filtered = filter_match_result(match_result, &budget)
-                .into_match_result(match_result.match_id);
+            let filtered =
+                filter_match_result(match_result, &budget).into_match_result(match_result.match_id);
             let updates = system.update(&filtered, observations);
             for (pid, state) in updates {
                 states.insert(pid, state);
@@ -114,7 +102,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

@@ -69,7 +69,9 @@ fn cohort_rating_accuracy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{PlayerObservation, PlayerReality, Region, SkillVector, VisibleRank};
+    use matchlab_core::player::{
+        PlayerObservation, PlayerReality, Region, SkillVector, VisibleRank,
+    };
     use matchlab_core::rng::SimRng;
     use std::collections::VecDeque;
 
@@ -78,7 +80,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,
@@ -97,10 +102,7 @@ mod tests {
     }
 
     fn add(world: &mut World, id: u64, rating: f64, skill: f64, archetype: &str) {
-        world.observations.insert(
-            PlayerId(id),
-            obs(id, rating),
-        );
+        world.observations.insert(PlayerId(id), obs(id, rating));
         world.players.insert(
             PlayerId(id),
             PlayerReality {

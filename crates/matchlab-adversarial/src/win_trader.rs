@@ -53,7 +53,10 @@ mod tests {
             id: PlayerId(id),
             rating: 1000.0,
             hidden_mmr: 1000.0,
-            visible_rank: VisibleRank { tier: "silver".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "silver".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,
@@ -91,7 +94,9 @@ mod tests {
         let agent = WinTraderAgent::new(PlayerId(2), false);
         assert_eq!(
             agent.objective(),
-            AdversarialObjective::WinTrade { partner: PlayerId(2) }
+            AdversarialObjective::WinTrade {
+                partner: PlayerId(2)
+            }
         );
     }
 }

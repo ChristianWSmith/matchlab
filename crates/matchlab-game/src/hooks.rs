@@ -9,8 +9,8 @@ pub struct LuaHooks {
 impl LuaHooks {
     pub fn load(path: &str) -> Result<Self, String> {
         let lua = Lua::new();
-        let script = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read {}: {}", path, e))?;
+        let script =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
         lua.load(&script)
             .exec()
             .map_err(|e| format!("lua error in {}: {}", path, e))?;
@@ -24,29 +24,17 @@ impl LuaHooks {
         &self.script_path
     }
 
-    pub(crate) fn lua(&self) -> &Mutex<Lua> {
-        &self.lua
-    }
-
-    pub fn call_effective_skill(
-        &self,
-        rating: f64,
-        rd: f64,
-        games_played: u64,
-    ) -> Option<f64> {
+    pub fn call_effective_skill(&self, rating: f64, rd: f64, games_played: u64) -> Option<f64> {
         let lua = self.lua.lock().ok()?;
         let func = lua.globals().get::<Function>("on_effective_skill").ok()?;
         func.call::<f64>((rating, rd, games_played as f64)).ok()
     }
 
-    pub fn call_noise(
-        &self,
-        match_duration_secs: f64,
-        team_size: usize,
-    ) -> Option<f64> {
+    pub fn call_noise(&self, match_duration_secs: f64, team_size: usize) -> Option<f64> {
         let lua = self.lua.lock().ok()?;
         let func = lua.globals().get::<Function>("on_noise").ok()?;
-        func.call::<f64>((match_duration_secs, team_size as f64)).ok()
+        func.call::<f64>((match_duration_secs, team_size as f64))
+            .ok()
     }
 
     pub fn call_post_process(

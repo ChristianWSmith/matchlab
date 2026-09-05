@@ -35,8 +35,7 @@ impl MetricCollector for StreakCollector {
     fn record_match(&mut self, mr: &MatchResult, _world: &World) {
         for pid in mr.team_a.iter().chain(mr.team_b.iter()) {
             let is_team_a = mr.team_a.contains(pid);
-            let won = (is_team_a && mr.winner == Team::A)
-                || (!is_team_a && mr.winner == Team::B);
+            let won = (is_team_a && mr.winner == Team::A) || (!is_team_a && mr.winner == Team::B);
             let entry = self.streaks.entry(*pid).or_insert((true, 0));
             if (entry.0 && won) || (!entry.0 && !won) {
                 entry.1 += 1;
@@ -91,7 +90,10 @@ mod tests {
             id: PlayerId(id),
             rating: 1000.0,
             hidden_mmr: 1000.0,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: 350.0,
             volatility: 0.06,
             games_played: 0,

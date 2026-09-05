@@ -104,26 +104,22 @@ impl ExperimentRunner {
         let metrics = loop_.finalize_metrics();
         let metrics: BTreeMap<String, MetricResult> = metrics.into_iter().collect();
 
-        let utility_score = config
-            .experiment
-            .objectives
-            .as_ref()
-            .map(|obj| {
-                let weights = ObjectiveWeights {
-                    match_quality: obj.match_quality.unwrap_or(1.0),
-                    queue_time: obj.queue_time.unwrap_or(0.5),
-                    rating_accuracy: obj.rating_accuracy.unwrap_or(1.0),
-                    convergence_speed: obj.convergence_speed.unwrap_or(0.8),
-                    smurf_damage: obj.smurf_damage.unwrap_or(2.0),
-                    false_positive_rate: obj.false_positive_rate.unwrap_or(1.5),
-                    streak_frustration: obj.streak_frustration.unwrap_or(0.3),
-                };
-                let func = ObjectiveFunction::new(weights);
-                let metrics_map: std::collections::HashMap<String, MetricResult> =
-                    metrics.clone().into_iter().collect();
-                let (score, _) = func.evaluate(&metrics_map);
-                score
-            });
+        let utility_score = config.experiment.objectives.as_ref().map(|obj| {
+            let weights = ObjectiveWeights {
+                match_quality: obj.match_quality.unwrap_or(1.0),
+                queue_time: obj.queue_time.unwrap_or(0.5),
+                rating_accuracy: obj.rating_accuracy.unwrap_or(1.0),
+                convergence_speed: obj.convergence_speed.unwrap_or(0.8),
+                smurf_damage: obj.smurf_damage.unwrap_or(2.0),
+                false_positive_rate: obj.false_positive_rate.unwrap_or(1.5),
+                streak_frustration: obj.streak_frustration.unwrap_or(0.3),
+            };
+            let func = ObjectiveFunction::new(weights);
+            let metrics_map: std::collections::HashMap<String, MetricResult> =
+                metrics.clone().into_iter().collect();
+            let (score, _) = func.evaluate(&metrics_map);
+            score
+        });
 
         let result = ExperimentResult {
             experiment_id: format!("{}-{}", config.experiment.name, config_hash),
@@ -199,8 +195,9 @@ fn build_rating_system(systems: &[RatingSystemSpec]) -> Result<Box<dyn RatingSys
 
 fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String> {
     let base = match spec.outcome_model.as_str() {
-        "logistic" => Box::new(LogisticOutcomeModel::new(spec.beta, spec.noise))
-            as Box<dyn OutcomeModel>,
+        "logistic" => {
+            Box::new(LogisticOutcomeModel::new(spec.beta, spec.noise)) as Box<dyn OutcomeModel>
+        }
         other => return Err(format!("unknown outcome model: {other}")),
     };
     let variant = spec.variant.as_deref().unwrap_or("");
@@ -212,11 +209,11 @@ fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String>
                 .get("variance_multiplier")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(1.0);
-            Ok(Box::new(matchlab_game::variance::VarianceOutcomeModel::new(
-                spec.beta,
-                spec.noise,
-                multiplier,
-            )))
+            Ok(Box::new(
+                matchlab_game::variance::VarianceOutcomeModel::new(
+                    spec.beta, spec.noise, multiplier,
+                ),
+            ))
         }
         "composition" => {
             let weights = spec
@@ -241,9 +238,7 @@ fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String>
                 .unwrap_or(0.0);
             Ok(Box::new(
                 matchlab_game::composition::CompositionOutcomeModel::new(
-                    weights,
-                    synergy,
-                    spec.beta,
+                    weights, synergy, spec.beta,
                 ),
             ))
         }
@@ -263,9 +258,9 @@ fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String>
                 .get("fatigue_decay_rate")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.001);
-            Ok(Box::new(
-                matchlab_game::fatigue::FatigueOutcomeModel::new(base, decay),
-            ))
+            Ok(Box::new(matchlab_game::fatigue::FatigueOutcomeModel::new(
+                base, decay,
+            )))
         }
         "momentum" => {
             let factor = spec
@@ -293,23 +288,20 @@ fn build_matchmaker(spec: &MatchmakingSpec) -> Result<Box<dyn Matchmaker>, Strin
                     seq.iter()
                         .filter_map(|t| {
                             let arr = t.as_sequence()?;
-                            let a = arr.get(0)?.as_f64()?;
+                            let a = arr.first()?.as_f64()?;
                             let b = arr.get(1)?.as_f64()?;
                             Some((a, b))
                         })
                         .collect()
                 })
-                .unwrap_or_else(|| {
-                    vec![(5.0, 25.0), (10.0, 50.0), (20.0, 100.0), (30.0, 200.0)]
-                });
+                .unwrap_or_else(|| vec![(5.0, 25.0), (10.0, 50.0), (20.0, 100.0), (30.0, 200.0)]);
             let max_window = spec
                 .params
                 .get("max_window")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(400.0);
             Ok(Box::new(ExpandingWindowMatchmaker::with_tiers(
-                tiers,
-                max_window,
+                tiers, max_window,
             )))
         }
         "strict" => {
@@ -389,7 +381,9 @@ fn build_detection_system(
     Ok(Some(Box::new(detector)))
 }
 
-fn build_ranker(spec: Option<&RankingSpec>) -> Option<Box<dyn matchlab_ranking::ranker::RankMapper>> {
+fn build_ranker(
+    spec: Option<&RankingSpec>,
+) -> Option<Box<dyn matchlab_ranking::ranker::RankMapper>> {
     let spec = spec?;
     let brackets = spec
         .brackets
@@ -412,10 +406,8 @@ fn build_adversarial_agents(
     spec: Option<&crate::config::AdversarialSpec>,
 ) -> std::collections::HashMap<PlayerId, Box<dyn matchlab_adversarial::agent::AdversarialAgent>> {
     use matchlab_adversarial::agent::AdversarialAgent;
-    let mut agents: std::collections::HashMap<
-        PlayerId,
-        Box<dyn AdversarialAgent>,
-    > = std::collections::HashMap::new();
+    let mut agents: std::collections::HashMap<PlayerId, Box<dyn AdversarialAgent>> =
+        std::collections::HashMap::new();
     let Some(spec) = spec else {
         return agents;
     };
@@ -435,9 +427,9 @@ fn build_adversarial_agents(
                     .get("target_rating")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(500.0);
-                Some(Box::new(matchlab_adversarial::deranker::DerankerAgent::new(
-                    target,
-                )))
+                Some(Box::new(
+                    matchlab_adversarial::deranker::DerankerAgent::new(target),
+                ))
             }
             "rating_farmer" => {
                 let qp = agent_spec
@@ -465,12 +457,10 @@ fn build_adversarial_agents(
                     .get("boostee")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(boost_target + 1);
-                Some(Box::new(
-                    matchlab_adversarial::booster::BoosterAgent::new(
-                        PlayerId(boost_target),
-                        PlayerId(boostee),
-                    ),
-                ))
+                Some(Box::new(matchlab_adversarial::booster::BoosterAgent::new(
+                    PlayerId(boost_target),
+                    PlayerId(boostee),
+                )))
             }
             "win_trader" => {
                 let partner = agent_spec

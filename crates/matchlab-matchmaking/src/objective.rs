@@ -111,7 +111,10 @@ mod tests {
             id: PlayerId(id),
             rating,
             hidden_mmr: rating,
-            visible_rank: VisibleRank { tier: "unranked".into(), division: 1 },
+            visible_rank: VisibleRank {
+                tier: "unranked".into(),
+                division: 1,
+            },
             rating_deviation: rd,
             volatility: 0.06,
             games_played: 10,
@@ -171,8 +174,12 @@ mod tests {
         let o = objective();
         let mut world = World::new(SimRng::from_seed(1));
         world.time = SimTime::from_secs(0.0);
-        world.observations.insert(PlayerId(1), obs(1, 1000.0, 100.0));
-        world.observations.insert(PlayerId(2), obs(2, 1000.0, 100.0));
+        world
+            .observations
+            .insert(PlayerId(1), obs(1, 1000.0, 100.0));
+        world
+            .observations
+            .insert(PlayerId(2), obs(2, 1000.0, 100.0));
         let entries = vec![entry(1, SimTime::ZERO), entry(2, SimTime::ZERO)];
         let pm = ProposedMatch {
             team_a: vec![PlayerId(1)],
@@ -189,8 +196,12 @@ mod tests {
         let o = objective();
         let mut world = World::new(SimRng::from_seed(1));
         world.time = SimTime::from_secs(120.0);
-        world.observations.insert(PlayerId(1), obs(1, 1000.0, 350.0));
-        world.observations.insert(PlayerId(2), obs(2, 1000.0, 350.0));
+        world
+            .observations
+            .insert(PlayerId(1), obs(1, 1000.0, 350.0));
+        world
+            .observations
+            .insert(PlayerId(2), obs(2, 1000.0, 350.0));
         let entries = vec![
             entry(1, SimTime::from_secs(0.0)),
             entry(2, SimTime::from_secs(0.0)),

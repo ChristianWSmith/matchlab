@@ -18,7 +18,10 @@ pub struct EloRatingSystem {
 
 impl EloRatingSystem {
     pub fn new(config: EloConfig) -> Self {
-        Self { config, hooks: None }
+        Self {
+            config,
+            hooks: None,
+        }
     }
 
     pub fn with_hooks(config: EloConfig, hooks: LuaHooks) -> Self {
@@ -105,12 +108,7 @@ impl RatingSystem for EloRatingSystem {
                     .hooks
                     .as_ref()
                     .and_then(|h| {
-                        h.call_k_factor(
-                            pid.0,
-                            obs.rating,
-                            obs.games_played,
-                            obs.win_rate,
-                        )
+                        h.call_k_factor(pid.0, obs.rating, obs.games_played, obs.win_rate)
                     })
                     .unwrap_or(self.config.k_factor);
                 let new_rating = obs.rating + k * (actual_a - expected_a);
@@ -137,12 +135,7 @@ impl RatingSystem for EloRatingSystem {
                     .hooks
                     .as_ref()
                     .and_then(|h| {
-                        h.call_k_factor(
-                            pid.0,
-                            obs.rating,
-                            obs.games_played,
-                            obs.win_rate,
-                        )
+                        h.call_k_factor(pid.0, obs.rating, obs.games_played, obs.win_rate)
                     })
                     .unwrap_or(self.config.k_factor);
                 let new_rating = obs.rating + k * (actual_b - expected_b);

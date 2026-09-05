@@ -13,7 +13,11 @@ pub fn pareto_front<'a>(
 ) -> Vec<&'a ParetoPoint> {
     points
         .iter()
-        .filter(|p| !points.iter().any(|other| dominates(other, p, higher_is_better)))
+        .filter(|p| {
+            !points
+                .iter()
+                .any(|other| dominates(other, p, higher_is_better))
+        })
         .collect()
 }
 

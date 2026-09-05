@@ -88,8 +88,16 @@ function on_accept_match() return true end
         let result = ScriptLoader::validate(path.to_str().unwrap());
         assert!(result.valid);
         assert!(result.error.is_none());
-        assert!(result.defined_hooks.contains(&"on_match_quality".to_string()));
-        assert!(result.defined_hooks.contains(&"on_accept_match".to_string()));
+        assert!(
+            result
+                .defined_hooks
+                .contains(&"on_match_quality".to_string())
+        );
+        assert!(
+            result
+                .defined_hooks
+                .contains(&"on_accept_match".to_string())
+        );
         let _ = std::fs::remove_file(&path);
     }
 

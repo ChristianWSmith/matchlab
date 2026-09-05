@@ -49,6 +49,7 @@ pub struct MachineState {
     pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
     pub satisfaction_model: Option<SatisfactionModel>,
     pub player_experiences: HashMap<PlayerId, PlayerExperience>,
+    pending_queue_times: HashMap<PlayerId, f64>,
 }
 
 impl MachineState {
@@ -111,6 +112,7 @@ impl MachineState {
             adversarial_agents,
             satisfaction_model,
             player_experiences: HashMap::new(),
+            pending_queue_times: HashMap::new(),
         }
     }
 
@@ -239,6 +241,17 @@ pub fn handle_match_formed(
         .simulate(match_id, &team_a, &team_b, &mut world.rng);
     let duration = result.duration;
 
+    // Capture the real join→formation wait for satisfaction at match end.
+    for pid in formed.team_a.iter().chain(formed.team_b.iter()) {
+        if let Some(o) = world.observations.get(pid) {
+            if let Some(jt) = o.queue_joined_at {
+                state
+                    .pending_queue_times
+                    .insert(*pid, world.time.duration_since(jt).as_secs_f64());
+            }
+        }
+    }
+
     state.metrics.record_match(&result, world);
     state.active_matches.insert(match_id, result);
     world.matches.insert(match_id, MatchState::InProgress);
@@ -325,12 +338,15 @@ pub fn handle_match_end(
                 .unwrap_or(0.5);
             let (queue_time, won) = {
                 let o = world.observations.get(pid);
-                let won = (result.team_a.contains(pid) && result.winner == matchlab_core::match_::Team::A)
-                    || (result.team_b.contains(pid) && result.winner == matchlab_core::match_::Team::B);
-                let queue_time = o
-                    .and_then(|o| o.queue_joined_at)
-                    .map(|jt| world.time.duration_since(jt).as_secs_f64())
-                    .unwrap_or(0.0);
+                let won = (result.team_a.contains(pid)
+                    && result.winner == matchlab_core::match_::Team::A)
+                    || (result.team_b.contains(pid)
+                        && result.winner == matchlab_core::match_::Team::B);
+                let queue_time = state.pending_queue_times.remove(pid).unwrap_or_else(|| {
+                    o.and_then(|o| o.queue_joined_at)
+                        .map(|jt| world.time.duration_since(jt).as_secs_f64())
+                        .unwrap_or(0.0)
+                });
                 (queue_time, won)
             };
             let exp = state.player_experiences.entry(*pid).or_default();
@@ -401,8 +417,8 @@ pub fn handle_detection_check(
     event: &dyn matchlab_core::event::Event,
     state: &mut MachineState,
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
-    let check = downcast::<matchlab_core::event::DetectionCheckEvent>(event)
-        .expect("DetectionCheckEvent");
+    let check =
+        downcast::<matchlab_core::event::DetectionCheckEvent>(event).expect("DetectionCheckEvent");
     let pid = check.player_id;
     let Some(detector) = state.detection_system.as_ref() else {
         return Vec::new();
@@ -433,8 +449,8 @@ pub fn handle_ranking_update(
     event: &dyn matchlab_core::event::Event,
     state: &mut MachineState,
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
-    let update = downcast::<matchlab_core::event::RatingUpdateEvent>(event)
-        .expect("RatingUpdateEvent");
+    let update =
+        downcast::<matchlab_core::event::RatingUpdateEvent>(event).expect("RatingUpdateEvent");
     let Some(ranker) = state.ranker.as_ref() else {
         return Vec::new();
     };
@@ -904,16 +920,22 @@ mod tests {
 
     #[test]
     fn ranking_updates_visible_rank_on_match_end() {
-        use matchlab_ranking::ranker::{BracketRankMapper, RankBracket, Rank};
+        use matchlab_ranking::ranker::{BracketRankMapper, Rank, RankBracket};
         let mut state = default_state(vec![]);
         let brackets = vec![
             RankBracket {
-                rank: Rank { tier: "bronze".into(), division: 1 },
+                rank: Rank {
+                    tier: "bronze".into(),
+                    division: 1,
+                },
                 min: 0.0,
                 max: 1200.0,
             },
             RankBracket {
-                rank: Rank { tier: "silver".into(), division: 1 },
+                rank: Rank {
+                    tier: "silver".into(),
+                    division: 1,
+                },
                 min: 1200.0,
                 max: 2000.0,
             },
@@ -956,17 +978,8 @@ mod tests {
 
         struct FlaggingDetector;
         impl DetectionSystem for FlaggingDetector {
-            fn observe(
-                &mut self,
-                _mr: &matchlab_core::match_::MatchResult,
-                _w: &World,
-            ) {
-            }
-            fn evaluate(
-                &self,
-                _player_id: PlayerId,
-                _w: &World,
-            ) -> DetectionResult {
+            fn observe(&mut self, _mr: &matchlab_core::match_::MatchResult, _w: &World) {}
+            fn evaluate(&self, _player_id: PlayerId, _w: &World) -> DetectionResult {
                 DetectionResult {
                     player_id: PlayerId(1),
                     probability_of_anomaly: 0.99,
@@ -974,10 +987,7 @@ mod tests {
                     evidence: vec!["test".to_string()],
                 }
             }
-            fn recommend_action(
-                &self,
-                _r: &DetectionResult,
-            ) -> InterventionAction {
+            fn recommend_action(&self, _r: &DetectionResult) -> InterventionAction {
                 InterventionAction::FlagForReview
             }
         }
@@ -994,9 +1004,7 @@ mod tests {
         let out = handle_detection_check(&mut world, evt.as_ref(), &mut state);
         assert!(out.is_empty());
         assert!(
-            !world.observations[&PlayerId(1)]
-                .detection_flags
-                .is_empty(),
+            !world.observations[&PlayerId(1)].detection_flags.is_empty(),
             "player should be flagged for review"
         );
     }
@@ -1085,8 +1093,7 @@ mod tests {
         // Player 1 lost with a heavy loss-streak penalty → low satisfaction →
         // PlayerQuit instead of PlayerQueue.
         assert!(
-            out.iter()
-                .any(|e| e.kind() == EventKind::PlayerQuit),
+            out.iter().any(|e| e.kind() == EventKind::PlayerQuit),
             "loser with low satisfaction should quit"
         );
     }
