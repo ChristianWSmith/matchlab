@@ -4424,17 +4424,35 @@ impl FactorialDesign {
 fn set_nested_value(config: &mut ExperimentConfig, path: &str, value: Value) {
     // Reflect the typed config to an intermediate tree, apply the dot-separated
     // path, then rebuild the typed config. This keeps factor overrides type-safe.
+    // The leaf key is INSERTED into the current mapping/sequence (handles both
+    // `game.beta`-style keys and `systems.0.name`-style sequence indices),
+    // rather than replacing the parent sub-mapping.
     let mut tree: serde_yaml::Value = serde_yaml::to_value(&*config)
         .expect("ExperimentConfig must serialize");
     let parts: Vec<&str> = path.split('.').collect();
     let mut cursor = &mut tree;
     for (i, part) in parts.iter().enumerate() {
         if i == parts.len() - 1 {
-            *cursor = value;
+            if let Ok(idx) = part.parse::<usize>() {
+                let item = cursor.as_sequence_mut()
+                    .and_then(|seq| seq.get_mut(idx))
+                    .expect("factorial path segment must exist in config");
+                *item = value.clone();
+            } else {
+                cursor.as_mapping_mut()
+                    .expect("expected mapping")
+                    .insert(serde_yaml::Value::String(part.to_string()), value.clone());
+            }
         } else {
-            cursor = cursor.as_mapping_mut()
-                .and_then(|m| m.get_mut(serde_yaml::Value::String((*part).to_string())))
-                .expect("factorial path segment must exist in config");
+            cursor = if let Ok(idx) = part.parse::<usize>() {
+                cursor.as_sequence_mut()
+                    .and_then(|seq| seq.get_mut(idx))
+                    .expect("factorial path segment must exist in config")
+            } else {
+                cursor.as_mapping_mut()
+                    .and_then(|m| m.get_mut(serde_yaml::Value::String((*part).to_string())))
+                    .expect("factorial path segment must exist in config")
+            };
         }
     }
     *config = serde_yaml::from_value(tree).expect("ExperimentConfig must deserialize from tree");

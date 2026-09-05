@@ -475,6 +475,19 @@ besides the simulation):
   `derive(name, parent_seed)`, plus `hash_config(&ExperimentConfig)` (a
   `#[derive(Default)]` `DefaultHasher` over length-prefixed serialized
   fields) and `git_commit_hash()` for `ExperimentResult`.
+- `factorial.rs` — `FactorialDesign { factors }` (spec §13.5) with
+  `generate_configs(&base) -> Vec<ExperimentConfig>` producing the Cartesian
+  product of factor values. Each factor is a dot-separated config path with
+  values applied via `set_nested_value` (reflects to a YAML tree, inserts the
+  leaf key — handles both mapping keys and `systems.0.name`-style sequence
+  indices — then re-deserializes). Note: fixes the spec's reference, which
+  replaced the whole sub-mapping instead of the leaf.
+- `counterfactual.rs` — `GameHistory` (`record(match, world)` captures each
+  match + participant observation snapshot) and `counterfactual_eval(&history,
+  &[(&str, Box<dyn RatingSystem>)]) -> HashMap<String, Vec<(PlayerId,
+  RatingState)>>` (spec §13.6): replays identical history through multiple
+  rating systems, preserving full `RatingState` across matches and
+  budget-sanitizing each result via `filter_match_result` before `update`.
 - `runner.rs` — `ExperimentRunner::run(&ExperimentConfig) ->
   Result<ExperimentResult, String>`: generates the population, builds the
   rating system via `matchlab_rating::registry::from_name` (params flattened
