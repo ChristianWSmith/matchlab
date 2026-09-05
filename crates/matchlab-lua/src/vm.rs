@@ -55,9 +55,19 @@ impl LuaVm {
         &self.config
     }
 
-    /// Run `f` while the given `&mut SimRng` is available to `matchlab.rng_*`.
+    /// Run `f` with the given `&mut SimRng` available to `matchlab.rng_*`.
     pub fn with_rng<T>(&self, rng: &mut SimRng, f: impl FnOnce(&Self) -> T) -> T {
         rng::with_active(rng, || f(self))
+    }
+
+    /// Build a Lua value with exclusive access to the underlying `Lua` state.
+    /// Used by adapters to construct argument tables before a call.
+    pub fn with_lua<R>(&self, f: impl FnOnce(&Lua) -> Result<R, String>) -> Result<R, String> {
+        let lua = self
+            .lua
+            .lock()
+            .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
+        f(&lua)
     }
 
     /// Read a global from the loaded script (e.g. `information_budget`,

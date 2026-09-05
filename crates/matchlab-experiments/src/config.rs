@@ -97,7 +97,13 @@ pub struct RatingSpec {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RatingSystemSpec {
-    pub name: String,
+    /// Optional label; when present it resolves to a built-in script
+    /// (e.g. "elo" → plugins/rating/elo.lua). When absent, `script` is used.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Path to the Lua rating-system script.
+    #[serde(default)]
+    pub script: Option<String>,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -288,7 +294,10 @@ experiment:
             .and_then(|v| v.as_u64());
         assert_eq!(batch, Some(10));
         assert_eq!(config.experiment.rating.systems.len(), 1);
-        assert_eq!(config.experiment.rating.systems[0].name, "elo");
+        assert_eq!(
+            config.experiment.rating.systems[0].name,
+            Some("elo".to_string())
+        );
         assert_eq!(
             config.experiment.rating.systems[0]
                 .params

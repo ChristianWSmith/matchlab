@@ -278,49 +278,43 @@ crates/
   (§6.3): wraps a base model, scales each player's skill by
   `1 + momentum_factor × (win_rate − 0.5)` (streak proxy). Delegates to base.
 
-**`matchlab-rating` is implemented with the rating systems:**
+**`matchlab-rating` is implemented with the Lua-native rating systems:**
 - `system.rs` — `RatingSystem` trait (spec §8.1): `information_budget()`,
   `initialize(player_id)`, `predict(team_a, team_b)`,
   `update(match_result, observations) -> HashMap<PlayerId, RatingState>`, plus
   `rating()`/`uncertainty()` conveniences. `RatingState { rating,
   rating_deviation, volatility, games_played }`, 11-variant `ObservationType`.
-- `elo.rs` — `EloRatingSystem` (spec §8.4) with `EloConfig { k_factor,
-  initial_rating, beta }` and `from_yaml`. `divisor = beta * ln(10)` keeps the
-  log10 Elo scale consistent with the logistic game model (so both compute the
-  same win probability for a given rating gap). `update` applies
-  `k_factor * (actual − expected)` per team member. Elo/Flat only declare
-  `WinLoss` in their information budget; a **matching-info budget** is enforced:
-  loop handlers sanitize the `MatchResult` via `filter.rs` before `update`.
+- `lua.rs` — `LuaRatingSystem`: implements `RatingSystem` by delegating to a
+  script's `initialize`/`predict`/`update` functions; reads the script's
+  `information_budget` global at load; threads a `Context` through every call.
+- `plugins.rs` — `registry` with `known_systems()` (name → script map: elo →
+  `plugins/rating/elo.lua`, flatpoints, glicko2, trueskill), `from_script(path,
+  params)`, and `from_name(name, params)`.
 - `filter.rs` — `filter_match_result(&MatchResult, &[ObservationType]) ->
   FilteredMatchResult` (spec §8.2) with `into_match_result(&self, MatchId) ->
   MatchResult` producing a budget-sanitized `MatchResult` (scores,
   per-player performances, and durations zeroed/emptied for non-permitted
   data). `matchlab-loop` calls this in `handle_match_end`, so a WinLoss-only
   system never sees score/perf/duration leaks.
-- `flat.rs` — `FlatPointsRatingSystem` (spec §8.3) with `FlatPointsConfig {
-  win_points, loss_points, initial_rating }` and `from_yaml`; fixed ±points
-  baseline.
-- `glicko.rs` — `Glicko2RatingSystem` (spec §8.5) with `GlickoConfig {
-  initial_rating, initial_rd, initial_volatility, tau, epsilon }` and
-  `from_yaml`. Full 6-step Glicko-2: scale to (μ, φ, σ) → `g`/`E` per
-  opponent → `v`, `Δ` → Newton-Raphson volatility iteration → `φ*` → `φ'`,
-  `μ'` → scale back. Team matches treat each player's opponents as the
-  opposing team's players, one opponent tuple per player. Verified against
-  Glickman's paper worked example (r'=1464.06, RD'=151.52, σ'=0.05999).
-- `trueskill.rs` — `TrueSkillRatingSystem` (spec §8.6) with `TrueSkillConfig {
-  initial_mean, initial_variance, beta, dynamics, draw_probability }` and
-  `from_yaml` (accepts `initial_rating` alias for `initial_mean`). Each player
-  is N(μ, σ²); team performance = sum of member performances. The comparison
-  `d = P_A − P_B` is modeled as N(μ_A−μ_B, c²) and updated via truncated-
-  Gaussian conditioning: winner uses the inverse-Mills-ratio factors
-  `v,w` on `z > u−t`, loser on `z < −u−t` (with draw margin `u` from
-  `draw_probability`). μ += (σ²/c)v, σ² *= (1−(σ²/c²)w). `initial_variance`
-  is stored as `rating_deviation` = σ (sqrt of variance).
-- `plugins.rs` — `registry` module with `all_systems()` (`["elo",
-  "flatpoints", "glicko2", "trueskill"]`) and `from_name(name,
-  &serde_yaml::Value) -> Option<Box<dyn RatingSystem>>`, plus
-  `lua:elo`/`lua:glicko2`/`lua:trueskill` hook-hooked variants. Unknown names
-  return `None`.
+- The classic systems ship as Lua scripts under `plugins/rating/`:
+  - `elo.lua` — spec §8.4. `divisor = beta * ln(10)` keeps the log10 Elo scale
+    consistent with the logistic game model (both compute the same win
+    probability for a rating gap). `update` applies `k_factor * (actual −
+    expected)` per team member. Declares `information_budget = { "WinLoss" }`.
+  - `flat.lua` — spec §8.3; fixed ±points baseline.
+  - `glicko2.lua` — spec §8.5; full 6-step Glicko-2: scale to (μ, φ, σ) →
+    `g`/`E` per opponent → `v`, `Δ` → Newton-Raphson volatility iteration →
+    `φ*` → `φ'`, `μ'` → scale back. Verified against Glickman's paper worked
+    example (r'=1464.06, RD'=151.52, σ'=0.05999).
+  - `trueskill.lua` — spec §8.6; each player is N(μ, σ²); team performance =
+    sum of member performances; truncated-Gaussian conditioning with the
+    inverse-Mills-ratio factors `v,w` and draw margin from `draw_probability`.
+    `initial_variance` is stored as `rating_deviation` = σ (sqrt of variance).
+- Elo/Flat only declare `WinLoss` in their information budget; a **matching-info
+  budget** is enforced: loop handlers sanitize the `MatchResult` via
+  `filter.rs` before `update`.
+- The Lua ports reproduce the Rust results byte-for-byte (v0_1_basic acceptance
+  numbers unchanged through the all-Lua rating path).
 
 **`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,

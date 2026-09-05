@@ -479,8 +479,15 @@ mod tests {
     use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
-    use matchlab_rating::elo::{EloConfig, EloRatingSystem};
+    use matchlab_rating::registry;
+    use matchlab_rating::system::RatingSystem;
     use std::collections::VecDeque;
+
+    fn lua_elo() -> Box<dyn RatingSystem> {
+        let params =
+            serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
+        registry::from_script("plugins/rating/elo.lua", &params).expect("elo.lua loads")
+    }
 
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
@@ -533,11 +540,7 @@ mod tests {
     fn default_state(pop: Vec<(PlayerReality, PlayerObservation)>) -> MachineState {
         MachineState::new(
             pop,
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
+            lua_elo(),
             Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
             Box::new(BatchMatchmaker::new(10)),
             MetricsEngine::new(),
@@ -753,11 +756,7 @@ mod tests {
         };
         let mut loop_a = MatchLoop::new(
             pop.clone(),
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
+            lua_elo(),
             Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
             Box::new(BatchMatchmaker::new(60)),
             MetricsEngine::new(),
@@ -820,11 +819,7 @@ mod tests {
         let build = |pop: Vec<(PlayerReality, PlayerObservation)>, cfg: LoopConfig| {
             MatchLoop::new(
                 pop,
-                Box::new(EloRatingSystem::new(EloConfig {
-                    k_factor: 32.0,
-                    initial_rating: 1000.0,
-                    beta: 400.0,
-                })),
+                lua_elo(),
                 Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
                 Box::new(BatchMatchmaker::new(60)),
                 MetricsEngine::new(),
@@ -896,11 +891,7 @@ mod tests {
         };
         let mut loop_a = MatchLoop::new(
             pop,
-            Box::new(EloRatingSystem::new(EloConfig {
-                k_factor: 32.0,
-                initial_rating: 1000.0,
-                beta: 400.0,
-            })),
+            lua_elo(),
             Box::new(LogisticOutcomeModel::new(400.0, 0.1)),
             Box::new(BatchMatchmaker::new(60)),
             metrics,

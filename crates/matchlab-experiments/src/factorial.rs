@@ -114,7 +114,8 @@ mod tests {
                 },
                 rating: RatingSpec {
                     systems: vec![RatingSystemSpec {
-                        name: "elo".to_string(),
+                        name: Some("elo".to_string()),
+                        script: None,
                         params: BTreeMap::new(),
                     }],
                 },
@@ -188,7 +189,13 @@ mod tests {
         };
         let configs = design.generate_configs(&base());
         assert_eq!(configs.len(), 2);
-        assert_eq!(configs[0].experiment.rating.systems[0].name, "elo");
-        assert_eq!(configs[1].experiment.rating.systems[0].name, "flatpoints");
+        assert_eq!(
+            configs[0].experiment.rating.systems[0].name,
+            Some("elo".to_string())
+        );
+        assert_eq!(
+            configs[1].experiment.rating.systems[0].name,
+            Some("flatpoints".to_string())
+        );
     }
 }

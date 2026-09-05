@@ -184,13 +184,24 @@ fn build_rating_system(systems: &[RatingSystemSpec]) -> Result<Box<dyn RatingSys
         Some(s) => s,
         None => return Err("rating.systems must declare at least one system".to_string()),
     };
+    let params = flatten_params(&spec.params);
+    if let Some(name) = &spec.name {
+        registry::from_name(name, &params)
+    } else if let Some(script) = &spec.script {
+        registry::from_script(script, &params)
+    } else {
+        Err("rating system must declare a `name` or `script`".to_string())
+    }
+}
+
+fn flatten_params(
+    params: &std::collections::BTreeMap<String, serde_yaml::Value>,
+) -> serde_yaml::Value {
     let mut mapping = serde_yaml::Mapping::new();
-    for (key, value) in spec.params.iter() {
+    for (key, value) in params {
         mapping.insert(serde_yaml::Value::String(key.clone()), value.clone());
     }
-    let params = serde_yaml::Value::Mapping(mapping);
-    registry::from_name(&spec.name, &params)
-        .ok_or_else(|| format!("unknown rating system: {}", spec.name))
+    serde_yaml::Value::Mapping(mapping)
 }
 
 fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String> {
@@ -575,7 +586,7 @@ experiment:
     max_queue_time: 60.0
   rating:
     systems:
-      - name: elo
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
@@ -628,7 +639,8 @@ experiment:
     #[test]
     fn unknown_rating_system_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems[0].name = "bogus".to_string();
+        config.experiment.rating.systems[0].name = Some("bogus".to_string());
+        config.experiment.rating.systems[0].script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
 

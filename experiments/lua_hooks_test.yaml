@@ -2,11 +2,10 @@ base: base/standard.yaml
 
 experiment:
   name: lua_hooks_test
-  description: "Lua-hooked Elo rating with dynamic K factor"
+  description: "Lua-native Elo rating system"
   rating:
     systems:
-      - name: lua:elo
-        script: plugins/rating/dynamic_elo.lua
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0

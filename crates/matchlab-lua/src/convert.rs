@@ -89,6 +89,21 @@ pub fn observations_to_value(
     Ok(Value::Table(t))
 }
 
+/// Convert a list of observations into a Lua table keyed by `player_id`.
+/// Convenient for rating/detection adapters that index participants by id.
+pub fn observations_to_map(
+    lua: &Lua,
+    list: &[PlayerObservation],
+    include_skill: bool,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for obs in list {
+        t.set(obs.id.0, observation_to_table(lua, obs, include_skill)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
 fn team_to_value(lua: &Lua, team: &[PlayerId]) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for (i, id) in team.iter().enumerate() {

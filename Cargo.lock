@@ -234,6 +234,7 @@ dependencies = [
  "matchlab-ranking",
  "matchlab-rating",
  "matchlab-utility",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -294,6 +295,7 @@ name = "matchlab-rating"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
  "serde_yaml",
 ]

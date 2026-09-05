@@ -30,7 +30,7 @@ experiment:
 
   rating:
     systems:
-      - name: elo
+      - script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
