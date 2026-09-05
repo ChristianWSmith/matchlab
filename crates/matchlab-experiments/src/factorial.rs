@@ -105,7 +105,7 @@ mod tests {
                     params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
-                    algorithm: "batch".to_string(),
+                    script: "plugins/matchmaking/batch.lua".to_string(),
                     max_queue_time: 60.0,
                     params: BTreeMap::new(),
                 },

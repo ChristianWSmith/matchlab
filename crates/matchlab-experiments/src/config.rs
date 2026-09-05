@@ -86,10 +86,16 @@ fn default_outcome_script() -> String {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MatchmakingSpec {
-    pub algorithm: String,
+    /// Path to the Lua matchmaker script (e.g. plugins/matchmaking/batch.lua).
+    #[serde(default = "default_matchmaker_script")]
+    pub script: String,
     pub max_queue_time: f64,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
+}
+
+fn default_matchmaker_script() -> String {
+    "plugins/matchmaking/batch.lua".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -256,7 +262,7 @@ experiment:
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
@@ -287,7 +293,10 @@ experiment:
         assert_eq!(config.experiment.population.size, 10000);
         assert_eq!(config.experiment.population.archetypes.len(), 1);
         assert_eq!(config.experiment.game.team_size, 5);
-        assert_eq!(config.experiment.matchmaking.algorithm, "batch");
+        assert_eq!(
+            config.experiment.matchmaking.script,
+            "plugins/matchmaking/batch.lua"
+        );
         let batch = config
             .experiment
             .matchmaking
@@ -339,7 +348,7 @@ experiment:
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
@@ -392,7 +401,7 @@ experiment:
     noise: 0.05
     fatigue_decay_rate: 0.01
   matchmaking:
-    algorithm: expanding_window
+    script: plugins/matchmaking/expanding_window.lua
     batch_interval: 10
     max_queue_time: 60.0
     tiers: [[5.0, 25.0], [10.0, 50.0]]
@@ -445,7 +454,10 @@ experiment:
                 .and_then(|v| v.as_f64()),
             Some(0.01)
         );
-        assert_eq!(config.experiment.matchmaking.algorithm, "expanding_window");
+        assert_eq!(
+            config.experiment.matchmaking.script,
+            "plugins/matchmaking/expanding_window.lua"
+        );
         assert!(config.experiment.detection.as_ref().unwrap().enabled);
         assert_eq!(
             config.experiment.ranking.as_ref().unwrap().brackets.len(),
@@ -483,7 +495,7 @@ experiment:
     beta: 400.0
     noise: 0.0
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:

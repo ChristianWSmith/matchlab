@@ -315,7 +315,7 @@ crates/
 - The Lua ports reproduce the Rust results byte-for-byte (v0_1_basic acceptance
   numbers unchanged through the all-Lua rating path).
 
-**`matchlab-matchmaking` is implemented with the queue + batch matchmaker:**
+**`matchlab-matchmaking` is implemented with the queue + Lua matchmakers:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
   game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
@@ -325,29 +325,32 @@ crates/
   `ProposedMatch { team_a, team_b, quality_score }` with static `match_quality`
   = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed from **observations** only.
 - `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
-  v0.1; the batch matchmaker runs with an empty list.
-- `batch.rs` — `BatchMatchmaker { interval_ticks, constraints }` (spec §7.8).
-  **Rating-balanced** formation: sort candidates by `observation.rating`
-  (ties by `joined_at`) and assign alternately to team A / team B in
-  consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
-  opposite teams, so the two teams are balanced and `match_quality` stays
-  ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
-  population, failing the quality exit criterion). The `interval_ticks`
-  field is metadata the event handler uses to decide when to trigger
-  matchmaking; the handler forms matches in consecutive blocks, emitting the
-  final block when full (the spec's reference loop silently drops it).
-- `expanding.rs` — `ExpandingWindowMatchmaker` (spec §7.6) with stepped tiers
-  `[(max_secs, allowed_diff)]` (`default_tiers()`: 5s→25, 10s→50, 20s→100,
-  30s→200, fallback `max_window: 400`) — skills matched within a window that
-  widens with queue wait. Optional `on_max_skill_diff` Lua hook.
-- `strict.rs` — `StrictMatchmaker { max_skill_diff }` (spec §7.7): only matches
-  players within a fixed skill diff; outliers may wait indefinitely (intended
-  "strict" behavior). Optional `on_max_skill_diff` Lua hook.
-- `hub_spoke.rs` — `HubSpokeMatchmaker { spokes: HashMap<Region, Box<dyn
-  Matchmaker>>, spoke_capacity }` (spec §7.9): partitions the queue by region,
-  delegates under-capacity regions to their spoke, and handles overflow
-  directly (longest-waiting first). Emits the trailing full block (the spec's
-  reference loop silently drops it).
+  v0.1; the matchmakers run with an empty list.
+- `lua.rs` — `LuaMatchmaker`: implements `Matchmaker` by delegating to a
+  script's `find_matches` function. The queue is snapshotted to a Lua array
+  (player_id, rating, rating_deviation, games_played, win_rate, `idx`,
+  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode) —
+  observations only, never `PlayerReality`. Scripts set `quality_score` or the
+  adapter falls back to `ProposedMatch::match_quality`.
+- The matchmakers ship as Lua scripts under `plugins/matchmaking/`:
+  - `batch.lua` — spec §7.8. **Rating-balanced** formation: sort candidates by
+    `rating` (ties by `joined_at_secs`, then `idx` — Lua `table.sort` is
+    unstable, so the index tie-break preserves the Rust stable-sort behavior
+    and keeps results byte-identical) and assign alternately to team A / team B
+    in consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
+    opposite teams, so the two teams are balanced and `match_quality` stays
+    ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
+    population, failing the quality exit criterion).
+  - `expanding_window.lua` — spec §7.6 with stepped tiers
+    `[(max_secs, allowed_diff)]` (default 5s→25, 10s→50, 20s→100, 30s→200,
+    fallback `max_window: 400`) — skills matched within a window that widens
+    with queue wait.
+  - `strict.lua` — spec §7.7: only matches players within a fixed skill diff;
+    outliers may wait indefinitely (intended "strict" behavior).
+  - `hub_spoke.lua` — spec §7.9: partitions the queue by region (sorted region
+    keys for determinism); under-capacity regions use an inlined regional
+    greedy (no nested matchmakers in Lua), overflow regions fall to the hub
+    path (longest-waiting first).
 - `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
   weight_ping, weight_rating_uncertainty }` (spec §7.4) with
   `score(proposed, queue_entries, world) = w_q·Q − w_t·T − w_p·P − w_r·R`

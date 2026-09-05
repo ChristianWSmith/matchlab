@@ -55,7 +55,7 @@ experiment:
     noise: 0.05
 
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
 

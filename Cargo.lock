@@ -253,7 +253,9 @@ name = "matchlab-matchmaking"
 version = "0.1.0"
 dependencies = [
  "matchlab-core",
+ "matchlab-lua",
  "mlua",
+ "serde_yaml",
 ]
 
 [[package]]

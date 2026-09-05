@@ -476,7 +476,8 @@ mod tests {
     use matchlab_core::rng::SimRng;
     use matchlab_game::lua::LuaOutcomeModel;
     use matchlab_game::outcome::OutcomeModel;
-    use matchlab_matchmaking::batch::BatchMatchmaker;
+    use matchlab_matchmaking::lua::LuaMatchmaker;
+    use matchlab_matchmaking::matchmaker::Matchmaker;
     use matchlab_metrics::{MatchQualityCollector, MetricsEngine};
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
@@ -495,6 +496,13 @@ mod tests {
         Box::new(
             LuaOutcomeModel::load("plugins/game/logistic.lua", &params)
                 .expect("logistic.lua loads"),
+        )
+    }
+
+    fn lua_batch() -> Box<dyn Matchmaker> {
+        Box::new(
+            LuaMatchmaker::load("plugins/matchmaking/batch.lua", &serde_yaml::Value::Null)
+                .expect("batch.lua loads"),
         )
     }
 
@@ -551,7 +559,7 @@ mod tests {
             pop,
             lua_elo(),
             lua_logistic(),
-            Box::new(BatchMatchmaker::new(10)),
+            lua_batch(),
             MetricsEngine::new(),
             LoopConfig {
                 team_size: 1,
@@ -767,7 +775,7 @@ mod tests {
             pop.clone(),
             lua_elo(),
             lua_logistic(),
-            Box::new(BatchMatchmaker::new(60)),
+            lua_batch(),
             MetricsEngine::new(),
             cfg,
             1234,
@@ -830,7 +838,7 @@ mod tests {
                 pop,
                 lua_elo(),
                 lua_logistic(),
-                Box::new(BatchMatchmaker::new(60)),
+                lua_batch(),
                 MetricsEngine::new(),
                 cfg,
                 1234,
@@ -902,7 +910,7 @@ mod tests {
             pop,
             lua_elo(),
             lua_logistic(),
-            Box::new(BatchMatchmaker::new(60)),
+            lua_batch(),
             metrics,
             cfg,
             1234,

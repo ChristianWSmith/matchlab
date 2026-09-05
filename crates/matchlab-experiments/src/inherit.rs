@@ -99,11 +99,11 @@ experiment:
         quit_probability: 0.0
   game:
     team_size: 5
-    outcome_model: logistic
+    script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   cohorts: []

@@ -12,11 +12,7 @@ use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
-use matchlab_matchmaking::batch::BatchMatchmaker;
-use matchlab_matchmaking::expanding::ExpandingWindowMatchmaker;
-use matchlab_matchmaking::hub_spoke::HubSpokeMatchmaker;
 use matchlab_matchmaking::matchmaker::Matchmaker;
-use matchlab_matchmaking::strict::StrictMatchmaker;
 use matchlab_metrics::{
     ConvergenceCollector, DimensionalityFidelityCollector, MatchInequalityCollector,
     MatchQualityCollector, MetricResult, MetricsEngine, NDCGCollector, PopulationHealthCollector,
@@ -210,52 +206,9 @@ fn build_outcome_model(spec: &GameSpec) -> Result<Box<dyn OutcomeModel>, String>
 }
 
 fn build_matchmaker(spec: &MatchmakingSpec) -> Result<Box<dyn Matchmaker>, String> {
-    match spec.algorithm.as_str() {
-        "batch" => Ok(Box::new(BatchMatchmaker::new(batch_interval_secs(spec)))),
-        "expanding_window" => {
-            let tiers: Vec<(f64, f64)> = spec
-                .params
-                .get("tiers")
-                .and_then(|v| v.as_sequence())
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|t| {
-                            let arr = t.as_sequence()?;
-                            let a = arr.first()?.as_f64()?;
-                            let b = arr.get(1)?.as_f64()?;
-                            Some((a, b))
-                        })
-                        .collect()
-                })
-                .unwrap_or_else(|| vec![(5.0, 25.0), (10.0, 50.0), (20.0, 100.0), (30.0, 200.0)]);
-            let max_window = spec
-                .params
-                .get("max_window")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(400.0);
-            Ok(Box::new(ExpandingWindowMatchmaker::with_tiers(
-                tiers, max_window,
-            )))
-        }
-        "strict" => {
-            let max_diff = spec
-                .params
-                .get("max_skill_diff")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(50.0);
-            Ok(Box::new(StrictMatchmaker::new(max_diff)))
-        }
-        "hub_spoke" => {
-            let capacity = spec
-                .params
-                .get("spoke_capacity")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(100) as usize;
-            let spokes = std::collections::HashMap::new();
-            Ok(Box::new(HubSpokeMatchmaker::new(spokes, capacity)))
-        }
-        other => Err(format!("unknown matchmaker algorithm: {other}")),
-    }
+    let params = flatten_params(&spec.params);
+    matchlab_matchmaking::lua::LuaMatchmaker::load(&spec.script, &params)
+        .map(|m| Box::new(m) as Box<dyn Matchmaker>)
 }
 
 fn batch_interval_secs(spec: &MatchmakingSpec) -> u64 {
@@ -503,7 +456,7 @@ experiment:
     beta: 400.0
     noise: 0.05
   matchmaking:
-    algorithm: batch
+    script: plugins/matchmaking/batch.lua
     batch_interval: 10
     max_queue_time: 60.0
   rating:
@@ -615,7 +568,7 @@ experiment:
     fn expanding_window_matchmaker_runs() {
         let mut config = mini_config();
         config.experiment.matchmaking = MatchmakingSpec {
-            algorithm: "expanding_window".to_string(),
+            script: "plugins/matchmaking/expanding_window.lua".to_string(),
             max_queue_time: 60.0,
             params: BTreeMap::from([
                 (
