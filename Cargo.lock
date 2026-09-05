@@ -237,6 +237,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchlab-lua"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "mlua",
+ "serde_yaml",
+]
+
+[[package]]
 name = "matchlab-matchmaking"
 version = "0.1.0"
 dependencies = [

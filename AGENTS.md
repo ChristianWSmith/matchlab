@@ -36,6 +36,7 @@ match-lab/              # workspace root
 ├── src/main.rs         # CLI binary: `matchlab run <manifest>`
 └── crates/
     ├── matchlab-core/          # simulation engine, time, events, world, RNG, core types
+    ├── matchlab-lua/           # Lua-native system foundation (VM, context, rng, validation)
     ├── matchlab-players/       # archetypes, population generation, skill process
     ├── matchlab-game/          # outcome models, match execution
     ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search strategies
@@ -55,16 +56,17 @@ match-lab/              # workspace root
 ```
 matchlab-core          ← no internal deps
     ↑
+    ├── matchlab-lua            (+ mlua)
     ├── matchlab-players
-    ├── matchlab-game          (+ mlua)
-    ├── matchlab-matchmaking   (+ mlua)
-    ├── matchlab-rating        (+ mlua)
-    ├── matchlab-detection     (+ mlua)
+    ├── matchlab-game           (+ mlua via matchlab-lua)
+    ├── matchlab-matchmaking    (+ mlua via matchlab-lua)
+    ├── matchlab-rating         (+ mlua via matchlab-lua)
+    ├── matchlab-detection      (+ mlua via matchlab-lua)
     ├── matchlab-ranking
-    ├── matchlab-metrics       (depends on core only; + mlua for hooks)
-    ├── matchlab-objective     (depends on core + metrics)
-    ├── matchlab-adversarial   (depends on core)
-    └── matchlab-utility       (depends on core)
+    ├── matchlab-metrics        (depends on core + matchlab-lua)
+    ├── matchlab-objective      (depends on core + metrics)
+    ├── matchlab-adversarial    (depends on core + matchlab-lua)
+    └── matchlab-utility        (depends on core + matchlab-lua)
 
 matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
@@ -130,11 +132,12 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace is fully implemented: 14 crates under `crates/`, a binary at `src/main.rs`. The root `Cargo.toml` is a Cargo workspace:
+The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/main.rs`. The root `Cargo.toml` is a Cargo workspace:
 
 ```
 crates/
 ├── matchlab-core/
+├── matchlab-lua/
 ├── matchlab-players/
 ├── matchlab-game/
 ├── matchlab-matchmaking/
@@ -160,6 +163,35 @@ crates/
 - `/results` is gitignored.
 - `cargo build --workspace`, `cargo test --workspace`, and
   `cargo check --workspace` all pass.
+
+**`matchlab-lua` is implemented with the Lua-native system foundation:**
+- `vm.rs` — `LuaVm` (a `Mutex<Lua>` wrapper): `load(path, params, required)`
+  resolves + validates + execs a script, stores its `config` (from YAML params),
+  registers the `matchlab.rng_*` helpers, and provides
+  `call_with_context(name, args, context)` (args + `config` + `context` are
+  pushed in that order; the script may return `(value, context)` or mutate the
+  passed context in place) and `get_global` (reads `information_budget`,
+  `name`, `time_buckets` globals). `with_rng(&mut SimRng, f)` makes the RNG
+  available to `matchlab.rng_*`.
+- `context.rs` — `Context` is an ordered `serde_yaml::Value` (defaults to an
+  empty mapping): arbitrary script-defined state persisted on the Rust model and
+  threaded through every call. `yaml_to_lua`/`lua_to_yaml` round-trip it (a Lua
+  table whose keys are exactly `1..=n` becomes a sequence).
+- `rng.rs` — deterministic randomness routing: a thread-local `*mut SimRng` slot
+  set/cleared around every guarded call; `matchlab.rng_range`/`rng_bool`/
+  `rng_normal`/`rng_u64` draw from it. Scripts must never call `math.random`.
+- `convert.rs` — core↔Lua marshalling: `observation_to_table` (with `include_skill`
+  to control the ground-truth skill binding), `participant_to_table` (metrics
+  only — adds `true_skill`/`improvement_rate`/`reality_games_played`),
+  `match_result_to_table`, `metric_snapshot`, `region_str`/`team_str`.
+- `validate.rs` — `validate_script(path, required)`: parse/exec + required
+  function presence + the `math.random` source ban.
+- `resolve.rs` — `resolve_script_path`/`workspace_root`: resolves `plugins/...`
+  paths from the workspace root (walk up to the `[workspace]` Cargo.toml), so
+  crate tests and the CLI both find scripts.
+- The algorithm crates (`rating`, `game`, `matchmaking`, `detection`, `metrics`,
+  `adversarial`, `utility`, `ranking`) depend on `matchlab-lua`; their Lua
+  adapters live in each crate's `lua.rs`.
 
 **`matchlab-core` is implemented with the core types:**
 - `time.rs` — `SimTime` (nanosecond `u64`), `ZERO`, `from_secs`/`from_millis`,
