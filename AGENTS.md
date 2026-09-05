@@ -130,7 +130,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace is fully implemented: 12 crates under `crates/`, a binary at `src/main.rs`, and 9 workspace members. The root `Cargo.toml` is a Cargo workspace:
+The workspace is fully implemented: 14 crates under `crates/`, a binary at `src/main.rs`. The root `Cargo.toml` is a Cargo workspace:
 
 ```
 crates/
@@ -142,11 +142,17 @@ crates/
 ├── matchlab-loop/
 ├── matchlab-metrics/
 ├── matchlab-experiments/
-└── matchlab-analysis/
+├── matchlab-analysis/
+├── matchlab-detection/
+├── matchlab-ranking/
+├── matchlab-objective/
+├── matchlab-adversarial/
+└── matchlab-utility/
 ```
 
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`,
-  `rand 0.8`, `rand_chacha 0.3`; `[workspace.package]` sets `edition = "2024"`.
+  `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (lua54, vendored);
+  `[workspace.package]` sets `edition = "2024"`.
 - `src/main.rs` is the `match-lab` binary with a `matchlab run <manifest>`
   CLI; it depends on `matchlab-experiments` and `matchlab-analysis`.
 - `experiments/base/` exists (empty, for inherited base configs).
@@ -426,6 +432,22 @@ inequality/ndcg/correlation/convergence/etc. are out).
   exporter sorts observations, so two runs with identical seed produce
   byte-identical files (the wall-clock `timestamp` field is the only thing
   that legitimately differs).
+
+**`matchlab-ranking` is implemented with the rank mapper + leaderboard:**
+- `ranker.rs` — `RankMapper` trait (spec §10.1): `rating_to_rank(rating) ->
+  Rank` and `rank_to_rating_range(rank) -> (f64, f64)`, `Rank { tier,
+  division }` (serde `Deserialize`), `BracketRankMapper { brackets: Vec<RankBracket> }`
+  and `RankBracket { rank, min, max }`. `rating_to_rank` finds the first
+  bracket where `min <= rating < max`; ratings outside all brackets clamp to
+  the **last** bracket (the spec's reference behavior, not the first).
+  `rank_to_rating_range` returns `(0.0, 0.0)` for unknown ranks.
+- `leaderboard.rs` — `Leaderboard` (spec §10.2) with `update(player_id,
+  rating, rank, games_played)` (insert-or-replace, then re-sort by rating
+  descending), `rank_of(player_id) -> Option<usize>`, `top_n(n) -> &[LeaderboardEntry]`
+  (clamps when `n > len`), `entries()`/`len()`/`is_empty()`. `LeaderboardEntry {
+  player_id, rating, rank, games_played }`.
+- `lib.rs` — re-exports `Leaderboard`, `LeaderboardEntry`, `BracketRankMapper`,
+  `Rank`, `RankBracket`, `RankMapper`.
 
 The twelve-step build order is complete and v0.1 is accepted.
 
