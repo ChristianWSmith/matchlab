@@ -91,16 +91,18 @@ Exception: the **outcome model** (the game, i.e. the simulator of reality) may �
 
 A "smurf" is not a player type or boolean flag — it is the combination of high `true_skill` with low `initial_rating` and few `games_played`. Detection systems must infer smurf status from observable behavior.
 
-### 2. Pluggability via Traits
+### 2. Pluggability via Traits + Lua scripts
 
-Every algorithm is a trait implementation:
-- `RatingSystem` (trait) — Elo, Glicko-2, TrueSkill, FlatPoints
-- `OutcomeModel` (trait) — Logistic, Variance, Composition, Fatigue, etc.
-- `Matchmaker` (trait) — ExpandingWindow, Strict, Batch, HubSpoke
-- `MetricCollector` (trait) — each metric is its own collector
-- `DetectionSystem` (trait) — smurf detector, etc.
+Every algorithm is a trait implementation, and every implementation is a Lua
+script under `plugins/` (there are no inherent Rust algorithms):
+- `RatingSystem` (trait) — `plugins/rating/` (elo, glicko2, trueskill, flat, …)
+- `OutcomeModel` (trait) — `plugins/game/` (logistic, variance, composition, …)
+- `Matchmaker` (trait) — `plugins/matchmaking/` (batch, expanding_window, …)
+- `MetricCollector` (trait) — `plugins/metrics/` (one script per metric)
+- `DetectionSystem` (trait) — `plugins/detection/` (smurf)
+- `AdversarialAgent` / `SatisfactionModel` / `RankMapper` — the same model.
 
-Swapping implementations should require zero changes outside the relevant crate.
+Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
 
@@ -486,13 +488,13 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   `ArchetypeSpec`/`DistributionSpec`
   (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params),
   `MatchmakingSpec`
-  (algorithm + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
-  with `RatingSystemSpec { name, params }` flatten, `DetectionSpec`,
-  `SmurfDetectionSpec`, `RankingSpec`, `RankBracketSpec`, `ObjectiveWeightsSpec`,
-  `AdversarialSpec`/`AdversarialAgentSpec`, `SatisfactionSpec`/
-  `SatisfactionWeightsSpec`,
-  `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { until_secs | max_matches | max_time }`,
-  `OutputSpec { directory, format }`. `cohorts` is a required `Vec`
+  (script + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
+  with `RatingSystemSpec { name?, script?, params }` flatten, `DetectionSpec`,
+  `RankingSpec`, `ObjectiveWeightsSpec`,
+  `AdversarialSpec`/`AdversarialAgentSpec` (script + params), `SatisfactionSpec`
+  (script + params),
+  `CohortSpec`/`CohortFilterSpec` (tagged enum), `DurationSpec { matches, max_time }`,
+  `OutputSpec { directory, formats, plots, report }`. `cohorts` is a required `Vec`
   (manifests use `cohorts: []` when unused).
 - `inherit.rs` — YAML-level config inheritance: `load(path)` /
   `resolve_str(text, base_dir)` / `load_value`, with `base: <path>` keys
@@ -528,7 +530,7 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   `matchlab_matchmaking::lua::LuaMatchmaker::load` (`matchmaking.script`),
   builds optional detection via
   `matchlab_detection::lua::LuaDetectionSystem::load` (`detection.script`),
-  ranking (`BracketRankMapper`), adversarial agents, and satisfaction model,
+  ranking (`LuaRankMapper`), adversarial agents, and satisfaction model,
   registers the named metric
   collectors (all 13, errors on unknown names), and runs `MatchLoop` to the
   `DurationSpec` bound. Computes `utility_score` from `objectives` weights via
@@ -733,8 +735,21 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 - **Unit tests** live in `#[cfg(test)] mod tests` blocks within each source file
 - **Crate naming:** `matchlab-{domain}` (e.g., `matchlab-core`, `matchlab-rating`)
 - **File naming:** `match_.rs` (not `match.rs`, which is a Rust keyword)
-- **Plugin model:** Lua scripts under `plugins/` override specific decision points ("hooks") at runtime via `mlua`. Native Rust implementations remain the default. Scripts use `lua:<trait>` prefix in YAML (e.g., `lua:elo`). Missing hooks fall back to Rust defaults. See `docs/spec.md` §3.3 for hook signatures and design rules.
-- **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`. Scripts receive only observable data, never `PlayerReality`.
+- **Plugin model (Lua-native):** every algorithm is a Lua script under
+  `plugins/<layer>/` implementing a per-layer contract (see `docs/spec.md` §3.3
+  and each crate's `lua.rs`). Rust holds the types, the event loop, and thin
+  trait adapters (`*::lua::Lua*System`); there are **no inherent Rust
+  algorithms**. Manifests reference systems by `script:` path. Scripts receive
+  `config` (YAML params) + a persistent `context` table (passed by reference,
+  stored in the VM) and may draw deterministically via `matchlab.rng_*`.
+- **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`
+  via `matchlab.rng_*`. Scripts receive only observable data, never
+  `PlayerReality` (the outcome model and metric scripts get the ground-truth
+  skill binding / reality fields — metrics are the legitimate reality reader).
+- **Adding a system** = writing one `.lua` file implementing the layer's
+  contract and referencing it by path (or by `name:` for built-in rating
+  systems, which maps to a script). See `plugins/rating/decay_elo.lua` and
+  `plugins/metrics/avg_rating_gap.lua` for examples with no Rust equivalent.
 
 ---
 
@@ -744,12 +759,11 @@ The minimal v0.1 manifest is at `docs/spec.md` section 17 ("v0.1 Minimal Experim
 |------|---------|
 | Core types (PlayerReality, World, etc.) | `crates/matchlab-core/src/` |
 | How events flow | `crates/matchlab-core/src/event.rs`, `src/lib.rs` (Simulation) |
-| Rating algorithm implementations | `crates/matchlab-rating/src/` |
-| Matchmaker implementations | `crates/matchlab-matchmaking/src/` |
-| Metric collector implementations | `crates/matchlab-metrics/src/` |
-| Lua hook scripts | `plugins/` (organized by trait type) |
-| Hook definitions + loader | `crates/matchlab-{trait}/src/hooks.rs`, `loader.rs` |
-| How to add a Lua hook | Write a `.lua` file in `plugins/`, define hook functions, reference via `lua:<name>` in YAML |
+| Rating algorithm scripts | `plugins/rating/` (elo, flat, glicko2, trueskill, decay_elo) |
+| Matchmaker scripts | `plugins/matchmaking/` (batch, expanding_window, strict, hub_spoke) |
+| Metric collector scripts | `plugins/metrics/` (one per metric, incl. custom) |
+| Lua system contracts + adapter | `crates/matchlab-{trait}/src/lua.rs`, `crates/matchlab-lua/src/` |
+| How to add a system | Write a `.lua` file in `plugins/`, reference via `script:` in YAML |
 | Experiment YAML schema | `docs/spec.md` section 13.1 |
 | Build plan | `docs/spec.md` §17 build order |
 | Adversarial agents (booster, deranker, etc.) | `crates/matchlab-adversarial/src/` |
