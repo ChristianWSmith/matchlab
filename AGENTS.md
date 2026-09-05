@@ -364,14 +364,28 @@ crates/
     `RatingState`s back to `World.observations` only (truth separation), mark
     the match `Completed`, increment `matches_completed`, and re-queue all
     participants after `rejoin_delay` while `matches_formed < max_matches`.
+    Also: detection `observe` (if a `DetectionSystem` is present), ranking
+    `rating_to_rank` → `obs.visible_rank` (if a `RankMapper` is present),
+    adversarial-agent `tick` per participant, satisfaction-based retention
+    (if a `SatisfactionModel` is present: `retention_probability` below the
+    threshold schedules `PlayerQuit` instead of re-queue), and emits
+    `RatingUpdateEvent` + `DetectionCheckEvent`s.
   Forming is capped by `matches_formed` (guarantees the loop terminates at
   exactly `max_matches` completed matches); `find_matches` is invoked with the
   world's rng temporarily swapped out because the matchmaker signature takes
   `&World` + `&mut SimRng`. `MachineState::new(rating, outcome, matchmaker,
-  metrics, config)`; `matches_formed()` getter (field private).
+  metrics, config)` (extras default to None/empty) and
+  `MachineState::with_extras(..., detection, ranker, adversarial_agents,
+  satisfaction)`; `matches_formed()` getter (field private).
+- `handle_detection_check` → evaluate a player via the detection system and
+  apply the recommended intervention (e.g. `Ban` schedules `PlayerQuit`).
+- `handle_ranking_update` → re-derive each player's `visible_rank` from their
+  current rating via the ranker.
 - `lib.rs` — `MatchLoop { state: Arc<Mutex<MachineState>>, world, engine }`
-  with `new(rating, outcome, matchmaker, metrics, config, seed)` registering
-  the five handlers on the `EventEngine`, scheduling initial `PlayerJoin`s
+  with `new(rating, outcome, matchmaker, metrics, config, seed)` and
+  `with_extras(..., seed, detection, ranker, adversarial_agents, satisfaction)`
+  registering the seven handlers on the `EventEngine`, scheduling initial
+  `PlayerJoin`s
   (sorted by `PlayerId.0` — `HashMap` iteration order is randomized via
   `RandomState`, so unsorted seeding would break determinism) plus an initial
   `MatchTimer`, `run()` that ticks to completion, `run_until(SimTime)`

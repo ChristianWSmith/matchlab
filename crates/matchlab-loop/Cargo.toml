@@ -12,3 +12,7 @@ matchlab-game = { path = "../matchlab-game" }
 matchlab-rating = { path = "../matchlab-rating" }
 matchlab-matchmaking = { path = "../matchlab-matchmaking" }
 matchlab-metrics = { path = "../matchlab-metrics" }
+matchlab-detection = { path = "../matchlab-detection" }
+matchlab-ranking = { path = "../matchlab-ranking" }
+matchlab-adversarial = { path = "../matchlab-adversarial" }
+matchlab-utility = { path = "../matchlab-utility" }

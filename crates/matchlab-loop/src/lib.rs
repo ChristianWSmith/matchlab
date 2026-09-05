@@ -1,18 +1,22 @@
 pub mod machine;
 
 pub use machine::{
-    LoopConfig, MachineState, handle_match_end, handle_match_formed, handle_match_timer,
-    handle_player_join, handle_player_queue,
+    LoopConfig, MachineState, handle_detection_check, handle_match_end, handle_match_formed,
+    handle_match_timer, handle_player_join, handle_player_queue, handle_ranking_update,
 };
+use matchlab_adversarial::agent::AdversarialAgent;
 use matchlab_core::event::{EventEngine, EventKind, MatchTimerEvent, PlayerJoinEvent};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
+use matchlab_detection::detector::DetectionSystem;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_metrics::MetricsEngine;
+use matchlab_ranking::ranker::RankMapper;
 use matchlab_rating::system::RatingSystem;
+use matchlab_utility::satisfaction::SatisfactionModel;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -32,13 +36,46 @@ impl MatchLoop {
         config: LoopConfig,
         seed: u64,
     ) -> Self {
-        let state = Arc::new(Mutex::new(MachineState::new(
+        Self::with_extras(
             population,
             rating_system,
             outcome_model,
             matchmaker,
             metrics,
             config,
+            seed,
+            None,
+            None,
+            HashMap::new(),
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_extras(
+        population: Vec<(PlayerReality, PlayerObservation)>,
+        rating_system: Box<dyn RatingSystem>,
+        outcome_model: Box<dyn OutcomeModel>,
+        matchmaker: Box<dyn Matchmaker>,
+        metrics: MetricsEngine,
+        config: LoopConfig,
+        seed: u64,
+        detection_system: Option<Box<dyn DetectionSystem>>,
+        ranker: Option<Box<dyn RankMapper>>,
+        adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
+        satisfaction_model: Option<SatisfactionModel>,
+    ) -> Self {
+        let state = Arc::new(Mutex::new(MachineState::with_extras(
+            population,
+            rating_system,
+            outcome_model,
+            matchmaker,
+            metrics,
+            config,
+            detection_system,
+            ranker,
+            adversarial_agents,
+            satisfaction_model,
         )));
 
         let world = World::new(SimRng::from_seed(seed));
@@ -86,6 +123,24 @@ impl MatchLoop {
             Box::new(move |world, event| {
                 let mut st = s.lock().unwrap();
                 handle_match_end(world, event, &mut st)
+            }),
+        );
+
+        let s = Arc::clone(&state);
+        engine.register_handler(
+            EventKind::DetectionCheck,
+            Box::new(move |world, event| {
+                let mut st = s.lock().unwrap();
+                handle_detection_check(world, event, &mut st)
+            }),
+        );
+
+        let s = Arc::clone(&state);
+        engine.register_handler(
+            EventKind::RatingUpdate,
+            Box::new(move |world, event| {
+                let mut st = s.lock().unwrap();
+                handle_ranking_update(world, event, &mut st)
             }),
         );
 

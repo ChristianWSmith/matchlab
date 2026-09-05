@@ -219,12 +219,16 @@ dependencies = [
 name = "matchlab-loop"
 version = "0.1.0"
 dependencies = [
+ "matchlab-adversarial",
  "matchlab-core",
+ "matchlab-detection",
  "matchlab-game",
  "matchlab-matchmaking",
  "matchlab-metrics",
  "matchlab-players",
+ "matchlab-ranking",
  "matchlab-rating",
+ "matchlab-utility",
 ]
 
 [[package]]
