@@ -91,6 +91,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         }
     }
 
@@ -117,6 +118,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(1000.0),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 

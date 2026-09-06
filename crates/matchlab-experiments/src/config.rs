@@ -57,6 +57,9 @@ pub struct ArchetypeSpec {
     pub quit_probability: f64,
     #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

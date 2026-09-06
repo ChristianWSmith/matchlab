@@ -65,6 +65,7 @@ impl PopulationGenerator {
                     experience: 0,
                     is_online: true,
                     archetype: archetype.name.clone(),
+                    role: archetype.role.clone(),
                 });
 
                 observations.push(PlayerObservation {
@@ -87,6 +88,7 @@ impl PopulationGenerator {
                     quit_history: VecDeque::new(),
                     tilt_level: 0.0,
                     game_mode: "ranked".to_string(),
+                    role: archetype.role.clone(),
                     skill_vector: SkillVector::one_dimensional(true_skill),
                     detection_flags: Vec::<DetectionFlag>::new(),
                 });
@@ -161,6 +163,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         }
     }
 
@@ -270,6 +273,7 @@ mod tests {
                 session_length: 1800.0,
                 quit_probability: 0.01,
                 initial_rating: None,
+                role: None,
             })
             .collect();
 
@@ -305,6 +309,77 @@ mod tests {
         for (a, b) in oa.iter().zip(ob.iter()) {
             assert_eq!(a.rating, b.rating);
             assert_eq!(a.id, b.id);
+        }
+    }
+
+    #[test]
+    fn roles_assigned_per_archetype_on_reality_and_observation() {
+        let archetypes = vec![
+            ArchetypeConfig {
+                name: "killer".to_string(),
+                proportion: 0.25,
+                skill_distribution: DistributionConfig::Normal {
+                    mean: 1200.0,
+                    stddev: 50.0,
+                },
+                skill_volatility: 5.0,
+                improvement_rate: 0.0,
+                play_frequency: 0.8,
+                session_length: 1800.0,
+                quit_probability: 0.01,
+                initial_rating: None,
+                role: Some("killer".to_string()),
+            },
+            ArchetypeConfig {
+                name: "survivor".to_string(),
+                proportion: 0.25,
+                skill_distribution: DistributionConfig::Normal {
+                    mean: 800.0,
+                    stddev: 50.0,
+                },
+                skill_volatility: 5.0,
+                improvement_rate: 0.0,
+                play_frequency: 0.8,
+                session_length: 1800.0,
+                quit_probability: 0.01,
+                initial_rating: None,
+                role: Some("survivor".to_string()),
+            },
+            ArchetypeConfig {
+                name: "any".to_string(),
+                proportion: 0.5,
+                skill_distribution: DistributionConfig::Normal {
+                    mean: 1000.0,
+                    stddev: 50.0,
+                },
+                skill_volatility: 5.0,
+                improvement_rate: 0.0,
+                play_frequency: 0.8,
+                session_length: 1800.0,
+                quit_probability: 0.01,
+                initial_rating: None,
+                role: None,
+            },
+        ];
+        let config = PopulationConfig {
+            size: 400,
+            archetypes,
+        };
+        let mut rng = SimRng::from_seed(31);
+        let (realities, observations) = PopulationGenerator::generate(&config, &mut rng);
+
+        for (reality, obs) in realities.iter().zip(observations.iter()) {
+            // Contiguous id ranges per archetype (archetype 0 first).
+            let expected = if reality.id.0 < 100 {
+                Some("killer".to_string())
+            } else if reality.id.0 < 200 {
+                Some("survivor".to_string())
+            } else {
+                None
+            };
+            assert_eq!(reality.role, expected);
+            assert_eq!(obs.role, expected);
+            assert_eq!(obs.role, reality.role);
         }
     }
 

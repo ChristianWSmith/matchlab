@@ -345,6 +345,7 @@ mod tests {
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::<DetectionFlag>::new(),
+            role: None,
         }
     }
 

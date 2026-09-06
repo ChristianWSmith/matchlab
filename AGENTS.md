@@ -186,7 +186,9 @@ crates/
   set/cleared around every guarded call; `matchlab.rng_range`/`rng_bool`/
   `rng_normal`/`rng_u64` draw from it. Scripts must never call `math.random`.
 - `convert.rs` — core↔Lua marshalling: `observation_to_table` (with `include_skill`
-  to control the ground-truth skill binding), `participant_to_table` (metrics
+  to control the ground-truth skill binding; always includes `role` — an
+  observable attribute, gated by neither `include_skill` nor an information
+  budget), `participant_to_table` (metrics
   only — adds `true_skill`/`improvement_rate`/`reality_games_played`),
   `match_result_to_table`, `metric_snapshot`, `region_str`/`team_str`.
 - `validate.rs` — `validate_script(path, required)`: parse/exec + required
@@ -206,7 +208,9 @@ crates/
   `small_rng` feature of `rand`; note `rand::Rng::gen` must be written
   `r#gen` in edition 2024.
 - `player.rs` — `PlayerId`, `Region`, `SkillVector`, `VisibleRank`,
-  `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
+  `DetectionFlag`, `PlayerReality` (ground truth),
+  `PlayerObservation`. Both carry an optional `role` (a fixed observable
+  attribute sampled from the archetype at generation — `None` means "any").
 - `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
   `PlayerPerformance`, and `TeamComposition { team_size_a, team_size_b,
   role_a, role_b }` (XvY composition; `Default` = 5v5 no roles). The legacy
@@ -231,10 +235,13 @@ crates/
 **`matchlab-players` is implemented with the population logic:**
 - `archetype.rs` — `ArchetypeConfig` (serde `Deserialize`: `name`, `proportion`,
   `skill_distribution`, `skill_volatility`, `improvement_rate`, `play_frequency`,
-  `session_length`, `quit_probability`, optional `initial_rating`) and
+  `session_length`, `quit_probability`, optional `initial_rating`, optional
+  `role`) and
   `DistributionConfig` (tagged enum: `normal`, `uniform`, `log_normal`). The
   optional `initial_rating` overrides visible rating while true skill stays
   sampled — the seed of the smurf-like mismatch; no boolean smurf flag exists.
+  A `role`-carrying archetype (e.g. `killer`) stamps every generated player's
+  reality and observation; absent role means "any".
 - `skill.rs` — `SkillProcess { improvement_rate, volatility }` with
   `advance(&SkillVector, &mut SimRng)` (one time step per dimension:
   `val + improvement_rate + N(0, volatility)`, floored at 0). Skills are
@@ -249,6 +256,8 @@ crates/
   Vec<PlayerObservation>)`. Each player is drawn from its archetype's
   distribution; observation uses `initial_rating` if set else the sampled skill
   (`rating_deviation: 350.0`, `games_played: 0`, etc. per §5.8). The
+  archetype's `role` is copied into both the reality and the observation at
+  generation. The
   observation's `skill_vector`/`hidden_mmr` carry the **true skill** so the
   outcome model can decide matches from ground truth; only `rating` is the
   initial/visible ladder value. Proportions become integer counts via the
@@ -347,7 +356,8 @@ crates/
 
 **`matchlab-matchmaking` is implemented with the queue + Lua matchmakers:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
-  game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
+  game_mode, role, latency_ms) — `role` is the player's queued role label, set
+  from the observation at queue time — and `Queue` with `enqueue`, `remove`,
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
   v0.1 queue-time metric), `entries`/`len`/`is_empty`, `from_entries`.
 - `matchmaker.rs` — `Matchmaker` trait (spec §7.2)
@@ -360,8 +370,9 @@ crates/
 - `lua.rs` — `LuaMatchmaker`: implements `Matchmaker` by delegating to a
   script's `find_matches` function. The queue is snapshotted to a Lua array
   (player_id, rating, rating_deviation, games_played, win_rate, `idx`,
-  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode) —
-  observations only, never `PlayerReality`. The `&TeamComposition` is pushed as
+  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode,
+  `role`) — observations only, never `PlayerReality`; `role` is nil-safe (absent
+  ⇒ `nil`, "any"). The `&TeamComposition` is pushed as
   a second `teams` arg (`{a = {size, role}, b = {size, role}}`, role nil when
   unset). Scripts set `quality_score` or the adapter falls back to
   `ProposedMatch::match_quality`.
@@ -412,7 +423,8 @@ crates/
   transforms, so they are unit-testable without the engine.
   - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
     schedule `PlayerQueue`.
-  - `PlayerQueue` → enqueue the player (entry built from the live observation)
+  - `PlayerQueue` → enqueue the player (entry built from the live observation,
+    `QueueEntry.role` copied from `obs.role`)
     and refresh `obs.queue_joined_at` to `world.time` (keeps the
     queue-time metric measuring the current join→formation wait, including
     re-queues after a match).

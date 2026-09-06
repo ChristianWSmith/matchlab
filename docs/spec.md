@@ -307,6 +307,11 @@ outcome model gets the ground-truth skill binding (`skill_overall` /
 fields (`true_skill`, `improvement_rate`, ...) — metrics are the legitimate
 reality reader.
 
+`role` is an **observable attribute**: who queues as `killer` or `survivor` is
+public, so the observation table and the matchmaking queue snapshot always
+include it — gated neither by `include_skill` nor by an information budget
+(§7.1, §8.2). Players without a role carry `nil` ("any").
+
 #### Design rules
 
 1. **Lua is the algorithm.** A user adds a system by writing one `.lua` file
@@ -886,6 +891,9 @@ pub struct PlayerReality {
     pub experience: u64,
     pub is_online: bool,
     pub archetype: String,
+    /// Optional role label (e.g. `killer` / `survivor`), copied from the
+    /// archetype at generation. `None` means "any" role.
+    pub role: Option<String>,
 }
 ```
 
@@ -914,6 +922,10 @@ pub struct PlayerObservation {
     pub quit_history: VecDeque<f64>,
     pub tilt_level: f64,
     pub game_mode: String,
+    /// Optional role label — a fixed, observable attribute (who queued as
+    /// killer is visible); matchmakers may read it unconditionally, gated
+    /// neither by `include_skill` nor an information budget.
+    pub role: Option<String>,
     pub skill_vector: SkillVector,
     pub detection_flags: Vec<DetectionFlag>,
 }
@@ -1031,6 +1043,9 @@ pub struct ArchetypeConfig {
     /// but initial_rating is set to this value.
     #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1174,6 +1189,7 @@ impl PopulationGenerator {
                     experience: 0,
                     is_online: true,
                     archetype: archetype.name.clone(),
+                    role: archetype.role.clone(),
                 };
 
                 let observation = PlayerObservation {
@@ -1186,6 +1202,7 @@ impl PopulationGenerator {
                     recent_performances: Vec::new(),
                     queue_joined_at: None,
                     is_online: true,
+                    role: archetype.role.clone(),
                     detection_flags: Vec::new(),
                 };
 
@@ -4034,7 +4051,11 @@ pub struct ArchetypeSpec {
     pub play_frequency: f64,
     pub session_length: f64,
     pub quit_probability: f64,
+    #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

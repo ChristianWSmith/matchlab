@@ -56,6 +56,7 @@ pub fn observation(id: u64, rating: f64) -> PlayerObservation {
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),
         detection_flags: Vec::new(),
+        role: None,
     }
 }
 
@@ -93,6 +94,7 @@ fn archetype(name: &str, skill: f64, initial_rating: f64) -> ArchetypeConfig {
         session_length: 1800.0,
         quit_probability: 0.0,
         initial_rating: Some(initial_rating),
+        role: None,
     }
 }
 

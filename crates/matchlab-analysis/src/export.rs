@@ -160,6 +160,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: matchlab_core::player::SkillVector::one_dimensional(rating),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         }
     }
 

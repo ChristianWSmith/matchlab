@@ -178,6 +178,7 @@ fn to_players_archetype(spec: &ArchetypeSpec) -> ArchetypeConfig {
         session_length: spec.session_length,
         quit_probability: spec.quit_probability,
         initial_rating: spec.initial_rating,
+        role: spec.role.clone(),
     }
 }
 

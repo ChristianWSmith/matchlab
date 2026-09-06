@@ -62,6 +62,7 @@ fn mixed_population(
                 session_length: 1800.0,
                 quit_probability: 0.0,
                 initial_rating: Some(s0),
+                role: None,
             },
             ArchetypeConfig {
                 name: "stable".to_string(),
@@ -76,6 +77,7 @@ fn mixed_population(
                 session_length: 1800.0,
                 quit_probability: 0.0,
                 initial_rating: Some(s0),
+                role: None,
             },
         ],
     };

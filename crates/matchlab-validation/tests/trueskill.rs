@@ -39,6 +39,7 @@ fn obs(id: u64, rating: f64, rd: f64, games: u64) -> PlayerObservation {
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),
         detection_flags: Vec::new(),
+        role: None,
     }
 }
 

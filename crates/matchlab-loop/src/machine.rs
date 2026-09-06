@@ -173,7 +173,7 @@ pub fn handle_player_queue(
             region: Region::NA,
             party_id: obs.party_id,
             game_mode: obs.game_mode.clone(),
-            role: None,
+            role: obs.role.clone(),
             latency_ms: 30.0,
         };
         if let Some(live) = world.observations.get_mut(&pid) {
@@ -589,6 +589,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::<DetectionFlag>::new(),
+            role: None,
         }
     }
 
@@ -611,6 +612,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         }
     }
 
@@ -670,7 +672,12 @@ mod tests {
         let _p0 = obs(1, 1000.0);
         let mut state = default_state(vec![(reality(1, 1000.0), obs(1, 1000.0))]);
         let mut world = World::new(SimRng::from_seed(3));
-        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+        let killer = {
+            let mut o = obs(1, 1000.0);
+            o.role = Some("killer".to_string());
+            o
+        };
+        world.add_player(reality(1, 1000.0), killer);
         let evt: Box<dyn Event> = Box::new(PlayerQueueEvent {
             time: SimTime::from_secs(0.0),
             player_id: PlayerId(1),
@@ -678,6 +685,8 @@ mod tests {
         let out = handle_player_queue(&mut world, evt.as_ref(), &mut state);
         assert!(out.is_empty());
         assert_eq!(state.queue.len(), 1);
+        let entry = state.queue.entries()[0].clone();
+        assert_eq!(entry.role.as_deref(), Some("killer"));
     }
 
     #[test]
@@ -821,6 +830,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 100,
@@ -883,6 +893,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 100,
@@ -955,6 +966,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 40,

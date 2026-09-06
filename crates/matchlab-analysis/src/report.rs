@@ -100,6 +100,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: matchlab_core::player::SkillVector::one_dimensional(1000.0),
             detection_flags: Vec::new(),
+            role: None,
         };
         let reality = PlayerReality {
             id: pid,
@@ -119,6 +120,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         };
         world.add_player(reality, obs);
 

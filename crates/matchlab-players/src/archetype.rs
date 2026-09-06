@@ -18,6 +18,9 @@ pub struct ArchetypeConfig {
     /// exposed anywhere (AGENTS.md principle 1).
     #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

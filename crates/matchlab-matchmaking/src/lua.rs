@@ -68,6 +68,10 @@ fn queue_to_table(lua: &Lua, queue: &Queue, now: SimTime) -> Result<Value, Strin
             .map_err(|e| e.to_string())?;
         row.set("game_mode", entry.game_mode.as_str())
             .map_err(|e| e.to_string())?;
+        match &entry.role {
+            Some(r) => row.set("role", r.as_str()).map_err(|e| e.to_string())?,
+            None => row.set("role", Value::Nil).map_err(|e| e.to_string())?,
+        }
         t.set(i + 1, row).map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(t))
@@ -175,6 +179,7 @@ mod tests {
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -295,6 +300,25 @@ mod tests {
                 PlayerId(10)
             ]
         );
+    }
+
+    #[test]
+    fn queue_snapshot_carries_role_for_scripts() {
+        let lua = Lua::new();
+        let mut queue = Queue::default();
+        let mut killer = entry(1, SimTime::ZERO, 1000.0, Region::NA);
+        killer.role = Some("killer".to_string());
+        queue.enqueue(killer);
+        queue.enqueue(entry(2, SimTime::from_secs(1.0), 1000.0, Region::NA));
+        let val = queue_to_table(&lua, &queue, SimTime::from_secs(2.0)).unwrap();
+        let arr: Table = match val {
+            Value::Table(t) => t,
+            _ => panic!("expected table"),
+        };
+        let row: Table = arr.get(1).unwrap();
+        assert_eq!(row.get::<String>("role").unwrap(), "killer");
+        let row2: Table = arr.get(2).unwrap();
+        assert!(row2.get::<mlua::Value>("role").unwrap().is_nil());
     }
 
     #[test]

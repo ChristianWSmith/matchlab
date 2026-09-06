@@ -97,6 +97,7 @@ mod tests {
                         session_length: 1800.0,
                         quit_probability: 0.01,
                         initial_rating: None,
+                        role: None,
                     }],
                 },
                 game: GameSpec {

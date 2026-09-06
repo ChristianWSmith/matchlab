@@ -41,6 +41,7 @@ fn obs(id: u64, rating: f64, rd: f64, volatility: f64, games: u64) -> PlayerObse
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),
         detection_flags: Vec::new(),
+        role: None,
     }
 }
 
