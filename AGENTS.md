@@ -699,7 +699,7 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   `single_class_config`/`two_class_config` (serde-built `ExperimentConfig`
   manifests), and `run_loop(...) -> LoopOutcome` (drives a `MatchLoop` directly
   with elo + logistic(noise 0) + batch and returns finalized metrics +
-  completion stats).
+  completion stats). `pub mod reference` exposes the T-02 reference math.
 - `tests/elo.rs` — Elo baselines: (1) with a two class population, the
   observed high-class win rate must match the logistic ground truth
   `1/(1+exp(-500/400)) ≈ 0.7773` within 6σ; (2) on a homogeneous `N(1000,250)`
@@ -708,6 +708,42 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   byte-identical. Nothing in this crate is wired into the loop — these are
   test-side reference implementations, and a disagreement is a bug in the Lua
   script, never a reason to patch the tests.
+- `src/reference/` (ticket T-02) — independent math implementations used to
+  anchor posterior-based rating systems:
+  - `glicko2.rs` — Glickman 2012 (§5, eqs 1–10): `Opponent { mu, phi, sigma,
+    outcome }`, `single_period(...) -> PeriodResult`, `scale`/`unscale`
+    (factor 173.7178, center 1500), `idle_step` (periods without games grow
+    RD at `σ` and leave `μ`/`σ` unchanged). The Newton volatility iteration is
+    bracketed identically to `glicko2.lua`; verified against the paper's
+    worked example (r' = 1464.06, RD' = 151.52, σ' = 0.05999).
+  - `trueskill.rs` — TrueSkill 1v1 truncated-Gaussian conditioning
+    `update_head_to_head(...)` mirroring `trueskill.lua`, including the
+    script's `w = v*(v - alpha)` convention for the winner's uncertainty
+    factor and the `u = Φ⁻¹((1+p)/2)` probabilistic draw margin. Also
+    `draw_update_equal_players` — a reference-only true-draw posterior
+    (equal ratings keep μ, shrink σ) documenting what a future draw-capable
+    game path must hit.
+- `tests/glicko.rs` (ticket T-02) — Glicko-2 baselines: (1) the paper's
+  worked example driven as three sequential 1v1 games, each step checked
+  script-vs-reference at 1e-6 relative (final values reproduce the paper's
+  1464.06/151.52/0.05999 within the loose legacy bound — serialized single-game
+  periods differ from one multi-opponent period by ~0.27 rating points, so the
+  tight assertion is per-step); (2) a two-period chain whose idle first period,
+  passed to the script, grows RD by exactly `volatility*172800`; (3) an
+  eight-opponent period whose outcome distribution is informative enough to
+  stay on the Newton loop and keep all three outputs stable; (4) a negative
+  control — a deliberately perturbed reference (crude `epsilon`, flipping the
+  volatility iteration's safeguard) must diverge from both script and correct
+  reference by more than 1e-5 relative, proving the comparison has teeth.
+- `tests/trueskill.rs` (ticket T-02) — TrueSkill baselines: (1) a 1v1 win and
+  a 1v1 loss (script-vs-`update_head_to_head` at 1e-6 relative) for the
+  symmetric case, plus an asymmetric 1500-vs-1000 game preserving ordering and
+  widening the gap; (2) `draw_probability > 0` engages the margin math (u>0
+  makes the win update larger — both must diverge from the no-margin values and
+  agree with the reference); (3) the reference-only draw-posterior shrinkage.
+  Both test files drive the script through a `match_result(vec![player], ids,
+  winner)` with the solo player always on team A, so `winner == Team::B` means
+  the player lost.
 - The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
   0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
   outcomes when configured; RNG behavior is unchanged for `noise > 0`, so

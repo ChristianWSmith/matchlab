@@ -5179,3 +5179,47 @@ Three tests anchor Elo against theory:
 The rate limiting factor on the convergence baselines is that the whole-run
 `rating_accuracy` mean is diluted by early (still-cold) samples; the honest
 signal is the time-bucketed series, which is what the test asserts.
+
+### 18.2 Posterior Rating Baselines (T-02)
+
+The Glicko-2 and TrueSkill scripts are anchored against independent math
+(reference implementations in `matchlab-validation/src/reference/`, test-side
+only). Script-vs-reference comparisons use 1e-6 relative tolerance on rating,
+RD/RD-equivalent σ, and volatility. Because `glicko2.lua` and `trueskill.lua`
+only assign per-team uniform outcomes, every multi-opponent Glicko period in
+the tests is driven as a sequence of single-game periods; the reference applies
+the same serialization so every step is compared exactly.
+
+**Glicko-2 (Glickman 2012, eqs 1–10; `SCALE = 173.7178`, center 1500):**
+
+- **Worked example**: the paper's three-opponent period is decomposed into
+  three sequential games (1500 beats 1400/30, loses 1550/100, loses 1700/300)
+  with the solo player always on team A (`winner == Team::B` is the loss). Each
+  step must match the reference at 1e-6; the final values land at
+  1464.06/151.52/0.05999 within the loose legacy bound (serialized single-game
+  periods differ from one multi-opponent period by ~0.27 rating points, so the
+  tight assertion is per-step).
+- **Idle volatility growth**: a two-period chain whose first period is idle —
+  periods without games grow RD by exactly `σ*172800` (σ as Glicko-units/sec)
+  — is passed to the script; the growth must reproduce the reference's
+  `idle_step` exactly.
+- **8-opponent period**: a dense, mixed-outcome period stays on the Newton
+  volatility loop and keeps all three outputs (r, RD, σ) stable and matching.
+- **Negative control**: a deliberately perturbed reference (crude `epsilon`
+  that flips the volatility iteration's safeguard off) must diverge from both
+  the script and the correct reference by >1e-5 relative, proving the
+  comparison actually has teeth.
+
+**TrueSkill (1v1 truncated-Gaussian conditioning, mirroring `trueskill.lua`):**
+
+- **Win/loss posteriors**: symmetric 1500-vs-1500 win and loss, and an
+  asymmetric 1500-vs-1000 game preserving ordering and widening the gap.
+- **Draw margin**: `draw_probability > 0` engages the margin math — u > 0 makes
+  the win update larger (a draw possibility makes a decisive win more
+  informative), and the script must diverge from the no-margin values while
+  agreeing with the reference at 1e-6.
+- **Draw posterior**: `trueskill.lua` has no draw outcome path (winner is
+  always A or B), so the equal-shrinkage draw posterior is reference-only —
+  equal ratings keep μ and shrink both σ (beta 100 / sigma 100 / draw 0.5 give
+  ~11% shrinkage); the numbers are documented for a future draw-capable
+  outcome variable to hit.

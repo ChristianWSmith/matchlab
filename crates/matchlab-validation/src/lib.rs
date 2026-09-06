@@ -10,6 +10,8 @@
 //! disagree with a script, that is a bug report, never a reason to patch the
 //! reference.
 
+pub mod reference;
+
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
