@@ -25,7 +25,10 @@ end
 
 function simulate(match_id, team_a, team_b, config, context)
     local base_p = win_probability(team_a, team_b, config, context)
-    local noise = matchlab.rng_range(-config.noise, config.noise)
+    local noise = 0.0
+    if config.noise and config.noise > 0.0 then
+        noise = matchlab.rng_range(-config.noise, config.noise)
+    end
     local adjusted_p = math.max(0.01, math.min(0.99, base_p + noise))
     local team_a_wins = matchlab.rng_bool(adjusted_p)
 

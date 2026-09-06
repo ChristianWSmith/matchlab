@@ -49,7 +49,8 @@ match-lab/              # workspace root
     ├── matchlab-adversarial/   # adversarial player agents (boosters, derankers, etc.)
     ├── matchlab-utility/       # player satisfaction / retention model
     ├── matchlab-experiments/   # runner, YAML config, factorial design, counterfactual eval
-    └── matchlab-analysis/      # statistics, Pareto frontier, cohorts, reports
+    ├── matchlab-analysis/      # statistics, Pareto frontier, cohorts, reports
+    └── matchlab-validation/    # analytical-baseline regression tests (test-side references)
 ```
 
 **Dependency flow** (each layer only depends on layers below it):
@@ -71,6 +72,7 @@ matchlab-core          ← no internal deps
 matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
+matchlab-validation    (depends on core + players + game + rating + matchmaking + loop + metrics + experiments; test-side references only)
 matchlab (binary)      (depends on experiments + analysis)
 ```
 
@@ -152,7 +154,8 @@ crates/
 ├── matchlab-ranking/
 ├── matchlab-objective/
 ├── matchlab-adversarial/
-└── matchlab-utility/
+├── matchlab-utility/
+└── matchlab-validation/
 ```
 
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`,
@@ -686,6 +689,29 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   (`1/(1+e^−0.5(s−2))`).
 - `lib.rs` — re-exports `LuaSatisfactionModel`, `SatisfactionModel`,
   `PlayerExperience`.
+
+**`matchlab-validation` is the analytical-baseline test crate (ticket T-01):**
+- `src/lib.rs` — test-side helpers only: `logistic_win_probability(diff, beta)`
+  (the outcome model's natural-scale reference),
+  `interleaved_two_class_population(total, skill_high, skill_low, initial_rating,
+  seed)` (two skill classes re-numbered so adjacent ids alternate class, which
+  makes the batch matchmaker form cross-class matches),
+  `single_class_config`/`two_class_config` (serde-built `ExperimentConfig`
+  manifests), and `run_loop(...) -> LoopOutcome` (drives a `MatchLoop` directly
+  with elo + logistic(noise 0) + batch and returns finalized metrics +
+  completion stats).
+- `tests/elo.rs` — Elo baselines: (1) with a two class population, the
+  observed high-class win rate must match the logistic ground truth
+  `1/(1+exp(-500/400)) ≈ 0.7773` within 6σ; (2) on a homogeneous `N(1000,250)`
+  cold-start population the `rating_accuracy_by_time` series must drop below
+  87% of its first bucket (observed 199.8 → 163.1); (3) same-seed runs are
+  byte-identical. Nothing in this crate is wired into the loop — these are
+  test-side reference implementations, and a disagreement is a bug in the Lua
+  script, never a reason to patch the tests.
+- The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
+  0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
+  outcomes when configured; RNG behavior is unchanged for `noise > 0`, so
+  v0_1_basic byte-identity is preserved).
 
 The twelve-step build order is complete and v0.1 is accepted.
 

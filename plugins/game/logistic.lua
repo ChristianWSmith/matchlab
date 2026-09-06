@@ -31,7 +31,12 @@ end
 -- are byte-identical for the same seed.
 function simulate(match_id, team_a, team_b, config, context)
     local base_p = win_probability(team_a, team_b, config, context)
-    local noise = matchlab.rng_range(-config.noise, config.noise)
+    -- noise == 0 means deterministic outcomes; rng_range(-0, 0) is an empty
+    -- range, so skip the draw entirely (identical RNG behavior for noise > 0).
+    local noise = 0.0
+    if config.noise and config.noise > 0.0 then
+        noise = matchlab.rng_range(-config.noise, config.noise)
+    end
     local adjusted_p = math.max(0.01, math.min(0.99, base_p + noise))
     local team_a_wins = matchlab.rng_bool(adjusted_p)
 

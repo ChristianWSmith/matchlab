@@ -5145,3 +5145,37 @@ experiment:
     plots: false
     report: false
 ```
+
+---
+
+## 18. Algorithmic Validation
+
+The simulation must be proven correct against situations where the theoretical
+answer is known, not merely self-consistent. The `matchlab-validation` crate
+(added in ticket T-01) provides analytical-baseline regression tests for the
+Lua-native systems. Its reference math is **test-side only**: nothing in it is
+wired into the simulation loop, and algorithms still live exclusively in Lua
+via plugins. When a test and a script disagree, the Lua script is the bug —
+the reference is never patched to match observed behavior.
+
+### 18.1 Elo Baselines (T-01)
+
+Three tests anchor Elo against theory:
+
+- **Win-rate convergence**: a two class population (skill 1500 vs 1000, both
+  starting at visible rating 1000) with player ids interleaved so the batch
+  matchmaker always pairs classes. With `beta = 400`, the logistic outcome
+  model's theoretical win probability is `1/(1+exp(-500/400)) ≈ 0.7773`; the
+  observed high-class win rate over ≥ 10k mixed matches must agree within
+  6σ of the binomial SE.
+- **Elo convergence**: a homogeneous population whose true skill is
+  `N(1000, 250)` sampled once, ratings cold-started at 1000. The
+  `rating_accuracy_by_time` bucket series must fall monotonically enough that
+  its final nonempty bucket is below 87% of its first (observed 199.8 → 163.1),
+  proving ratings genuinely learn ground truth rather than random-walking.
+- **Determinism**: two same-seed runs must produce byte-identical metrics,
+  match counts, and simulated time.
+
+The rate limiting factor on the convergence baselines is that the whole-run
+`rating_accuracy` mean is diluted by early (still-cold) samples; the honest
+signal is the time-bucketed series, which is what the test asserts.

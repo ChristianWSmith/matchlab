@@ -16,6 +16,7 @@ members = [
     "crates/matchlab-objective",
     "crates/matchlab-adversarial",
     "crates/matchlab-utility",
+    "crates/matchlab-validation",
 ]
 
 [workspace.package]
