@@ -49,7 +49,8 @@ match-lab/              # workspace root
     ├── matchlab-adversarial/   # adversarial player agents (boosters, derankers, etc.)
     ├── matchlab-utility/       # player satisfaction / retention model
     ├── matchlab-experiments/   # runner, YAML config, factorial design, counterfactual eval
-    └── matchlab-analysis/      # statistics, Pareto frontier, cohorts, reports
+    ├── matchlab-analysis/      # statistics, Pareto frontier, cohorts, reports
+    └── matchlab-validation/    # analytical-baseline regression tests (test-side references)
 ```
 
 **Dependency flow** (each layer only depends on layers below it):
@@ -71,6 +72,7 @@ matchlab-core          ← no internal deps
 matchlab-loop          (depends on core + players + game + rating + matchmaking + metrics)
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
+matchlab-validation    (depends on core + players + game + rating + matchmaking + loop + metrics + experiments; test-side references only)
 matchlab (binary)      (depends on experiments + analysis)
 ```
 
@@ -152,7 +154,8 @@ crates/
 ├── matchlab-ranking/
 ├── matchlab-objective/
 ├── matchlab-adversarial/
-└── matchlab-utility/
+├── matchlab-utility/
+└── matchlab-validation/
 ```
 
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`,
@@ -183,7 +186,9 @@ crates/
   set/cleared around every guarded call; `matchlab.rng_range`/`rng_bool`/
   `rng_normal`/`rng_u64` draw from it. Scripts must never call `math.random`.
 - `convert.rs` — core↔Lua marshalling: `observation_to_table` (with `include_skill`
-  to control the ground-truth skill binding), `participant_to_table` (metrics
+  to control the ground-truth skill binding; always includes `role` — an
+  observable attribute, gated by neither `include_skill` nor an information
+  budget), `participant_to_table` (metrics
   only — adds `true_skill`/`improvement_rate`/`reality_games_played`),
   `match_result_to_table`, `metric_snapshot`, `region_str`/`team_str`.
 - `validate.rs` — `validate_script(path, required)`: parse/exec + required
@@ -203,9 +208,13 @@ crates/
   `small_rng` feature of `rand`; note `rand::Rng::gen` must be written
   `r#gen` in edition 2024.
 - `player.rs` — `PlayerId`, `Region`, `SkillVector`, `VisibleRank`,
-  `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
+  `DetectionFlag`, `PlayerReality` (ground truth),
+  `PlayerObservation`. Both carry an optional `role` (a fixed observable
+  attribute sampled from the archetype at generation — `None` means "any").
 - `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
-  `PlayerPerformance`, `MatchConfig`.
+  `PlayerPerformance`, and `TeamComposition { team_size_a, team_size_b,
+  role_a, role_b }` (XvY composition; `Default` = 5v5 no roles). The legacy
+  `MatchConfig { team_size }` type was removed (unused).
 - `event.rs` — `Event` trait (`time()`/`kind()`/`as_any()`), 13-variant
   `EventKind`, `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
   (`Fn(&mut World, &dyn Event) -> Vec<Box<dyn Event>> + Send + Sync`),
@@ -226,19 +235,29 @@ crates/
 **`matchlab-players` is implemented with the population logic:**
 - `archetype.rs` — `ArchetypeConfig` (serde `Deserialize`: `name`, `proportion`,
   `skill_distribution`, `skill_volatility`, `improvement_rate`, `play_frequency`,
-  `session_length`, `quit_probability`, optional `initial_rating`) and
+  `session_length`, `quit_probability`, optional `initial_rating`, optional
+  `role`) and
   `DistributionConfig` (tagged enum: `normal`, `uniform`, `log_normal`). The
   optional `initial_rating` overrides visible rating while true skill stays
   sampled — the seed of the smurf-like mismatch; no boolean smurf flag exists.
+  A `role`-carrying archetype (e.g. `killer`) stamps every generated player's
+  reality and observation; absent role means "any".
 - `skill.rs` — `SkillProcess { improvement_rate, volatility }` with
-  `advance(&SkillVector, &mut SimRng)`. v0.1 uses **static** skill: with
-  `improvement_rate=0, volatility=0` `advance` is the identity (no-op), so the
-  population is generated once at `t=0` and never changes.
+  `advance(&SkillVector, &mut SimRng)` (one time step per dimension:
+  `val + improvement_rate + N(0, volatility)`, floored at 0). Skills are
+  **static** by default — the population is generated once at `t=0` and never
+  changes — and dynamic only when an experiment sets
+  `game.skill_update_interval_secs`: the loop's periodic `SkillChangeEvent`
+  then advances every *online* player's reality skill each interval. With
+  `improvement_rate=0, volatility=0` `advance` is the identity (no-op), the
+  v0.1 baseline.
 - `population.rs` — `PopulationConfig { size, archetypes }` and
   `PopulationGenerator::generate(config, rng) -> (Vec<PlayerReality>,
   Vec<PlayerObservation>)`. Each player is drawn from its archetype's
   distribution; observation uses `initial_rating` if set else the sampled skill
   (`rating_deviation: 350.0`, `games_played: 0`, etc. per §5.8). The
+  archetype's `role` is copied into both the reality and the observation at
+  generation. The
   observation's `skill_vector`/`hidden_mmr` carry the **true skill** so the
   outcome model can decide matches from ground truth; only `rating` is the
   initial/visible ladder value. Proportions become integer counts via the
@@ -337,40 +356,65 @@ crates/
 
 **`matchlab-matchmaking` is implemented with the queue + Lua matchmakers:**
 - `queue.rs` — `QueueEntry` (player_id, joined_at, observation, region, party_id,
-  game_mode, role, latency_ms) and `Queue` with `enqueue`, `remove`,
+  game_mode, role, latency_ms) — `role` is the player's queued role label, set
+  from the observation at queue time — and `Queue` with `enqueue`, `remove`,
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
   v0.1 queue-time metric), `entries`/`len`/`is_empty`, `from_entries`.
 - `matchmaker.rs` — `Matchmaker` trait (spec §7.2)
-  `find_matches(queue, world, team_size, now, rng) -> Vec<ProposedMatch>`;
-  `ProposedMatch { team_a, team_b, quality_score }` with static `match_quality`
-  = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed from **observations** only.
+  `find_matches(queue, world, teams: &TeamComposition, now, rng) ->
+  Vec<ProposedMatch>`; `ProposedMatch { team_a, team_b, quality_score }` with
+  static `match_quality` = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed
+  from **observations** only.
 - `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
   v0.1; the matchmakers run with an empty list.
 - `lua.rs` — `LuaMatchmaker`: implements `Matchmaker` by delegating to a
   script's `find_matches` function. The queue is snapshotted to a Lua array
   (player_id, rating, rating_deviation, games_played, win_rate, `idx`,
-  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode) —
-  observations only, never `PlayerReality`. Scripts set `quality_score` or the
-  adapter falls back to `ProposedMatch::match_quality`.
+  `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode,
+  `role`) — observations only, never `PlayerReality`; `role` is nil-safe (absent
+  ⇒ `nil`, "any"). The `&TeamComposition` is pushed as
+  a second `teams` arg (`{a = {size, role}, b = {size, role}}`, role nil when
+  unset). Scripts set `quality_score` or the adapter falls back to
+  `ProposedMatch::match_quality`.
 - The matchmakers ship as Lua scripts under `plugins/matchmaking/`:
   - `batch.lua` — spec §7.8. **Rating-balanced** formation: sort candidates by
     `rating` (ties by `joined_at_secs`, then `idx` — Lua `table.sort` is
     unstable, so the index tie-break preserves the Rust stable-sort behavior
     and keeps results byte-identical) and assign alternately to team A / team B
-    in consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
+    in consecutive `size_a + size_b` blocks (skip a turn when the target team
+    is already full, so equal sizes reproduce the pre-XvY `2 × team_size`
+    alternation exactly). Adjacent-by-rating players land on
     opposite teams, so the two teams are balanced and `match_quality` stays
     ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
-    population, failing the quality exit criterion).
+    population, failing the quality exit criterion). **Role-aware (T-08):**
+    when `teams.a.role`/`teams.b.role` are set, team A is filled exclusively
+    from entries whose `role` matches `teams.a.role` and team B from the
+    `teams.b.role` pool (each pool sorted by rating, consumption alternated);
+    an entry matching neither waits. Both roles unset ⇒ the legacy single-queue
+    alternation runs **byte-identically** (pinned by the
+    `batch_roles_unset_is_byte_identical_regression` validation test).
   - `expanding_window.lua` — spec §7.6 with stepped tiers
     `[(max_secs, allowed_diff)]` (default 5s→25, 10s→50, 20s→100, 30s→200,
     fallback `max_window: 400`) — skills matched within a window that widens
-    with queue wait.
+    with queue wait. **Role-aware:** team A from the `teams.a.role` pool, team B
+    from `teams.b.role`, role-less pool per side when unset; no cross-pool
+    borrowing. When a pool can't fill its side, those players wait (stall —
+    intended for strict/sparse roles).
   - `strict.lua` — spec §7.7: only matches players within a fixed skill diff;
-    outliers may wait indefinitely (intended "strict" behavior).
+    outliers may wait indefinitely (intended "strict" behavior). **Role-aware:**
+    same per-role fill rules as expanding_window; a role-starved side simply
+    waits like a skill outlier.
   - `hub_spoke.lua` — spec §7.9: partitions the queue by region (sorted region
     keys for determinism); under-capacity regions use an inlined regional
     greedy (no nested matchmakers in Lua), overflow regions fall to the hub
-    path (longest-waiting first).
+    path (longest-waiting first). **Role-aware:** both paths fill per-side by
+    role; when both sides declare the *same* role the hub overflow uses one
+    shared stream (A takes `size_a`, B the next `size_b`) so nobody is assigned
+    twice.
+  - `random.lua` — uniform-random formation for the feedback-loop comparison:
+    draws `size_a + size_b` players at random from the queue (via
+    `matchlab.rng_range`, so it is deterministic per seed) with no rating
+    balancing; the third policy in the `rating × matchmaker` cell grid.
 - `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
   weight_ping, weight_rating_uncertainty }` (spec §7.4) with
   `score(proposed, queue_entries, world) = w_q·Q − w_t·T − w_p·P − w_r·R`
@@ -380,12 +424,15 @@ crates/
   with three implementations: `GreedySearch` (nearest-by-rating fill),
   `RandomSamplingSearch { samples }` (random compositions, keep best by
   objective), and `BeamSearch { width }` (partial assignments expanded and
-  truncated to `width`). NearestNeighbor/Hungarian/Genetic/IntegerProgramming/
+  truncated to `width`). All take `&TeamComposition` (per-side `team_size_a`/
+  `team_size_b`; equal sizes preserve the legacy `team_size` behavior exactly —
+  the role fields are carried for signature parity, role filtering happens at
+  the script/queue level). NearestNeighbor/Hungarian/Genetic/IntegerProgramming/
   SimulatedAnnealing are declared in `SearchStrategyKind` but not implemented.
 
 **`matchlab-loop` is implemented with the event-handler machine:**
-- `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
-  max_matches }` and `MachineState { population: HashMap<PlayerId,
+- `machine.rs` — `LoopConfig { teams: TeamComposition, batch_interval_ticks, rejoin_delay,
+  max_matches, skill_update_interval: Option<SimTime> }` and `MachineState { population: HashMap<PlayerId,
   (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
   MatchResult>, matches_completed, matches_formed, pub metrics: MetricsEngine,
   rating_system, outcome_model, matchmaker }`. The `handle_*` functions are
@@ -393,7 +440,8 @@ crates/
   transforms, so they are unit-testable without the engine.
   - `PlayerJoin` → add reality+observation to `World`, set `queue_joined_at`,
     schedule `PlayerQueue`.
-  - `PlayerQueue` → enqueue the player (entry built from the live observation)
+  - `PlayerQueue` → enqueue the player (entry built from the live observation,
+    `QueueEntry.role` copied from `obs.role`)
     and refresh `obs.queue_joined_at` to `world.time` (keeps the
     queue-time metric measuring the current join→formation wait, including
     re-queues after a match).
@@ -401,6 +449,13 @@ crates/
     the remaining `max_matches − matches_formed` budget (a formed match is an
     in-flight obligation, so over-capping on `matches_completed` would overshoot),
     emit one `MatchFormed` per proposal + re-schedule the next timer.
+  - `SkillChangeEvent` (periodic, only when `LoopConfig.skill_update_interval`
+    is set — dynamic skill) → for every *online* player, in ascending
+    `PlayerId` order, advance `reality.skill` via `SkillProcess` and refresh
+    `observation.skill_vector`/`hidden_mmr` from it, then re-schedule itself.
+    Only `PlayerReality.skill` mutates; ratings and matchmaking never read it
+    (truth separation). Offline players are skipped, so the exact
+    `S(t) = S0 + k·t` trajectory holds only for continuously-online players.
   - `MatchFormed` → simulate via the outcome model with `world.rng`,
     `metrics.record_match(&result, world)` (recorded at **formation** time —
     recording at MatchEnd made `queue_time` ≈ match duration, breaking the
@@ -486,7 +541,10 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   population/game/matchmaking/rating/detection/ranking/metrics/objectives/
   adversarial/satisfaction/cohorts/duration/output), `PopulationSpec`/
   `ArchetypeSpec`/`DistributionSpec`
-  (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params),
+  (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params,
+  `teams: TeamSpecs { a, b }` — each a `TeamSpec` untagged over int `size` or
+  `{ size, role }`, default 5v5 — plus `skill_update_interval_secs:
+  Option<f64>` — absent ⇒ static skill),
   `MatchmakingSpec`
   (script + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
   with `RatingSystemSpec { name?, script?, params }` flatten, `DetectionSpec`,
@@ -555,6 +613,11 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   commit, and the metrics table. Prints a `features:` summary line listing
   enabled subsystems (detection/ranking/adversarial/satisfaction/outcome
   variant/non-batch matchmaker) and the utility score when configured.
+  `matchlab compare <result.json>... [--json]` reads one or more exported
+  result JSONs (`ExperimentResult` is `Deserialize`), prints a
+  `generate_comparison_report` (Markdown by default, or the JSON report with
+  `--json`), and finishes with a utility ranking (`Comparator::ranking`) when
+  any result carries a `utility_score`.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
    players, team size 5, cold ladder start with `initial_rating: 1000`, flat
    skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
@@ -570,12 +633,22 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
  - `experiments/matchmaker_comparison.yaml` — expanding_window (script) on the
    standard population.
  - `experiments/detection_test.yaml` — smurf detection enabled.
- - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
+  - `experiments/dbd_1v4.yaml` — Dead-by-Daylight-style 1v4 asymmetric
+    manifest: killer archetype (role killer, N(1250,250)) vs survivor archetype
+    (role survivor, N(1000,100)), teams 1v4 role-gated, batch matchmaker, elo.
+  - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
    smurf detection, Lua rank brackets, adversarial agents (afk + deranker),
    satisfaction, all 12 metrics, objectives.
  - `experiments/novel_rating.yaml` — the dogfood example: a rating system with
    no Rust equivalent (`plugins/rating/decay_elo.lua`, Elo + idle decay) and a
    custom metric (`plugins/metrics/avg_rating_gap.lua`) added purely as Lua.
+ - `experiments/feedback_loop/*.yaml` — nine factorial cells
+   `feedback_{elo,glicko2,trueskill}_{random,strict,expanding}.yaml` (the
+   `rating × matchmaker` grid, all inheriting `base/standard.yaml`); the
+   `factorial_hand_derives_feedback_loop_cells` test proves
+   `FactorialDesign::generate_configs` derives the same nine from a base config,
+   and `matchlab compare results/feedback_*.json` reads them back for the
+   side-by-side feedback-loop comparison.
 
 **`matchlab-analysis` is implemented with the reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/
@@ -686,6 +759,103 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   (`1/(1+e^−0.5(s−2))`).
 - `lib.rs` — re-exports `LuaSatisfactionModel`, `SatisfactionModel`,
   `PlayerExperience`.
+
+**`matchlab-validation` is the analytical-baseline test crate (ticket T-01):**
+- `src/lib.rs` — test-side helpers only: `logistic_win_probability(diff, beta)`
+  (the outcome model's natural-scale reference),
+  `interleaved_two_class_population(total, skill_high, skill_low, initial_rating,
+  seed)` (two skill classes re-numbered so adjacent ids alternate class, which
+  makes the batch matchmaker form cross-class matches),
+  `single_class_config`/`two_class_config` (serde-built `ExperimentConfig`
+  manifests), `run_loop(...) -> LoopOutcome` (drives a `MatchLoop` directly
+  with elo + logistic(noise 0) + batch and returns finalized metrics +
+  completion stats), and `build_loop(population, teams, max_matches, seed,
+  metrics)` (same stack with an explicit `TeamComposition` — XvY sizes +
+  optional roles; `run_loop` is `build_loop` with an equal-size role-less
+  composition). `pub mod reference` exposes the T-02 reference math.
+- `tests/elo.rs` — Elo baselines: (1) with a two class population, the
+  observed high-class win rate must match the logistic ground truth
+  `1/(1+exp(-500/400)) ≈ 0.7773` within 6σ; (2) on a homogeneous `N(1000,250)`
+  cold-start population the `rating_accuracy_by_time` series must drop below
+  87% of its first bucket (observed 199.8 → 163.1); (3) same-seed runs are
+  byte-identical. Nothing in this crate is wired into the loop — these are
+  test-side reference implementations, and a disagreement is a bug in the Lua
+  script, never a reason to patch the tests.
+- `src/reference/` (ticket T-02) — independent math implementations used to
+  anchor posterior-based rating systems:
+  - `glicko2.rs` — Glickman 2012 (§5, eqs 1–10): `Opponent { mu, phi, sigma,
+    outcome }`, `single_period(...) -> PeriodResult`, `scale`/`unscale`
+    (factor 173.7178, center 1500), `idle_step` (periods without games grow
+    RD at `σ` and leave `μ`/`σ` unchanged). The Newton volatility iteration is
+    bracketed identically to `glicko2.lua`; verified against the paper's
+    worked example (r' = 1464.06, RD' = 151.52, σ' = 0.05999).
+  - `trueskill.rs` — TrueSkill 1v1 truncated-Gaussian conditioning
+    `update_head_to_head(...)` mirroring `trueskill.lua`, including the
+    script's `w = v*(v - alpha)` convention for the winner's uncertainty
+    factor and the `u = Φ⁻¹((1+p)/2)` probabilistic draw margin. Also
+    `draw_update_equal_players` — a reference-only true-draw posterior
+    (equal ratings keep μ, shrink σ) documenting what a future draw-capable
+    game path must hit.
+- `tests/glicko.rs` (ticket T-02) — Glicko-2 baselines: (1) the paper's
+  worked example driven as three sequential 1v1 games, each step checked
+  script-vs-reference at 1e-6 relative (final values reproduce the paper's
+  1464.06/151.52/0.05999 within the loose legacy bound — serialized single-game
+  periods differ from one multi-opponent period by ~0.27 rating points, so the
+  tight assertion is per-step); (2) a two-period chain whose idle first period,
+  passed to the script, grows RD by exactly `volatility*172800`; (3) an
+  eight-opponent period whose outcome distribution is informative enough to
+  stay on the Newton loop and keep all three outputs stable; (4) a negative
+  control — a deliberately perturbed reference (crude `epsilon`, flipping the
+  volatility iteration's safeguard) must diverge from both script and correct
+  reference by more than 1e-5 relative, proving the comparison has teeth.
+- `tests/trueskill.rs` (ticket T-02) — TrueSkill baselines: (1) a 1v1 win and
+  a 1v1 loss (script-vs-`update_head_to_head` at 1e-6 relative) for the
+  symmetric case, plus an asymmetric 1500-vs-1000 game preserving ordering and
+  widening the gap; (2) `draw_probability > 0` engages the margin math (u>0
+  makes the win update larger — both must diverge from the no-margin values and
+  agree with the reference); (3) the reference-only draw-posterior shrinkage.
+  Both test files drive the script through a `match_result(vec![player], ids,
+  winner)` with the solo player always on team A, so `winner == Team::B` means
+  the player lost.
+- `tests/matchmaking.rs` (ticket T-03) — match-quality baselines through the
+  `LuaMatchmaker` + `Queue`: uniform 1200 population forms a match with
+  quality exactly `1.0`; directly-separated all-1000 vs all-1400 teams clamp at
+  exactly `0.0` (and never go negative past the clamp); a fixed multiset
+  `[1000..1250]` reproduces the alternate-assignment analytic quality `0.875`
+  (with a negative control proving the uniform-average value `1.0` is
+  rejected); and a truth-separation guard proves quality tracks the visible
+  rating, never the ground-truth `skill_vector`.
+- `tests/queue.rs` (ticket T-03) — wait-time baselines: exact-tick saturated
+  waits (`now − joined_at` in `ticks()`), the saturating boundary when
+  `now < joined_at` (reverting `duration_since` to `wrapping_sub` makes the
+  suite fail — asserted locally), and a fixed-interval arrival tape under
+  batch 1v1 producing analytic per-match waits (exactly `Δt` for
+  every formed match, pairing oldest-unmatched players).
+- `tests/dynamic_skill.rs` (ticket T-05) — dynamic-skill baselines: with
+  `skill_update_interval_secs` set, improvers sit at exactly `S0 + k·t` after
+  `t` seconds and stables never drift (exact trajectory); over two days of sim
+  time improver ratings rise above `S0` while stable ratings fall (Elo responds
+  to the drift), and `lag = skill − rating` grows — a measured result
+  documented in spec §5.6, since matches resolve too sparsely to chase a
+  continuous target; same-seed determinism leaves skills + ratings
+  byte-identical; and the negative control proves *no* interval flag ⇒ no
+  drift even with `improvement_rate` set.
+- `tests/xvy.rs` (ticket T-09) — XvY 1v4 (DbD) role baselines: uniform
+  killers+survivors (1000) form two matches under the T-08 role-aware batch
+  path with quality exactly `1.0`, and a known-gap population (1500 killers vs
+  1400 survivors) produces exactly `1 − 100/400 = 0.75` per match — matching
+  on *unequal* team sizes is the analytic formula, proving the quality measure
+  survives the team-size asymmetry; a `RoleCompositionGuard` metric collector
+  registers on a live loop run and asserts *every* formed match is exactly
+  one killer + four survivors (the role path, never the counts-only fallback);
+  a killer-only population stalls (0 formed/completed, queue grows — role
+  gating is what produces scarcity); and the full `dbd_1v4.yaml` experiment
+  is deterministic across two same-seed runs (`build_loop` drives the loop
+  with an explicit `TeamComposition`).
+- The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
+  0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
+  outcomes when configured; RNG behavior is unchanged for `noise > 0`, so
+  v0_1_basic byte-identity is preserved).
 
 The twelve-step build order is complete and v0.1 is accepted.
 

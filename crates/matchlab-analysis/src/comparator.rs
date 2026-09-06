@@ -126,4 +126,59 @@ mod tests {
         c.set_baseline(1);
         assert_eq!(c.baseline, Some(1));
     }
+
+    #[test]
+    fn result_json_roundtrip_preserves_all_metric_variants() {
+        let mut metrics = BTreeMap::new();
+        metrics.insert("scalar".to_string(), MetricResult::Scalar(0.5));
+        metrics.insert(
+            "dist".to_string(),
+            MetricResult::Distribution(vec![1.0, 2.0, 3.0]),
+        );
+        metrics.insert(
+            "summary".to_string(),
+            MetricResult::Summary {
+                mean: 0.9,
+                median: 0.88,
+                p75: 0.91,
+                p90: 0.92,
+                p95: 0.93,
+                p99: 0.95,
+                stddev: 0.01,
+            },
+        );
+        metrics.insert(
+            "hist".to_string(),
+            MetricResult::Histogram {
+                buckets: vec![(0.5, 10), (1.0, 20)],
+            },
+        );
+        metrics.insert(
+            "series".to_string(),
+            MetricResult::TimeSeries {
+                bucket_means: vec![199.8, 163.1],
+            },
+        );
+        let original = ExperimentResult {
+            experiment_id: "roundtrip-hash".to_string(),
+            name: "roundtrip".to_string(),
+            config_hash: "hash".to_string(),
+            git_commit: "abc".to_string(),
+            timestamp: "now".to_string(),
+            matches_completed: 7,
+            matches_formed: 7,
+            simulated_time_secs: 210.0,
+            metrics,
+            utility_score: Some(0.875),
+        };
+
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: ExperimentResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.name, original.name);
+        assert_eq!(parsed.config_hash, original.config_hash);
+        assert_eq!(parsed.matches_completed, original.matches_completed);
+        assert_eq!(parsed.metrics, original.metrics);
+        assert_eq!(parsed.utility_score, original.utility_score);
+    }
 }

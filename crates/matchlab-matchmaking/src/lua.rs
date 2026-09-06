@@ -5,6 +5,7 @@
 //! (observations only — never `PlayerReality`); randomness flows through
 //! `matchlab.rng_*` when a script wants it.
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -67,7 +68,30 @@ fn queue_to_table(lua: &Lua, queue: &Queue, now: SimTime) -> Result<Value, Strin
             .map_err(|e| e.to_string())?;
         row.set("game_mode", entry.game_mode.as_str())
             .map_err(|e| e.to_string())?;
+        match &entry.role {
+            Some(r) => row.set("role", r.as_str()).map_err(|e| e.to_string())?,
+            None => row.set("role", Value::Nil).map_err(|e| e.to_string())?,
+        }
         t.set(i + 1, row).map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
+/// Snapshot the team composition into a Lua table
+/// `{ a = { size, role? }, b = { size, role? } }`.
+fn teams_to_table(lua: &Lua, teams: &TeamComposition) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for (key, size, role) in [
+        ("a", teams.team_size_a, &teams.role_a),
+        ("b", teams.team_size_b, &teams.role_b),
+    ] {
+        let team = lua.create_table().map_err(|e| e.to_string())?;
+        team.set("size", size).map_err(|e| e.to_string())?;
+        match role {
+            Some(r) => team.set("role", r.as_str()).map_err(|e| e.to_string())?,
+            None => team.set("role", Value::Nil).map_err(|e| e.to_string())?,
+        }
+        t.set(key, team).map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(t))
 }
@@ -83,7 +107,7 @@ impl Matchmaker for LuaMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
@@ -91,15 +115,15 @@ impl Matchmaker for LuaMatchmaker {
             .vm
             .with_lua(|lua| queue_to_table(lua, queue, now))
             .expect("build queue table");
+        let teams_val = self
+            .vm
+            .with_lua(|lua| teams_to_table(lua, teams))
+            .expect("build teams table");
 
         let matches_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "find_matches",
-                &[
-                    queue_val,
-                    Value::Integer(team_size as i64),
-                    Value::Number(now.as_secs_f64()),
-                ],
+                &[queue_val, teams_val, Value::Number(now.as_secs_f64())],
             )
             .expect("matchmaker find_matches failed")
         });
@@ -155,6 +179,7 @@ mod tests {
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -181,6 +206,15 @@ mod tests {
 
     fn batch() -> LuaMatchmaker {
         LuaMatchmaker::load("plugins/matchmaking/batch.lua", &serde_yaml::Value::Null).unwrap()
+    }
+
+    fn sym(n: usize) -> TeamComposition {
+        TeamComposition {
+            team_size_a: n,
+            team_size_b: n,
+            role_a: None,
+            role_b: None,
+        }
     }
 
     #[test]
@@ -214,7 +248,7 @@ mod tests {
         ]);
         let mm = batch();
         let mut rng = SimRng::from_seed(7);
-        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(5), SimTime::ZERO, &mut rng);
         assert_eq!(matches.len(), 1);
         assert!(
             matches[0].quality_score >= 0.7,
@@ -243,9 +277,167 @@ mod tests {
         let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
         let mm = batch();
         let mut rng = SimRng::from_seed(7);
-        let matches = mm.find_matches(&queue, &world, 5, SimTime::ZERO, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(5), SimTime::ZERO, &mut rng);
         assert_eq!(matches.len(), 1);
         // Longest-waiting players alternate teams (rating tie → FIFO).
+        assert_eq!(
+            matches[0].team_a,
+            vec![
+                PlayerId(1),
+                PlayerId(3),
+                PlayerId(5),
+                PlayerId(7),
+                PlayerId(9)
+            ]
+        );
+        assert_eq!(
+            matches[0].team_b,
+            vec![
+                PlayerId(2),
+                PlayerId(4),
+                PlayerId(6),
+                PlayerId(8),
+                PlayerId(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn queue_snapshot_carries_role_for_scripts() {
+        let lua = Lua::new();
+        let mut queue = Queue::default();
+        let mut killer = entry(1, SimTime::ZERO, 1000.0, Region::NA);
+        killer.role = Some("killer".to_string());
+        queue.enqueue(killer);
+        queue.enqueue(entry(2, SimTime::from_secs(1.0), 1000.0, Region::NA));
+        let val = queue_to_table(&lua, &queue, SimTime::from_secs(2.0)).unwrap();
+        let arr: Table = match val {
+            Value::Table(t) => t,
+            _ => panic!("expected table"),
+        };
+        let row: Table = arr.get(1).unwrap();
+        assert_eq!(row.get::<String>("role").unwrap(), "killer");
+        let row2: Table = arr.get(2).unwrap();
+        assert!(row2.get::<mlua::Value>("role").unwrap().is_nil());
+    }
+
+    #[test]
+    fn batch_counts_only_asymmetric_1v4_sizes_teams() {
+        // XvY counts-only: a 1v4 composition with no roles must yield a
+        // proposal with |team_a| = 1 and |team_b| = 4.
+        let teams = TeamComposition {
+            team_size_a: 1,
+            team_size_b: 4,
+            role_a: None,
+            role_b: None,
+        };
+        let mut queue = Queue::default();
+        for (id, rating) in [
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ] {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), rating, Region::NA));
+        }
+        let world = build_world(&[
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ]);
+        let mm = batch();
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].team_a.len() == 1 && matches[0].team_b.len() == 4);
+        let mut ids: Vec<u64> = matches[0]
+            .team_a
+            .iter()
+            .chain(matches[0].team_b.iter())
+            .map(|p| p.0)
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn batch_role_composition_with_roleless_queue_stalls() {
+        // Roles are now in play (T-08): a composition that requires
+        // killer/survivor roles but a queue of role-less entries must form
+        // nothing — the role filter is not short-circuited.
+        let teams = TeamComposition {
+            team_size_a: 1,
+            team_size_b: 4,
+            role_a: Some("killer".to_string()),
+            role_b: Some("survivor".to_string()),
+        };
+        let mut queue = Queue::default();
+        for (id, rating) in [
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ] {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), rating, Region::NA));
+        }
+        let world = build_world(&[
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ]);
+        let mm = batch();
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+        assert!(
+            matches.is_empty(),
+            "role-less entries must not satisfy roles"
+        );
+    }
+
+    #[test]
+    fn batch_symmetric_5v5_is_click_to_team_size_regression() {
+        // Byte-identity guard: a default 5v5 composition must reproduce the
+        // exact proposal ordering of the pre-T-06 `team_size: 5` contract (the
+        // FIFO tie-break test above pins the precise team_a/team_b id arrays).
+        let mut queue = Queue::default();
+        for (id, t, rating) in [
+            (1, 100.0, 800.0),
+            (2, 90.0, 900.0),
+            (3, 80.0, 1000.0),
+            (4, 70.0, 1100.0),
+            (5, 60.0, 1200.0),
+            (6, 50.0, 1300.0),
+            (7, 40.0, 1400.0),
+            (8, 30.0, 1500.0),
+            (9, 20.0, 1600.0),
+            (10, 10.0, 1700.0),
+        ] {
+            queue.enqueue(entry(id, SimTime::from_secs(t), rating, Region::NA));
+        }
+        let world = build_world(&[
+            (1, 800.0),
+            (2, 900.0),
+            (3, 1000.0),
+            (4, 1100.0),
+            (5, 1200.0),
+            (6, 1300.0),
+            (7, 1400.0),
+            (8, 1500.0),
+            (9, 1600.0),
+            (10, 1700.0),
+        ]);
+        let mm = batch();
+        let mut rng = SimRng::from_seed(13);
+        let matches = mm.find_matches(&queue, &world, &sym(5), SimTime::ZERO, &mut rng);
+        assert_eq!(matches.len(), 1);
+        // Sorting by rating ascending alternates adjacent players onto
+        // opposite teams (1-2, 3-4, 5-6, 7-8, 9-10 blocks).
         assert_eq!(
             matches[0].team_a,
             vec![
@@ -286,11 +478,11 @@ mod tests {
         let world = build_world(&[(1, 1000.0), (2, 1040.0)]);
 
         let mut rng = SimRng::from_seed(1);
-        let early = mm.find_matches(&queue, &world, 1, SimTime::from_secs(2.0), &mut rng);
+        let early = mm.find_matches(&queue, &world, &sym(1), SimTime::from_secs(2.0), &mut rng);
         assert!(early.is_empty(), "2s wait should use the 5s tier (25 diff)");
 
         let mut rng = SimRng::from_seed(1);
-        let late = mm.find_matches(&queue, &world, 1, SimTime::from_secs(30.0), &mut rng);
+        let late = mm.find_matches(&queue, &world, &sym(1), SimTime::from_secs(30.0), &mut rng);
         assert_eq!(late.len(), 1, "30s wait should match within 200 diff");
     }
 
@@ -306,8 +498,62 @@ mod tests {
         queue.enqueue(entry(2, SimTime::from_secs(0.0), 1100.0, Region::NA));
         let world = build_world(&[(1, 1000.0), (2, 1100.0)]);
         let mut rng = SimRng::from_seed(1);
-        let matches = mm.find_matches(&queue, &world, 1, SimTime::ZERO, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(1), SimTime::ZERO, &mut rng);
         assert!(matches.is_empty(), "100 diff > 50 max_skill_diff");
+    }
+
+    fn random_mm() -> LuaMatchmaker {
+        LuaMatchmaker::load("plugins/matchmaking/random.lua", &serde_yaml::Value::Null).unwrap()
+    }
+
+    fn fingerprint(matches: &[ProposedMatch]) -> Vec<Vec<u64>> {
+        let mut out: Vec<Vec<u64>> = matches
+            .iter()
+            .map(|m| {
+                let mut ids: Vec<u64> = m
+                    .team_a
+                    .iter()
+                    .chain(m.team_b.iter())
+                    .map(|p| p.0)
+                    .collect();
+                ids.sort();
+                ids
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn random_forms_full_matches_deterministically() {
+        let mut queue = Queue::default();
+        for id in 1..=100u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0, Region::NA));
+        }
+        let world = build_world(&(1..=100u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+        let mm = random_mm();
+
+        let mut rng = SimRng::from_seed(99);
+        let first = mm.find_matches(&queue, &world, &sym(2), SimTime::ZERO, &mut rng);
+        let mut rng = SimRng::from_seed(99);
+        let second = mm.find_matches(&queue, &world, &sym(2), SimTime::ZERO, &mut rng);
+        assert_eq!(fingerprint(&first), fingerprint(&second));
+
+        // Every player used exactly once: 100 players / (2*2 per match) = 25.
+        assert_eq!(first.len(), 25);
+        let mut ids: Vec<u64> = first
+            .iter()
+            .flat_map(|m| m.team_a.iter().chain(m.team_b.iter()))
+            .map(|p| p.0)
+            .collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 100);
+
+        // A different seed draws a different composition.
+        let mut rng = SimRng::from_seed(100);
+        let other = mm.find_matches(&queue, &world, &sym(2), SimTime::ZERO, &mut rng);
+        assert_ne!(fingerprint(&first), fingerprint(&other));
     }
 
     #[test]
@@ -328,7 +574,7 @@ mod tests {
         }
         let world = build_world(&[(1, 1000.0), (2, 1000.0), (3, 1000.0), (4, 1000.0)]);
         let mut rng = SimRng::from_seed(1);
-        let matches = mm.find_matches(&queue, &world, 1, SimTime::ZERO, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(1), SimTime::ZERO, &mut rng);
         // Two matches: one NA (1v2), one EU (3v4) — same-region players kept
         // together.
         assert_eq!(matches.len(), 2);

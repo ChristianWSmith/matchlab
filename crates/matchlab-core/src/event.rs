@@ -372,7 +372,6 @@ impl Event for MatchTimerEvent {
 #[derive(Debug)]
 pub struct SkillChangeEvent {
     pub time: SimTime,
-    pub player_id: PlayerId,
 }
 
 impl Event for SkillChangeEvent {

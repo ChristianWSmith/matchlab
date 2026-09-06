@@ -53,6 +53,10 @@ pub fn observation_to_table(
         obs.queue_joined_at.map(|s| s.ticks()),
     )?;
     set_opt_int(&t, "party_id", obs.party_id)?;
+    match &obs.role {
+        Some(r) => t.set("role", r.as_str()).map_err(|e| e.to_string())?,
+        None => t.set("role", Value::Nil).map_err(|e| e.to_string())?,
+    }
     if include_skill {
         t.set("skill_overall", obs.skill_vector.overall())
             .map_err(|e| e.to_string())?;
@@ -276,6 +280,7 @@ mod tests {
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(1200.0),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -301,6 +306,23 @@ mod tests {
     }
 
     #[test]
+    fn role_is_exposed_without_include_skill() {
+        let lua = Lua::new();
+        let mut o = obs(1, 1000.0);
+        o.role = Some("killer".to_string());
+        let t = observation_to_table(&lua, &o, false).unwrap();
+        assert_eq!(t.get::<String>("role").unwrap(), "killer");
+    }
+
+    #[test]
+    fn role_is_nil_when_absent() {
+        let lua = Lua::new();
+        let o = obs(1, 1000.0);
+        let t = observation_to_table(&lua, &o, false).unwrap();
+        assert!(t.get::<mlua::Value>("role").unwrap().is_nil());
+    }
+
+    #[test]
     fn participant_table_includes_reality() {
         let lua = Lua::new();
         let o = obs(1, 1000.0);
@@ -322,6 +344,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "smurf".into(),
+            role: None,
         };
         let t = participant_to_table(&lua, &o, Some(&r)).unwrap();
         assert_eq!(t.get::<f64>("true_skill").unwrap(), 1500.0);
@@ -386,6 +409,7 @@ mod tests {
                 experience: 0,
                 is_online: true,
                 archetype: "stable".into(),
+                role: None,
             },
             obs(1, 1000.0),
         );

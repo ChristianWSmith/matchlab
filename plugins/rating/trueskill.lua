@@ -51,7 +51,7 @@ end
 -- sigma'^2 = sigma^2 (1 - (sigma^2/c^2) w).
 function win_factors(t, u)
     local alpha = u - t
-    local v = normal_pdf(alpha) / (1.0 - normal_cdf(alpha))
+    local v = normal_pdf(alpha) / math.max(1.0 - normal_cdf(alpha), 1e-15)
     return v, v * (v + t - u)
 end
 
@@ -143,7 +143,7 @@ function update(match_result, observations, config, context)
                 table.insert(updates, {
                     player_id = id,
                     rating = mu_new,
-                    rating_deviation = math.max(math.sqrt(var_new), 1e-6),
+                    rating_deviation = math.max(math.sqrt(math.max(var_new, 0.0)), 1e-6),
                     volatility = 0.0,
                     games_played = o.games_played + 1,
                 })

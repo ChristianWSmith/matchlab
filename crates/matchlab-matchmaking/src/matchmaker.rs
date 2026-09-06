@@ -1,3 +1,4 @@
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -10,7 +11,7 @@ pub trait Matchmaker: Send + Sync {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -75,6 +76,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::<DetectionFlag>::new(),
+            role: None,
         }
     }
 
@@ -135,6 +137,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         };
         world.add_player(reality(1, 1500.0), obs(1, 1000.0));
         world.add_player(reality(2, 500.0), obs(2, 1000.0));

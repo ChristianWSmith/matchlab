@@ -1,6 +1,8 @@
 use matchlab_adversarial::agent::AdversarialAgent;
-use matchlab_core::event::{MatchEndEvent, MatchFormedEvent, MatchTimerEvent, downcast};
-use matchlab_core::match_::{MatchId, MatchResult, MatchState};
+use matchlab_core::event::{
+    MatchEndEvent, MatchFormedEvent, MatchTimerEvent, SkillChangeEvent, downcast,
+};
+use matchlab_core::match_::{MatchId, MatchResult, MatchState, TeamComposition};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -10,6 +12,7 @@ use matchlab_game::outcome::OutcomeModel;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
 use matchlab_metrics::MetricsEngine;
+use matchlab_players::skill::SkillProcess;
 use matchlab_ranking::ranker::RankMapper;
 use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
@@ -19,10 +22,11 @@ use std::collections::HashMap;
 /// Config for a full simulation loop.
 #[derive(Clone)]
 pub struct LoopConfig {
-    pub team_size: usize,
+    pub teams: TeamComposition,
     pub batch_interval_ticks: u64,
     pub rejoin_delay: SimTime,
     pub max_matches: u64,
+    pub skill_update_interval: Option<SimTime>,
 }
 
 /// Retention threshold below which a player quits instead of re-queuing
@@ -40,10 +44,11 @@ pub struct MachineState {
     outcome_model: Box<dyn OutcomeModel>,
     matchmaker: Box<dyn Matchmaker>,
     pub metrics: MetricsEngine,
-    team_size: usize,
+    teams: TeamComposition,
     batch_interval: SimTime,
     rejoin_delay: SimTime,
     max_matches: u64,
+    skill_update_interval: Option<SimTime>,
     pub detection_system: Option<Box<dyn DetectionSystem>>,
     pub ranker: Option<Box<dyn RankMapper>>,
     pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
@@ -103,10 +108,11 @@ impl MachineState {
             outcome_model,
             matchmaker,
             metrics,
-            team_size: config.team_size,
+            teams: config.teams,
             batch_interval,
             rejoin_delay: config.rejoin_delay,
             max_matches: config.max_matches,
+            skill_update_interval: config.skill_update_interval,
             detection_system,
             ranker,
             adversarial_agents,
@@ -122,6 +128,10 @@ impl MachineState {
 
     pub fn matches_formed(&self) -> u64 {
         self.matches_formed
+    }
+
+    pub fn skill_update_interval(&self) -> Option<SimTime> {
+        self.skill_update_interval
     }
 }
 
@@ -163,7 +173,7 @@ pub fn handle_player_queue(
             region: Region::NA,
             party_id: obs.party_id,
             game_mode: obs.game_mode.clone(),
-            role: None,
+            role: obs.role.clone(),
             latency_ms: 30.0,
         };
         if let Some(live) = world.observations.get_mut(&pid) {
@@ -172,6 +182,45 @@ pub fn handle_player_queue(
         state.queue.enqueue(entry);
     }
     Vec::new()
+}
+
+pub fn handle_skill_change(
+    world: &mut World,
+    event: &dyn matchlab_core::event::Event,
+    state: &mut MachineState,
+) -> Vec<Box<dyn matchlab_core::event::Event>> {
+    let _evt = downcast::<SkillChangeEvent>(event);
+    let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
+
+    let mut ids: Vec<PlayerId> = world.players.keys().cloned().collect();
+    ids.sort_by_key(|pid| pid.0);
+    for pid in ids {
+        let Some(reality) = world.players.get(&pid) else {
+            continue;
+        };
+        if !reality.is_online {
+            continue;
+        }
+        let process = SkillProcess {
+            improvement_rate: reality.improvement_rate,
+            volatility: reality.skill_volatility,
+        };
+        if let Some(r) = world.players.get_mut(&pid) {
+            r.skill = process.advance(&r.skill, &mut world.rng);
+        }
+        if let Some(o) = world.observations.get_mut(&pid) {
+            let skill = world.players[&pid].skill.clone();
+            o.skill_vector = skill.clone();
+            o.hidden_mmr = skill.overall();
+        }
+    }
+
+    if let Some(interval) = state.skill_update_interval {
+        out.push(Box::new(SkillChangeEvent {
+            time: SimTime(world.time.0 + interval.0),
+        }));
+    }
+    out
 }
 
 pub fn handle_match_timer(
@@ -184,12 +233,12 @@ pub fn handle_match_timer(
 
     let remaining = state.max_matches.saturating_sub(state.matches_formed) as usize;
     if remaining > 0 {
-        let team_size = state.team_size;
+        let teams = state.teams.clone();
         let now = world.time;
         let mut rng = std::mem::replace(&mut world.rng, SimRng::from_seed(0));
         let proposed = state
             .matchmaker
-            .find_matches(&state.queue, world, team_size, now, &mut rng);
+            .find_matches(&state.queue, world, &teams, now, &mut rng);
         world.rng = rng;
 
         let mut matched_ids: Vec<PlayerId> = Vec::new();
@@ -540,6 +589,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::<DetectionFlag>::new(),
+            role: None,
         }
     }
 
@@ -562,6 +612,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         }
     }
 
@@ -573,10 +624,16 @@ mod tests {
             lua_batch(),
             MetricsEngine::new(),
             LoopConfig {
-                team_size: 1,
+                teams: TeamComposition {
+                    team_size_a: 1,
+                    team_size_b: 1,
+                    role_a: None,
+                    role_b: None,
+                },
                 batch_interval_ticks: 10,
                 rejoin_delay: SimTime::from_secs(60.0),
                 max_matches: 100,
+                skill_update_interval: None,
             },
         )
     }
@@ -615,7 +672,12 @@ mod tests {
         let _p0 = obs(1, 1000.0);
         let mut state = default_state(vec![(reality(1, 1000.0), obs(1, 1000.0))]);
         let mut world = World::new(SimRng::from_seed(3));
-        world.add_player(reality(1, 1000.0), obs(1, 1000.0));
+        let killer = {
+            let mut o = obs(1, 1000.0);
+            o.role = Some("killer".to_string());
+            o
+        };
+        world.add_player(reality(1, 1000.0), killer);
         let evt: Box<dyn Event> = Box::new(PlayerQueueEvent {
             time: SimTime::from_secs(0.0),
             player_id: PlayerId(1),
@@ -623,6 +685,8 @@ mod tests {
         let out = handle_player_queue(&mut world, evt.as_ref(), &mut state);
         assert!(out.is_empty());
         assert_eq!(state.queue.len(), 1);
+        let entry = state.queue.entries()[0].clone();
+        assert_eq!(entry.role.as_deref(), Some("killer"));
     }
 
     #[test]
@@ -766,6 +830,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 100,
@@ -777,10 +842,11 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
+            skill_update_interval: None,
         };
         let mut loop_a = MatchLoop::new(
             pop.clone(),
@@ -827,6 +893,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 100,
@@ -838,10 +905,11 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
+            skill_update_interval: None,
         };
 
         let build = |pop: Vec<(PlayerReality, PlayerObservation)>, cfg: LoopConfig| {
@@ -898,6 +966,7 @@ mod tests {
             session_length: 1800.0,
             quit_probability: 0.01,
             initial_rating: None,
+            role: None,
         };
         let config = PopulationConfig {
             size: 40,
@@ -912,10 +981,11 @@ mod tests {
         metrics.register(lua_metric("match_quality"));
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 20,
+            skill_update_interval: None,
         };
         let mut loop_a = MatchLoop::new(
             pop,

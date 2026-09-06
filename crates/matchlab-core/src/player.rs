@@ -109,6 +109,10 @@ pub struct PlayerReality {
     pub experience: u64,
     pub is_online: bool,
     pub archetype: String,
+    /// Optional role label (e.g. `killer` / `survivor`), copied from the
+    /// archetype at generation. `None` means "any" — matchmakers must not
+    /// restrict such players to a specific role.
+    pub role: Option<String>,
 }
 
 /// What rating, matchmaking, and detection systems are allowed to see.
@@ -133,6 +137,7 @@ pub struct PlayerObservation {
     pub quit_history: VecDeque<f64>,
     pub tilt_level: f64,
     pub game_mode: String,
+    pub role: Option<String>,
     pub skill_vector: SkillVector,
     pub detection_flags: Vec<DetectionFlag>,
 }

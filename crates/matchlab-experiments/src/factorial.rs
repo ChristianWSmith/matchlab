@@ -71,7 +71,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ArchetypeSpec, CohortSpec, DistributionSpec, DurationSpec, ExperimentSpec, GameSpec,
-        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, RatingSystemSpec,
+        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, RatingSystemSpec, TeamSpecs,
     };
     use std::collections::BTreeMap;
 
@@ -97,11 +97,13 @@ mod tests {
                         session_length: 1800.0,
                         quit_probability: 0.01,
                         initial_rating: None,
+                        role: None,
                     }],
                 },
                 game: GameSpec {
-                    team_size: 5,
+                    teams: TeamSpecs::default(),
                     script: "plugins/game/logistic.lua".to_string(),
+                    skill_update_interval_secs: None,
                     params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
@@ -202,5 +204,66 @@ mod tests {
             configs[1].experiment.rating.systems[0].name,
             Some("flatpoints".to_string())
         );
+    }
+
+    #[test]
+    fn factorial_hand_derives_feedback_loop_cells() {
+        let cell = |name: &str| {
+            crate::inherit::load(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../experiments/feedback_loop")
+                    .join(name),
+            )
+            .unwrap()
+        };
+        let base = cell("feedback_elo_random.yaml");
+        let design = FactorialDesign {
+            factors: vec![
+                Factor {
+                    name: "experiment.rating.systems.0.name".to_string(),
+                    values: vec![
+                        Value::from("elo"),
+                        Value::from("glicko2"),
+                        Value::from("trueskill"),
+                    ],
+                },
+                Factor {
+                    name: "experiment.matchmaking.script".to_string(),
+                    values: vec![
+                        Value::from("plugins/matchmaking/random.lua"),
+                        Value::from("plugins/matchmaking/strict.lua"),
+                        Value::from("plugins/matchmaking/expanding_window.lua"),
+                    ],
+                },
+            ],
+        };
+        let generated = design.generate_configs(&base);
+        assert_eq!(generated.len(), 9);
+
+        let ratings = ["elo", "glicko2", "trueskill"];
+        let suffixes = ["random", "strict", "expanding"];
+        let mut expected: Vec<(String, String)> = Vec::new();
+        for rating in ratings {
+            for suffix in suffixes {
+                let cfg = cell(&format!("feedback_{rating}_{suffix}.yaml"));
+                expected.push((
+                    cfg.experiment.rating.systems[0].name.clone().unwrap(),
+                    cfg.experiment.matchmaking.script.clone(),
+                ));
+            }
+        }
+        let actual: Vec<(String, String)> = generated
+            .iter()
+            .map(|c| {
+                (
+                    c.experiment.rating.systems[0]
+                        .name
+                        .clone()
+                        .unwrap_or_default(),
+                    c.experiment.matchmaking.script.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(actual, expected);
     }
 }

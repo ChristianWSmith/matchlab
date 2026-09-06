@@ -166,6 +166,7 @@ mod tests {
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -188,6 +189,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".into(),
+            role: None,
         }
     }
 

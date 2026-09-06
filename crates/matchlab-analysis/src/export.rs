@@ -160,6 +160,7 @@ mod tests {
             game_mode: "ranked".to_string(),
             skill_vector: matchlab_core::player::SkillVector::one_dimensional(rating),
             detection_flags: Vec::new(),
+            role: None,
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: "stable".to_string(),
+            role: None,
         }
     }
 
@@ -301,7 +303,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05

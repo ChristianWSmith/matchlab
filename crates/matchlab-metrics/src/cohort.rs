@@ -93,6 +93,7 @@ mod tests {
             experience: 0,
             is_online: true,
             archetype: archetype.to_string(),
+            role: None,
         }
     }
 

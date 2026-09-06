@@ -307,6 +307,11 @@ outcome model gets the ground-truth skill binding (`skill_overall` /
 fields (`true_skill`, `improvement_rate`, ...) — metrics are the legitimate
 reality reader.
 
+`role` is an **observable attribute**: who queues as `killer` or `survivor` is
+public, so the observation table and the matchmaking queue snapshot always
+include it — gated neither by `include_skill` nor by an information budget
+(§7.1, §8.2). Players without a role carry `nil` ("any").
+
 #### Design rules
 
 1. **Lua is the algorithm.** A user adds a system by writing one `.lua` file
@@ -886,6 +891,9 @@ pub struct PlayerReality {
     pub experience: u64,
     pub is_online: bool,
     pub archetype: String,
+    /// Optional role label (e.g. `killer` / `survivor`), copied from the
+    /// archetype at generation. `None` means "any" role.
+    pub role: Option<String>,
 }
 ```
 
@@ -914,6 +922,10 @@ pub struct PlayerObservation {
     pub quit_history: VecDeque<f64>,
     pub tilt_level: f64,
     pub game_mode: String,
+    /// Optional role label — a fixed, observable attribute (who queued as
+    /// killer is visible); matchmakers may read it unconditionally, gated
+    /// neither by `include_skill` nor an information budget.
+    pub role: Option<String>,
     pub skill_vector: SkillVector,
     pub detection_flags: Vec<DetectionFlag>,
 }
@@ -995,6 +1007,20 @@ impl SkillProcess {
 }
 ```
 
+**Dynamism gate (T-05).** Skills are static by default: the population is
+generated once at `t=0` and `SkillProcess::advance` is never called (with
+`μ=0, σ=0` it is the identity, the v0.1 baseline). Skills become dynamic only
+when an experiment sets `game.skill_update_interval_secs`. The loop then
+schedules a periodic `SkillChangeEvent` every interval; on each tick it
+advances `reality.skill` for every *online* player, in ascending `PlayerId`
+order, and refreshes the observation's `skill_vector`/`hidden_mmr` binding so
+the outcome model keeps deciding matches from ground truth. Only
+`PlayerReality.skill` mutates — ratings and matchmaking never read it (truth
+separation) — and offline players are skipped, so the exact
+`S(t) = S0 + μ·t` trajectory holds for continuously-online players. Because
+`σ` noise is drawn through `world.rng`, dynamic-skill runs stay deterministic
+for a seed.
+
 ### 5.7 Player Archetypes
 
 ```rust
@@ -1017,6 +1043,9 @@ pub struct ArchetypeConfig {
     /// but initial_rating is set to this value.
     #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1160,6 +1189,7 @@ impl PopulationGenerator {
                     experience: 0,
                     is_online: true,
                     archetype: archetype.name.clone(),
+                    role: archetype.role.clone(),
                 };
 
                 let observation = PlayerObservation {
@@ -1172,6 +1202,7 @@ impl PopulationGenerator {
                     recent_performances: Vec::new(),
                     queue_joined_at: None,
                     is_online: true,
+                    role: archetype.role.clone(),
                     detection_flags: Vec::new(),
                 };
 
@@ -1433,8 +1464,22 @@ pub struct PlayerPerformance {
 }
 
 #[derive(Debug, Clone)]
-pub struct MatchConfig {
-    pub team_size: usize,
+pub struct TeamComposition {
+    pub team_size_a: usize,
+    pub team_size_b: usize,
+    pub role_a: Option<String>,
+    pub role_b: Option<String>,
+}
+
+impl Default for TeamComposition {
+    fn default() -> Self {
+        Self {
+            team_size_a: 5,
+            team_size_b: 5,
+            role_a: None,
+            role_b: None,
+        }
+    }
 }
 ```
 
@@ -1519,7 +1564,7 @@ pub trait Matchmaker: Send + Sync {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -1742,6 +1787,7 @@ The matchmaker can use different strategies to explore the space of candidate ma
 ```rust
 // crates/matchlab-matchmaking/src/search.rs
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::rng::SimRng;
 use crate::matchmaker::ProposedMatch;
 use crate::objective::MatchObjective;
@@ -1753,7 +1799,7 @@ pub trait SearchStrategy: Send + Sync {
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -1770,6 +1816,12 @@ pub enum SearchStrategyKind {
     SimulatedAnnealing { initial_temp: f64, cooling_rate: f64 },
 }
 ```
+
+The strategies are public API but are **not wired into the loop** in v0.1 (the
+Lua scripts under `plugins/matchmaking/` are the active matchmakers). Equal team
+sizes reproduce the legacy single `team_size` behavior exactly; role labels are
+carried for signature parity but strategy-side role filtering is out of scope
+(roles are enforced at the script/queue level, §7.6–§7.9).
 
 **Greedy:** For each queue entry, find the best available teammates and opponents by objective score. Fast, but may produce suboptimal global assignments.
 
@@ -1788,6 +1840,16 @@ pub enum SearchStrategyKind {
 **Simulated Annealing:** Start with a random assignment, perturb neighbors, accept worse solutions with decreasing probability. Good balance of quality and speed.
 
 ### 7.6 Expanding Window Matchmaker
+
+**Role-aware (T-08):** team A is filled exclusively from queued entries whose
+`role` equals `teams.a.role` when that role is set; team B likewise. When a
+side's role is unset, that side accepts any queued player (counts-only
+behavior). An entry whose `role` matches neither side's role waits. A side is
+filled from exactly one role — multi-role sides are a later consideration
+(single-role-per-side limitation). Within a side's pool the existing window
+tightness is preserved. When a pool cannot fill its side, nothing is formed for
+it: those players remain queued and the match may stall until the pool is
+replenished (intended for strict/sparse roles).
 
 ```rust
 // crates/matchlab-matchmaking/src/expanding.rs
@@ -1832,10 +1894,12 @@ impl Matchmaker for ExpandingWindowMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         let mut matches = Vec::new();
         let mut used = Vec::new();
 
@@ -1856,18 +1920,18 @@ impl Matchmaker for ExpandingWindowMatchmaker {
                 }
                 let diff = (entry.observation.rating - other.observation.rating).abs();
                 if diff <= window {
-                    if team_a.len() <= team_b.len() {
+                    if team_a.len() < size_a && team_a.len() <= team_b.len() {
                         team_a.push(other);
-                    } else {
+                    } else if team_b.len() < size_b {
                         team_b.push(other);
                     }
                 }
-                if team_a.len() == team_size && team_b.len() == team_size {
+                if team_a.len() == size_a && team_b.len() == size_b {
                     break;
                 }
             }
 
-            if team_a.len() == team_size && team_b.len() == team_size {
+            if team_a.len() == size_a && team_b.len() == size_b {
                 let team_a_ids: Vec<_> = team_a.iter().map(|e| e.player_id).collect();
                 let team_b_ids: Vec<_> = team_b.iter().map(|e| e.player_id).collect();
                 used.extend(&team_a_ids);
@@ -1887,6 +1951,11 @@ impl Matchmaker for ExpandingWindowMatchmaker {
 
 ### 7.7 Strict Matchmaker
 
+**Role-aware (T-08):** identical per-role fill rules as §7.6 — team A from the
+`teams.a.role` pool, team B from `teams.b.role`, a role-less pool per side when
+unset, and no borrowing across pools. Because strict already allows indefinite
+waits for skill outliers, a role-starved side simply waits.
+
 ```rust
 // crates/matchlab-matchmaking/src/strict.rs
 
@@ -1905,10 +1974,12 @@ impl Matchmaker for StrictMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         _now: SimTime,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         // Only match players within max_skill_diff of each other, so outliers
         // may wait indefinitely (that is the intended "strict" behavior).
         let mut matches = Vec::new();
@@ -1927,18 +1998,18 @@ impl Matchmaker for StrictMatchmaker {
                 }
                 let diff = (entry.observation.rating - other.observation.rating).abs();
                 if diff <= self.max_skill_diff {
-                    if team_a.len() <= team_b.len() {
+                    if team_a.len() < size_a && team_a.len() <= team_b.len() {
                         team_a.push(other);
-                    } else {
+                    } else if team_b.len() < size_b {
                         team_b.push(other);
                     }
                 }
-                if team_a.len() == team_size && team_b.len() == team_size {
+                if team_a.len() == size_a && team_b.len() == size_b {
                     break;
                 }
             }
 
-            if team_a.len() == team_size && team_b.len() == team_size {
+            if team_a.len() == size_a && team_b.len() == size_b {
                 let team_a_ids: Vec<_> = team_a.iter().map(|e| e.player_id).collect();
                 let team_b_ids: Vec<_> = team_b.iter().map(|e| e.player_id).collect();
                 used.extend(&team_a_ids);
@@ -1957,6 +2028,13 @@ impl Matchmaker for StrictMatchmaker {
 ```
 
 ### 7.8 Batch Matchmaker
+
+**Role-aware (T-08):** identical per-role fill rules as §7.6. In the shipped
+`plugins/matchmaking/batch.lua` the role-aware path sorts each role pool by
+rating (ties by join order) and alternates consumption between the two pools,
+so within a side the rating-balanced alternation is preserved. With both roles
+unset the script runs the legacy single-queue alternation **byte-identically**
+(pinned by the `batch_roles_unset_is_byte_identical_regression` test).
 
 ```rust
 // crates/matchlab-matchmaking/src/batch.rs
@@ -1995,10 +2073,12 @@ impl Matchmaker for BatchMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         _now: SimTime,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         // Every N ticks, process all queued players:
         // 1. Sort by queue time (longest waiting first)
         // 2. Greedily form teams subject to constraints
@@ -2015,9 +2095,9 @@ impl Matchmaker for BatchMatchmaker {
         for entry in candidates {
             if used.contains(&entry.player_id) { continue; }
 
-            if team_a.len() < team_size {
+            if team_a.len() < size_a {
                 team_a.push(entry.player_id);
-            } else if team_b.len() < team_size {
+            } else if team_b.len() < size_b {
                 team_b.push(entry.player_id);
             } else {
                 let proposed = ProposedMatch {
@@ -2043,6 +2123,12 @@ impl Matchmaker for BatchMatchmaker {
 
 Decomposes matchmaking into a hub (global orchestrator) and spokes (regional matchmakers). The hub distributes overflow workloads to spokes and rebalances when a spoke is overloaded or under-populated. This models how real matchmaking systems handle scale without a single coordination bottleneck.
 
+**Role-aware (T-08):** identical per-role fill rules as §7.6, applied in both the
+regional spoke greedy and the hub overflow path. When both sides declare the
+*same* role the overflow path falls back to a single shared stream (A takes the
+first `size_a`, B the next `size_b`) so no player is assigned twice.
+Role-less regions keep the counts-only behavior.
+
 ```rust
 // crates/matchlab-matchmaking/src/hub_spoke.rs
 
@@ -2064,11 +2150,13 @@ impl Matchmaker for HubSpokeMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
         let mut matches = Vec::new();
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
 
         // Partition queue by region
         let mut by_region: std::collections::HashMap<_, Vec<_>> =
@@ -2082,7 +2170,7 @@ impl Matchmaker for HubSpokeMatchmaker {
                 // If under capacity, delegate to the regional spoke
                 if entries.len() <= self.spoke_capacity {
                     let sub_queue = Queue::from_entries(entries.clone());
-                    matches.extend(spoke.find_matches(&sub_queue, world, team_size, now, rng));
+                    matches.extend(spoke.find_matches(&sub_queue, world, teams, now, rng));
                 }
                 // Otherwise spill over: the hub forms matches directly for the
                 // overflow (longest-waiting first) using the batch greedy path.
@@ -2092,9 +2180,9 @@ impl Matchmaker for HubSpokeMatchmaker {
                     let mut team_a: Vec<_> = Vec::new();
                     let mut team_b: Vec<_> = Vec::new();
                     for entry in overflow {
-                        if team_a.len() < team_size {
+                        if team_a.len() < size_a {
                             team_a.push(entry.player_id);
-                        } else if team_b.len() < team_size {
+                        } else if team_b.len() < size_b {
                             team_b.push(entry.player_id);
                         } else {
                             matches.push(ProposedMatch {
@@ -3857,7 +3945,7 @@ experiment:
         initial_rating: 700
 
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -3998,7 +4086,11 @@ pub struct ArchetypeSpec {
     pub play_frequency: f64,
     pub session_length: f64,
     pub quit_probability: f64,
+    #[serde(default)]
     pub initial_rating: Option<f64>,
+    /// Optional role label (e.g. `killer` / `survivor`). Absent ⇒ "any" role.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4011,9 +4103,41 @@ pub enum DistributionSpec {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum TeamSpec {
+    Size(usize),
+    Detailed {
+        size: usize,
+        #[serde(default)]
+        role: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TeamSpecs {
+    pub a: TeamSpec,
+    pub b: TeamSpec,
+}
+
+impl Default for TeamSpecs {
+    fn default() -> Self {
+        TeamSpecs {
+            a: TeamSpec::Size(5),
+            b: TeamSpec::Size(5),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GameSpec {
-    pub team_size: usize,
+    #[serde(default)]
+    pub teams: TeamSpecs,
     pub script: String,
+    /// Optional periodic-skill gate: when absent, skills are static (v0.1
+    /// baseline); when set to `N`, the loop advances every online player's
+    /// reality skill every N seconds (spec §5.6).
+    #[serde(default)]
+    pub skill_update_interval_secs: Option<f64>,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -4129,7 +4253,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.01
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     outcome_model: logistic
     beta: 400.0
     noise: 0.05
@@ -5109,7 +5233,7 @@ experiment:
         initial_rating: 1000.0
 
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -5145,3 +5269,229 @@ experiment:
     plots: false
     report: false
 ```
+
+---
+
+## 18. Algorithmic Validation
+
+The simulation must be proven correct against situations where the theoretical
+answer is known, not merely self-consistent. The `matchlab-validation` crate
+(added in ticket T-01) provides analytical-baseline regression tests for the
+Lua-native systems. Its reference math is **test-side only**: nothing in it is
+wired into the simulation loop, and algorithms still live exclusively in Lua
+via plugins. When a test and a script disagree, the Lua script is the bug —
+the reference is never patched to match observed behavior.
+
+### 18.1 Elo Baselines (T-01)
+
+Three tests anchor Elo against theory:
+
+- **Win-rate convergence**: a two class population (skill 1500 vs 1000, both
+  starting at visible rating 1000) with player ids interleaved so the batch
+  matchmaker always pairs classes. With `beta = 400`, the logistic outcome
+  model's theoretical win probability is `1/(1+exp(-500/400)) ≈ 0.7773`; the
+  observed high-class win rate over ≥ 10k mixed matches must agree within
+  6σ of the binomial SE.
+- **Elo convergence**: a homogeneous population whose true skill is
+  `N(1000, 250)` sampled once, ratings cold-started at 1000. The
+  `rating_accuracy_by_time` bucket series must fall monotonically enough that
+  its final nonempty bucket is below 87% of its first (observed 199.8 → 163.1),
+  proving ratings genuinely learn ground truth rather than random-walking.
+- **Determinism**: two same-seed runs must produce byte-identical metrics,
+  match counts, and simulated time.
+
+The rate limiting factor on the convergence baselines is that the whole-run
+`rating_accuracy` mean is diluted by early (still-cold) samples; the honest
+signal is the time-bucketed series, which is what the test asserts.
+
+### 18.3 Match Quality Baselines (T-03)
+
+`match_quality = 1 − |avg_a − avg_b| / 400`, clamped to `[0, 1]`, computed from
+observations only. The validation crate pins it:
+
+- **Uniform**: an all-1200 population forms a batch match with quality exactly
+  `1.0` (fp tolerance).
+- **Two-level**: directly separated all-1000 vs all-1400 teams are exactly 400
+  apart → quality `0.0` (clamped lower bound); a 450-point gap still clamps at
+  `0.0`, never negative.
+- **Mixed multiset**: a fixed `[1000..1250]` multiset under the documented
+  alternate-assignment algorithm reproduces the closed-form `0.875`
+  (negative control: the uniform-average `1.0` is asserted *wrong*).
+- **Truth separation**: quality tracks visible rating even when the ground
+  truth `skill_vector` is wildly unbalanced — matchmaking reads observations
+  only, validated as a property of the quality function itself.
+
+### 18.4 Queue Wait Baselines (T-03)
+
+- **Exact ticks**: `Queue::waiting_time(now)` equals `now − joined_at` exactly
+  in tick arithmetic.
+- **Saturating boundary**: `now < joined_at` reads `ZERO`, not a wrapper (the
+  suite fails if `duration_since` reverts to `wrapping_sub`).
+- **Arrival tape**: a fixed-interval tape under batch 1v1 produces
+  analytic waits — match `k` pairs the two oldest players and every formed
+  match's max wait is exactly `Δt`.
+
+### 18.2 Posterior Rating Baselines (T-02)
+
+The Glicko-2 and TrueSkill scripts are anchored against independent math
+(reference implementations in `matchlab-validation/src/reference/`, test-side
+only). Script-vs-reference comparisons use 1e-6 relative tolerance on rating,
+RD/RD-equivalent σ, and volatility. Because `glicko2.lua` and `trueskill.lua`
+only assign per-team uniform outcomes, every multi-opponent Glicko period in
+the tests is driven as a sequence of single-game periods; the reference applies
+the same serialization so every step is compared exactly.
+
+**Glicko-2 (Glickman 2012, eqs 1–10; `SCALE = 173.7178`, center 1500):**
+
+- **Worked example**: the paper's three-opponent period is decomposed into
+  three sequential games (1500 beats 1400/30, loses 1550/100, loses 1700/300)
+  with the solo player always on team A (`winner == Team::B` is the loss). Each
+  step must match the reference at 1e-6; the final values land at
+  1464.06/151.52/0.05999 within the loose legacy bound (serialized single-game
+  periods differ from one multi-opponent period by ~0.27 rating points, so the
+  tight assertion is per-step).
+- **Idle volatility growth**: a two-period chain whose first period is idle —
+  periods without games grow RD by exactly `σ*172800` (σ as Glicko-units/sec)
+  — is passed to the script; the growth must reproduce the reference's
+  `idle_step` exactly.
+- **8-opponent period**: a dense, mixed-outcome period stays on the Newton
+  volatility loop and keeps all three outputs (r, RD, σ) stable and matching.
+- **Negative control**: a deliberately perturbed reference (crude `epsilon`
+  that flips the volatility iteration's safeguard off) must diverge from both
+  the script and the correct reference by >1e-5 relative, proving the
+  comparison actually has teeth.
+
+**TrueSkill (1v1 truncated-Gaussian conditioning, mirroring `trueskill.lua`):**
+
+- **Win/loss posteriors**: symmetric 1500-vs-1500 win and loss, and an
+  asymmetric 1500-vs-1000 game preserving ordering and widening the gap.
+- **Draw margin**: `draw_probability > 0` engages the margin math — u > 0 makes
+  the win update larger (a draw possibility makes a decisive win more
+  informative), and the script must diverge from the no-margin values while
+  agreeing with the reference at 1e-6.
+- **Draw posterior**: `trueskill.lua` has no draw outcome path (winner is
+  always A or B), so the equal-shrinkage draw posterior is reference-only —
+  equal ratings keep μ and shrink both σ (beta 100 / sigma 100 / draw 0.5 give
+  ~11% shrinkage); the numbers are documented for a future draw-capable
+  outcome variable to hit.
+
+### 18.5 Feedback-Loop Baselines (T-04)
+
+The feedback loop is the coupled system this framework exists to study: the
+matchmaker forms matches from ratings, the rating system learns from those
+matches, and the updated ratings shape the next round of formation. The
+`experiments/feedback_loop/` directory pins the `rating × matchmaker` grid —
+nine cells (`elo|glicko2|trueskill` × `random|strict|expanding_window`) on a
+single inherited base (same population, seed, duration, and
+`rating_accuracy`/`match_quality`/`queue_time` metrics, all crossing the
+logistic game). Because each rating system feeds different ratings back into
+the same matchmaker, the formed matches differ across cells even for an
+identical seed — that divergence *is* the measured feedback effect.
+
+**Validation:**
+
+- `random.lua` matchmaker draws `size_a + size_b` players uniformly via
+  `matchlab.rng_range` with no rating balancing; its
+  `random_forms_full_matches_deterministically` test proves same-seed runs form
+  the identical composition, every player is used exactly once, and a different
+  seed draws a different one.
+- `factorial_hand_derives_feedback_loop_cells` proves `FactorialDesign`
+  generates the exact same nine cells from a base config (rating name ×
+  matchmaking script), so the hand-written manifests and the documented
+  factorial mechanism cannot drift apart.
+- `matchlab compare results/feedback_*.json` reads the exported results
+  (`ExperimentResult` is now `Deserialize`) into a side-by-side comparison
+  report; the JSON round-trip test preserves every `MetricResult` variant.
+
+**Trueskill robustness (found by this grid):** the `trueskill_random` cell
+exposed a stack overflow — under extreme compositions an upset makes
+`1 − Φ(alpha)` round to zero, driving `v = pdf/0 → ∞`, ratings to `inf`, and
+`inf − inf → NaN` inside `normal_cdf`'s negative-arm recursion. The script now
+floors both truncated-Gaussian denominators (`max(·, 1e-15)`), capping the
+factors exactly like `loss_factors` already did, and clamps negative posterior
+variance to 0 before `sqrt` (the reference's convention). The floor only
+engages past ~7σ, so every T-02 script-vs-reference case is untouched.
+
+**Recorded numbers** (2000-player standard population, 50k matches, seed 42;
+MAE = `rating_accuracy` mean, Q = `match_quality` mean, QT = `queue_time` mean):
+
+| cell | MAE | Q | QT (s) | sim time (s) |
+|------|-----|-----|--------|--------------|
+| elo × random | 139.5 | 0.661 | 5.05 | 459653 |
+| elo × strict | 153.3 | 0.973 | 54.95 | 473243 |
+| elo × expanding | 153.1 | 0.907 | 18.63 | 464113 |
+| glicko2 × random | 208.4 | 0.886 | 5.05 | 459653 |
+| glicko2 × strict | 399.5 | 0.972 | 108.63 | 486783 |
+| glicko2 × expanding | 283.5 | 0.901 | 18.48 | 464063 |
+| trueskill × random | 417.1 | 0.374 | 5.05 | 459653 |
+| trueskill × strict | 237.3 | 0.972 | 76.19 | 478863 |
+| trueskill × expanding | 231.7 | 0.891 | 21.17 | 464733 |
+
+Headline: quality-vs-wait tradeoff is real (strict ≈0.97 Q costs 55–109s
+wait vs random's 5s), and the systems diverge under it — elo is near-flat
+across matchmakers (139–153 MAE) while glicko2/trueskill degrade sharply under
+random/early matching, with trueskill's divergent ratings feeding back into
+0.374-Q random pairings. These values are deterministic regression pins for
+seed 42.
+
+### 18.6 Dynamic-Skill Baselines (T-05)
+
+`skill_update_interval_secs` (spec §5.6) makes skill an evolving process: a
+periodic `SkillChangeEvent` advances every online player's reality skill by
+`μ` per interval. The `crates/matchlab-validation/tests/dynamic_skill.rs`
+baselines drive the loop directly on a mixed population (half `improving`
+archetype with linear drift `k`, half `stable` with none, all starting at
+visible rating = true skill = 1000, elo + logistic(noise 0) + batch):
+
+- **Exact trajectory.** Run 40s at interval 1s, `k=2`: every improver (the
+  contiguous id range `0..size/2` assigned by the generator) sits exactly at
+  `S0 + k·t = 1080` and every stable player at `1000`. Because `volatility=0`
+  there is no noise term, so the trajectory is exactly the clock-checked
+  `S(t) = S0 + k·t` the ticket requires.
+- **Response.** Over two days of sim time with `k=3/s`, improver ratings rise
+  above `S0` and stable ratings fall below it: Elo redistributes the pool as
+  the improvers pull away. The rating does *not* keep pace with a
+  continuously-moving target (matches resolve only every ~1800s), so
+  `lag = skill − rating` grows rather than shrinks — a *measured* result
+  recorded in spec §5.6, not a pass/fail assertion. The exact trajectory plus
+  the response direction (improver-up, stable-down) are the regression pins.
+- **Determinism.** Same-seed runs leave every player's skill and rating
+  byte-identical on both paths.
+- **Static negative control.** With `improvement_rate` set but *no*
+  `skill_update_interval_secs`, no drift occurs: the flag alone gates
+  dynamism, proving v0.1 (and any manifest without the field) is untouched.
+  `GameSpec.skill_update_interval_secs` defaults to `None` via serde, so the
+  `v0_1_basic` manifest remains byte-identical without a manifest change.
+
+### 18.7 XvY 1v4 Role Baselines (T-09)
+
+`experiments/dbd_1v4.yaml` is a Dead-by-Daylight-style asymmetric manifest:
+killer archetype (role `killer`, 18% of population, N(1250, 250)) vs survivor
+archetype (role `survivor`, 82%, N(1000, 100)), game teams
+`{ a: { size: 1, role: killer }, b: { size: 4, role: survivor } }`,
+batch matchmaker, elo. It exercises the T-08 role-aware formation path on an
+asymmetric composition and terminates fast in CI (wall-time ≈ 1 s for ≈ 600
+completed matches over 7200 s sim time — killer scarcity caps throughput).
+
+`crates/matchlab-validation/tests/xvy.rs` proves correctness analytically:
+
+- **Quality on unequal sizes**: uniform 1000-rated killers + survivors form
+  two role-gated matches with quality exactly `1.0` (fp tolerance). A
+  known-gap population (killers 1500, survivors 1400) produces exactly
+  `1 − |1500 − 1400| / 400 = 0.75` per match — the closed-form formula
+  survives the team-size asymmetry.
+- **Role-composition guard**: a test-side `RoleCompositionGuard` collector
+  registers on a live `build_loop` run (220 players, 1v4 role teams) and
+  asserts *every* formed match is exactly one killer + four survivors,
+  proving the role path fires and the counts-only fallback never slips.
+- **Role-stall (scarcity invariant)**: a killer-only population under the
+  same 1v4 role composition stalls — zero matches formed/completed, queue
+  non-empty. Role gating is what produces the scarcity.
+- **Determinism**: two same-seed `ExperimentRunner::run` calls on the
+  `dbd_1v4.yaml` manifest produce identical metrics and match counts.
+
+The acceptance logs for this manifest are: ≥ 600 completed matches,
+mean queue time < 1 s (p90 < 15 s with the 20% killer pool), mean quality ≈
+0.48 (the natural gap between killer initial rating 1200 and survivor rating
+1000 gives `1 − 200/400 = 0.50`, diluted slightly by in-flight convergence),
+rating_accuracy mean ≈ 100 MAE.

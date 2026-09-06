@@ -3,9 +3,12 @@ pub mod machine;
 pub use machine::{
     LoopConfig, MachineState, handle_detection_check, handle_match_end, handle_match_formed,
     handle_match_timer, handle_player_join, handle_player_queue, handle_ranking_update,
+    handle_skill_change,
 };
 use matchlab_adversarial::agent::AdversarialAgent;
-use matchlab_core::event::{EventEngine, EventKind, MatchTimerEvent, PlayerJoinEvent};
+use matchlab_core::event::{
+    EventEngine, EventKind, MatchTimerEvent, PlayerJoinEvent, SkillChangeEvent,
+};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -101,6 +104,15 @@ impl MatchLoop {
 
         let s = Arc::clone(&state);
         engine.register_handler(
+            EventKind::SkillChange,
+            Box::new(move |world, event| {
+                let mut st = s.lock().unwrap();
+                handle_skill_change(world, event, &mut st)
+            }),
+        );
+
+        let s = Arc::clone(&state);
+        engine.register_handler(
             EventKind::MatchTimer,
             Box::new(move |world, event| {
                 let mut st = s.lock().unwrap();
@@ -173,6 +185,10 @@ impl MatchLoop {
         self.engine.schedule(Box::new(MatchTimerEvent {
             time: batch_interval,
         }));
+        if let Some(interval) = self.state.lock().unwrap().skill_update_interval() {
+            self.engine
+                .schedule(Box::new(SkillChangeEvent { time: interval }));
+        }
     }
 
     pub fn run(&mut self) {

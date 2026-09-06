@@ -153,6 +153,7 @@ version = "0.1.0"
 dependencies = [
  "matchlab-analysis",
  "matchlab-experiments",
+ "serde_json",
 ]
 
 [[package]]
@@ -323,6 +324,21 @@ dependencies = [
  "matchlab-lua",
  "mlua",
  "serde",
+ "serde_yaml",
+]
+
+[[package]]
+name = "matchlab-validation"
+version = "0.1.0"
+dependencies = [
+ "matchlab-core",
+ "matchlab-experiments",
+ "matchlab-game",
+ "matchlab-loop",
+ "matchlab-matchmaking",
+ "matchlab-metrics",
+ "matchlab-players",
+ "matchlab-rating",
  "serde_yaml",
 ]
 

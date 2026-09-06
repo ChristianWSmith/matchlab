@@ -47,7 +47,37 @@ pub struct PlayerPerformance {
     pub variance: f64,
 }
 
-#[derive(Debug, Clone)]
-pub struct MatchConfig {
-    pub team_size: usize,
+/// Team sizes (and optional role labels) for an XvY match composition. Roles
+/// are enforced by role-aware matchmakers (T-08); a `None` role means "any".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamComposition {
+    pub team_size_a: usize,
+    pub team_size_b: usize,
+    pub role_a: Option<String>,
+    pub role_b: Option<String>,
+}
+
+impl Default for TeamComposition {
+    fn default() -> Self {
+        TeamComposition {
+            team_size_a: 5,
+            team_size_b: 5,
+            role_a: None,
+            role_b: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn team_composition_default_is_5v5_with_no_roles() {
+        let t = TeamComposition::default();
+        assert_eq!(t.team_size_a, 5);
+        assert_eq!(t.team_size_b, 5);
+        assert_eq!(t.role_a, None);
+        assert_eq!(t.role_b, None);
+    }
 }

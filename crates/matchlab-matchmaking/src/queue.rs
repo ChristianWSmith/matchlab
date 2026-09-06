@@ -97,6 +97,7 @@ mod tests {
                 game_mode: "ranked".to_string(),
                 skill_vector: SkillVector::one_dimensional(rating),
                 detection_flags: Vec::new(),
+                role: None,
             },
             region: Region::NA,
             party_id: None,
