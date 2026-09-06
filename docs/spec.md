@@ -5180,6 +5180,33 @@ The rate limiting factor on the convergence baselines is that the whole-run
 `rating_accuracy` mean is diluted by early (still-cold) samples; the honest
 signal is the time-bucketed series, which is what the test asserts.
 
+### 18.3 Match Quality Baselines (T-03)
+
+`match_quality = 1 − |avg_a − avg_b| / 400`, clamped to `[0, 1]`, computed from
+observations only. The validation crate pins it:
+
+- **Uniform**: an all-1200 population forms a batch match with quality exactly
+  `1.0` (fp tolerance).
+- **Two-level**: directly separated all-1000 vs all-1400 teams are exactly 400
+  apart → quality `0.0` (clamped lower bound); a 450-point gap still clamps at
+  `0.0`, never negative.
+- **Mixed multiset**: a fixed `[1000..1250]` multiset under the documented
+  alternate-assignment algorithm reproduces the closed-form `0.875`
+  (negative control: the uniform-average `1.0` is asserted *wrong*).
+- **Truth separation**: quality tracks visible rating even when the ground
+  truth `skill_vector` is wildly unbalanced — matchmaking reads observations
+  only, validated as a property of the quality function itself.
+
+### 18.4 Queue Wait Baselines (T-03)
+
+- **Exact ticks**: `Queue::waiting_time(now)` equals `now − joined_at` exactly
+  in tick arithmetic.
+- **Saturating boundary**: `now < joined_at` reads `ZERO`, not a wrapper (the
+  suite fails if `duration_since` reverts to `wrapping_sub`).
+- **Arrival tape**: a fixed-interval tape under batch/team_size-1 produces
+  analytic waits — match `k` pairs the two oldest players and every formed
+  match's max wait is exactly `Δt`.
+
 ### 18.2 Posterior Rating Baselines (T-02)
 
 The Glicko-2 and TrueSkill scripts are anchored against independent math

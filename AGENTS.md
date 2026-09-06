@@ -744,6 +744,20 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   Both test files drive the script through a `match_result(vec![player], ids,
   winner)` with the solo player always on team A, so `winner == Team::B` means
   the player lost.
+- `tests/matchmaking.rs` (ticket T-03) — match-quality baselines through the
+  `LuaMatchmaker` + `Queue`: uniform 1200 population forms a match with
+  quality exactly `1.0`; directly-separated all-1000 vs all-1400 teams clamp at
+  exactly `0.0` (and never go negative past the clamp); a fixed multiset
+  `[1000..1250]` reproduces the alternate-assignment analytic quality `0.875`
+  (with a negative control proving the uniform-average value `1.0` is
+  rejected); and a truth-separation guard proves quality tracks the visible
+  rating, never the ground-truth `skill_vector`.
+- `tests/queue.rs` (ticket T-03) — wait-time baselines: exact-tick saturated
+  waits (`now − joined_at` in `ticks()`), the saturating boundary when
+  `now < joined_at` (reverting `duration_since` to `wrapping_sub` makes the
+  suite fail — asserted locally), and a fixed-interval arrival tape under
+  batch/team_size 1 producing analytic per-match waits (exactly `Δt` for
+  every formed match, pairing oldest-unmatched players).
 - The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
   0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
   outcomes when configured; RNG behavior is unchanged for `noise > 0`, so

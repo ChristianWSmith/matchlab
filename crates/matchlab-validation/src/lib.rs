@@ -12,19 +12,65 @@
 
 pub mod reference;
 
-use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
+use matchlab_core::player::{
+    PlayerId, PlayerObservation, PlayerReality, Region, SkillVector, VisibleRank,
+};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_experiments::config::ExperimentConfig;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
 use matchlab_matchmaking::lua::LuaMatchmaker;
+use matchlab_matchmaking::queue::QueueEntry;
 use matchlab_metrics::MetricResult;
 use matchlab_metrics::engine::MetricsEngine;
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
 use matchlab_rating::registry;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+
+/// Build a full `PlayerObservation` with a given visible rating (hidden_mmr and
+/// skill_vector aligned with rating, so callers that need a rating≠skill
+/// mismatch mutate `skill_vector` afterwards).
+pub fn observation(id: u64, rating: f64) -> PlayerObservation {
+    PlayerObservation {
+        id: PlayerId(id),
+        rating,
+        hidden_mmr: rating,
+        visible_rank: VisibleRank {
+            tier: "unranked".into(),
+            division: 1,
+        },
+        rating_deviation: 350.0,
+        volatility: 0.06,
+        games_played: 0,
+        win_rate: 0.5,
+        recent_performances: Vec::new(),
+        queue_joined_at: None,
+        is_online: true,
+        party_id: None,
+        session_history: VecDeque::new(),
+        quit_history: VecDeque::new(),
+        tilt_level: 0.0,
+        game_mode: "ranked".into(),
+        skill_vector: SkillVector::one_dimensional(rating),
+        detection_flags: Vec::new(),
+    }
+}
+
+/// Build a `QueueEntry` with the given join timestamp and visible rating.
+pub fn queue_entry(id: u64, joined_at: SimTime, rating: f64) -> QueueEntry {
+    QueueEntry {
+        player_id: PlayerId(id),
+        joined_at,
+        observation: observation(id, rating),
+        region: Region::NA,
+        party_id: None,
+        game_mode: "ranked".to_string(),
+        role: None,
+        latency_ms: 30.0,
+    }
+}
 
 /// Logistic win probability for a skill difference (the outcome model's
 /// natural scale, `exp`, not the log10 Elo scale).
