@@ -1,5 +1,7 @@
 use matchlab_adversarial::agent::AdversarialAgent;
-use matchlab_core::event::{MatchEndEvent, MatchFormedEvent, MatchTimerEvent, downcast};
+use matchlab_core::event::{
+    MatchEndEvent, MatchFormedEvent, MatchTimerEvent, SkillChangeEvent, downcast,
+};
 use matchlab_core::match_::{MatchId, MatchResult, MatchState};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
 use matchlab_core::rng::SimRng;
@@ -10,6 +12,7 @@ use matchlab_game::outcome::OutcomeModel;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
 use matchlab_metrics::MetricsEngine;
+use matchlab_players::skill::SkillProcess;
 use matchlab_ranking::ranker::RankMapper;
 use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
@@ -23,6 +26,7 @@ pub struct LoopConfig {
     pub batch_interval_ticks: u64,
     pub rejoin_delay: SimTime,
     pub max_matches: u64,
+    pub skill_update_interval: Option<SimTime>,
 }
 
 /// Retention threshold below which a player quits instead of re-queuing
@@ -44,6 +48,7 @@ pub struct MachineState {
     batch_interval: SimTime,
     rejoin_delay: SimTime,
     max_matches: u64,
+    skill_update_interval: Option<SimTime>,
     pub detection_system: Option<Box<dyn DetectionSystem>>,
     pub ranker: Option<Box<dyn RankMapper>>,
     pub adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
@@ -107,6 +112,7 @@ impl MachineState {
             batch_interval,
             rejoin_delay: config.rejoin_delay,
             max_matches: config.max_matches,
+            skill_update_interval: config.skill_update_interval,
             detection_system,
             ranker,
             adversarial_agents,
@@ -122,6 +128,10 @@ impl MachineState {
 
     pub fn matches_formed(&self) -> u64 {
         self.matches_formed
+    }
+
+    pub fn skill_update_interval(&self) -> Option<SimTime> {
+        self.skill_update_interval
     }
 }
 
@@ -172,6 +182,45 @@ pub fn handle_player_queue(
         state.queue.enqueue(entry);
     }
     Vec::new()
+}
+
+pub fn handle_skill_change(
+    world: &mut World,
+    event: &dyn matchlab_core::event::Event,
+    state: &mut MachineState,
+) -> Vec<Box<dyn matchlab_core::event::Event>> {
+    let _evt = downcast::<SkillChangeEvent>(event);
+    let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
+
+    let mut ids: Vec<PlayerId> = world.players.keys().cloned().collect();
+    ids.sort_by_key(|pid| pid.0);
+    for pid in ids {
+        let Some(reality) = world.players.get(&pid) else {
+            continue;
+        };
+        if !reality.is_online {
+            continue;
+        }
+        let process = SkillProcess {
+            improvement_rate: reality.improvement_rate,
+            volatility: reality.skill_volatility,
+        };
+        if let Some(r) = world.players.get_mut(&pid) {
+            r.skill = process.advance(&r.skill, &mut world.rng);
+        }
+        if let Some(o) = world.observations.get_mut(&pid) {
+            let skill = world.players[&pid].skill.clone();
+            o.skill_vector = skill.clone();
+            o.hidden_mmr = skill.overall();
+        }
+    }
+
+    if let Some(interval) = state.skill_update_interval {
+        out.push(Box::new(SkillChangeEvent {
+            time: SimTime(world.time.0 + interval.0),
+        }));
+    }
+    out
 }
 
 pub fn handle_match_timer(
@@ -577,6 +626,7 @@ mod tests {
                 batch_interval_ticks: 10,
                 rejoin_delay: SimTime::from_secs(60.0),
                 max_matches: 100,
+                skill_update_interval: None,
             },
         )
     }
@@ -781,6 +831,7 @@ mod tests {
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
+            skill_update_interval: None,
         };
         let mut loop_a = MatchLoop::new(
             pop.clone(),
@@ -842,6 +893,7 @@ mod tests {
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
+            skill_update_interval: None,
         };
 
         let build = |pop: Vec<(PlayerReality, PlayerObservation)>, cfg: LoopConfig| {
@@ -916,6 +968,7 @@ mod tests {
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 20,
+            skill_update_interval: None,
         };
         let mut loop_a = MatchLoop::new(
             pop,

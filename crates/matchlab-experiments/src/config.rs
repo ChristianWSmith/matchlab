@@ -76,6 +76,11 @@ pub struct GameSpec {
     /// Path to the Lua outcome-model script (e.g. plugins/game/logistic.lua).
     #[serde(default = "default_outcome_script")]
     pub script: String,
+    /// When set, a periodic SkillChangeEvent advances every online player's
+    /// reality skill every this-many-seconds (dynamic-skill mode). Absent ⇒
+    /// v0.1 static behavior.
+    #[serde(default)]
+    pub skill_update_interval_secs: Option<f64>,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -287,6 +292,10 @@ experiment:
         assert_eq!(config.experiment.population.archetypes.len(), 1);
         assert_eq!(config.experiment.game.team_size, 5);
         assert_eq!(
+            config.experiment.game.skill_update_interval_secs, None,
+            "absent skill_update_interval_secs must default to None (static skill)"
+        );
+        assert_eq!(
             config.experiment.matchmaking.script,
             "plugins/matchmaking/batch.lua"
         );
@@ -367,6 +376,64 @@ experiment:
         let reparsed: ExperimentConfig = serde_yaml::from_str(&text).unwrap();
         assert_eq!(reparsed.experiment.name, "x");
         assert_eq!(reparsed.experiment.population.size, 10);
+    }
+
+    #[test]
+    fn game_spec_parses_optional_skill_update_interval() {
+        let with_interval = r#"
+experiment:
+  name: dyn
+  seed: 1
+  population:
+    size: 10
+    seed: 1
+    archetypes:
+      - name: a
+        proportion: 1.0
+        skill_distribution: { type: normal, mean: 1000, stddev: 250 }
+        skill_volatility: 0.0
+        improvement_rate: 2.0
+        play_frequency: 0.8
+        session_length: 1800.0
+        quit_probability: 0.0
+  game:
+    team_size: 1
+    script: plugins/game/logistic.lua
+    skill_update_interval_secs: 1.0
+    beta: 400.0
+    noise: 0.05
+  matchmaking:
+    script: plugins/matchmaking/batch.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0
+  metrics: [match_quality]
+  cohorts: []
+  duration:
+    matches: 10
+    max_time: 1000.0
+  output:
+    directory: results/
+    formats: [json]
+    plots: false
+    report: false
+"#;
+        let config: ExperimentConfig = serde_yaml::from_str(with_interval).unwrap();
+        assert_eq!(config.experiment.game.skill_update_interval_secs, Some(1.0));
+        assert_eq!(
+            config
+                .experiment
+                .game
+                .params
+                .get("skill_update_interval_secs"),
+            None,
+            "the interval must bind to the typed field, not the flattened params"
+        );
     }
 
     #[test]

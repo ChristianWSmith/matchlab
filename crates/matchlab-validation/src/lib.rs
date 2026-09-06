@@ -323,6 +323,7 @@ pub fn run_loop(
         batch_interval_ticks: 10,
         rejoin_delay: SimTime::from_secs(30.0),
         max_matches,
+        skill_update_interval: None,
     };
     let mut loop_ = MatchLoop::new(
         population,

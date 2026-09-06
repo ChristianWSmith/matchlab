@@ -234,9 +234,14 @@ crates/
   optional `initial_rating` overrides visible rating while true skill stays
   sampled — the seed of the smurf-like mismatch; no boolean smurf flag exists.
 - `skill.rs` — `SkillProcess { improvement_rate, volatility }` with
-  `advance(&SkillVector, &mut SimRng)`. v0.1 uses **static** skill: with
-  `improvement_rate=0, volatility=0` `advance` is the identity (no-op), so the
-  population is generated once at `t=0` and never changes.
+  `advance(&SkillVector, &mut SimRng)` (one time step per dimension:
+  `val + improvement_rate + N(0, volatility)`, floored at 0). Skills are
+  **static** by default — the population is generated once at `t=0` and never
+  changes — and dynamic only when an experiment sets
+  `game.skill_update_interval_secs`: the loop's periodic `SkillChangeEvent`
+  then advances every *online* player's reality skill each interval. With
+  `improvement_rate=0, volatility=0` `advance` is the identity (no-op), the
+  v0.1 baseline.
 - `population.rs` — `PopulationConfig { size, archetypes }` and
   `PopulationGenerator::generate(config, rng) -> (Vec<PlayerReality>,
   Vec<PlayerObservation>)`. Each player is drawn from its archetype's
@@ -392,7 +397,7 @@ crates/
 
 **`matchlab-loop` is implemented with the event-handler machine:**
 - `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
-  max_matches }` and `MachineState { population: HashMap<PlayerId,
+  max_matches, skill_update_interval: Option<SimTime> }` and `MachineState { population: HashMap<PlayerId,
   (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
   MatchResult>, matches_completed, matches_formed, pub metrics: MetricsEngine,
   rating_system, outcome_model, matchmaker }`. The `handle_*` functions are
@@ -408,6 +413,13 @@ crates/
     the remaining `max_matches − matches_formed` budget (a formed match is an
     in-flight obligation, so over-capping on `matches_completed` would overshoot),
     emit one `MatchFormed` per proposal + re-schedule the next timer.
+  - `SkillChangeEvent` (periodic, only when `LoopConfig.skill_update_interval`
+    is set — dynamic skill) → for every *online* player, in ascending
+    `PlayerId` order, advance `reality.skill` via `SkillProcess` and refresh
+    `observation.skill_vector`/`hidden_mmr` from it, then re-schedule itself.
+    Only `PlayerReality.skill` mutates; ratings and matchmaking never read it
+    (truth separation). Offline players are skipped, so the exact
+    `S(t) = S0 + k·t` trajectory holds only for continuously-online players.
   - `MatchFormed` → simulate via the outcome model with `world.rng`,
     `metrics.record_match(&result, world)` (recorded at **formation** time —
     recording at MatchEnd made `queue_time` ≈ match duration, breaking the
@@ -493,7 +505,8 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   population/game/matchmaking/rating/detection/ranking/metrics/objectives/
   adversarial/satisfaction/cohorts/duration/output), `PopulationSpec`/
   `ArchetypeSpec`/`DistributionSpec`
-  (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params),
+  (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params,
+  plus `skill_update_interval_secs: Option<f64>` — absent ⇒ static skill),
   `MatchmakingSpec`
   (script + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
   with `RatingSystemSpec { name?, script?, params }` flatten, `DetectionSpec`,
@@ -774,6 +787,15 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   suite fail — asserted locally), and a fixed-interval arrival tape under
   batch/team_size 1 producing analytic per-match waits (exactly `Δt` for
   every formed match, pairing oldest-unmatched players).
+- `tests/dynamic_skill.rs` (ticket T-05) — dynamic-skill baselines: with
+  `skill_update_interval_secs` set, improvers sit at exactly `S0 + k·t` after
+  `t` seconds and stables never drift (exact trajectory); over two days of sim
+  time improver ratings rise above `S0` while stable ratings fall (Elo responds
+  to the drift), and `lag = skill − rating` grows — a measured result
+  documented in spec §5.6, since matches resolve too sparsely to chase a
+  continuous target; same-seed determinism leaves skills + ratings
+  byte-identical; and the negative control proves *no* interval flag ⇒ no
+  drift even with `improvement_rate` set.
 - The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
   0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
   outcomes when configured; RNG behavior is unchanged for `noise > 0`, so

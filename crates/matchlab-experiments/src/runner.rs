@@ -59,6 +59,11 @@ impl ExperimentRunner {
             batch_interval_ticks: batch_interval_secs(&config.experiment.matchmaking),
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: config.experiment.duration.matches,
+            skill_update_interval: config
+                .experiment
+                .game
+                .skill_update_interval_secs
+                .map(SimTime::from_secs),
         };
 
         let seed = seeds.population_seed;

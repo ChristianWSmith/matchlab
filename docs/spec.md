@@ -995,6 +995,20 @@ impl SkillProcess {
 }
 ```
 
+**Dynamism gate (T-05).** Skills are static by default: the population is
+generated once at `t=0` and `SkillProcess::advance` is never called (with
+`μ=0, σ=0` it is the identity, the v0.1 baseline). Skills become dynamic only
+when an experiment sets `game.skill_update_interval_secs`. The loop then
+schedules a periodic `SkillChangeEvent` every interval; on each tick it
+advances `reality.skill` for every *online* player, in ascending `PlayerId`
+order, and refreshes the observation's `skill_vector`/`hidden_mmr` binding so
+the outcome model keeps deciding matches from ground truth. Only
+`PlayerReality.skill` mutates — ratings and matchmaking never read it (truth
+separation) — and offline players are skipped, so the exact
+`S(t) = S0 + μ·t` trajectory holds for continuously-online players. Because
+`σ` noise is drawn through `world.rng`, dynamic-skill runs stay deterministic
+for a seed.
+
 ### 5.7 Player Archetypes
 
 ```rust
@@ -4014,6 +4028,11 @@ pub enum DistributionSpec {
 pub struct GameSpec {
     pub team_size: usize,
     pub script: String,
+    /// Optional periodic-skill gate: when absent, skills are static (v0.1
+    /// baseline); when set to `N`, the loop advances every online player's
+    /// reality skill every N seconds (spec §5.6).
+    #[serde(default)]
+    pub skill_update_interval_secs: Option<f64>,
     #[serde(flatten)]
     pub params: BTreeMap<String, serde_yaml::Value>,
 }
@@ -5309,3 +5328,32 @@ across matchmakers (139–153 MAE) while glicko2/trueskill degrade sharply under
 random/early matching, with trueskill's divergent ratings feeding back into
 0.374-Q random pairings. These values are deterministic regression pins for
 seed 42.
+
+### 18.6 Dynamic-Skill Baselines (T-05)
+
+`skill_update_interval_secs` (spec §5.6) makes skill an evolving process: a
+periodic `SkillChangeEvent` advances every online player's reality skill by
+`μ` per interval. The `crates/matchlab-validation/tests/dynamic_skill.rs`
+baselines drive the loop directly on a mixed population (half `improving`
+archetype with linear drift `k`, half `stable` with none, all starting at
+visible rating = true skill = 1000, elo + logistic(noise 0) + batch):
+
+- **Exact trajectory.** Run 40s at interval 1s, `k=2`: every improver (the
+  contiguous id range `0..size/2` assigned by the generator) sits exactly at
+  `S0 + k·t = 1080` and every stable player at `1000`. Because `volatility=0`
+  there is no noise term, so the trajectory is exactly the clock-checked
+  `S(t) = S0 + k·t` the ticket requires.
+- **Response.** Over two days of sim time with `k=3/s`, improver ratings rise
+  above `S0` and stable ratings fall below it: Elo redistributes the pool as
+  the improvers pull away. The rating does *not* keep pace with a
+  continuously-moving target (matches resolve only every ~1800s), so
+  `lag = skill − rating` grows rather than shrinks — a *measured* result
+  recorded in spec §5.6, not a pass/fail assertion. The exact trajectory plus
+  the response direction (improver-up, stable-down) are the regression pins.
+- **Determinism.** Same-seed runs leave every player's skill and rating
+  byte-identical on both paths.
+- **Static negative control.** With `improvement_rate` set but *no*
+  `skill_update_interval_secs`, no drift occurs: the flag alone gates
+  dynamism, proving v0.1 (and any manifest without the field) is untouched.
+  `GameSpec.skill_update_interval_secs` defaults to `None` via serde, so the
+  `v0_1_basic` manifest remains byte-identical without a manifest change.

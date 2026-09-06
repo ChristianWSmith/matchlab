@@ -1,9 +1,10 @@
 //! Skill as a stochastic process (spec §5.6).
 //!
-//! v0.1 uses static skill — the population is generated once at `t=0` and does
-//! not change. `advance()` is implemented per the spec so later versions can
-//! enable skill evolution; with `improvement_rate=0` and `volatility=0` it is
-//! the identity (a no-op), which is the v0.1 baseline.
+//! Skills are static by default (the population is generated once at `t=0`).
+//! When an experiment sets `skill_update_interval_secs` the loop advances every
+//! online player's reality skill periodically via `advance()`. With
+//! `improvement_rate=0` and `volatility=0` it is the identity (a no-op), the
+//! v0.1 baseline.
 
 use matchlab_core::player::SkillVector;
 use matchlab_core::rng::SimRng;

@@ -102,6 +102,7 @@ mod tests {
                 game: GameSpec {
                     team_size: 5,
                     script: "plugins/game/logistic.lua".to_string(),
+                    skill_update_interval_secs: None,
                     params: BTreeMap::new(),
                 },
                 matchmaking: MatchmakingSpec {
