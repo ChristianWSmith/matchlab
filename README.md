@@ -112,6 +112,7 @@ The experiment catalog that ships with the repo:
 | `matchmaker_comparison.yaml` | Expanding-window matchmaking |
 | `detection_test.yaml` | Smurf detection enabled |
 | `full_featured.yaml` | Everything on: fatigue, detection, ranks, adversarial agents, satisfaction, 12 metrics, objectives |
+| `dbd_1v4.yaml` | Dead-by-Daylight-style 1v4 asymmetric: role-gated killer vs survivors |
 | `novel_rating.yaml` | A rating system with *no Rust equivalent* (`decay_elo.lua`) and a custom metric (`avg_rating_gap.lua`) |
 
 ---
@@ -180,7 +181,7 @@ experiment:
     archetypes: [...]  # see below
 
   game:                # how matches are decided
-    team_size: 5
+    teams: { a: 5, b: 5 }  # XvY supported: { a: { size: 1, role: killer }, b: { size: 4, role: survivor } }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -268,6 +269,7 @@ population:
       session_length: 3600.0
       quit_probability: 0.002
       initial_rating: 700     # cold ladder start → looks like a newcomer
+      role: killer            # optional: gates team assignment in role-aware matchmakers
 ```
 
 Key mechanics:
@@ -327,6 +329,11 @@ win-probability computation.
 | `expanding_window.lua` | Matches within a skill window that **widens with queue wait**, via stepped tiers — the classic quality-vs-wait knob | `tiers` (`{max_secs, allowed_diff}`), `max_window` |
 | `strict.lua` | Only matches players within a fixed skill difference; outliers may wait indefinitely (intended) | `max_skill_diff` |
 | `hub_spoke.lua` | Partitions the queue by region; under-capacity regions match regionally, overflow falls to a longest-waiting hub | `spoke_capacity` |
+
+All four matchmakers are **role-aware**: when the manifest sets `teams.a.role`
+and `teams.b.role`, each side is filled exclusively from queue entries whose
+`role` matches. Roles unset (the default) means "any player fills any slot" —
+the legacy behavior. See `experiments/dbd_1v4.yaml` for a working example.
 
 ### Detection (`plugins/detection/`)
 
@@ -488,6 +495,26 @@ The only field that legitimately differs between identical runs is the
 
 ---
 
+## Comparing experiments
+
+Run two or more experiments, then compare them side-by-side:
+
+```bash
+cargo run -- run experiments/glicko_comparison.yaml
+cargo run -- run experiments/matchmaker_comparison.yaml
+cargo run -- compare results/glicko_comparison.json results/matchmaker_comparison.json
+```
+
+`matchlab compare` prints a Markdown table of per-metric differences and, when
+any result carries an `objectives:` utility score, ranks them by that score.
+Add `--json` to get the comparison as structured JSON instead.
+
+This is how controlled experiments work: inherit a base manifest, change one
+variable, run both, and compare. The metric table shows exactly what changed
+and by how much.
+
+---
+
 ## Project layout
 
 ```
@@ -511,6 +538,7 @@ crates/                   Rust crate workspace
   matchlab-loop/          the simulation loop (event handlers)
   matchlab-experiments/   manifest parsing, config inheritance, runner
   matchlab-analysis/      reports, cohorts, Pareto frontiers, comparison
+  matchlab-validation/    analytical-baseline regression tests (test-side only)
 ```
 
 ---
@@ -519,8 +547,10 @@ crates/                   Rust crate workspace
 
 - v0.1 models **1D static skill**; the `composition` outcome model and
   `dimensionality_fidelity` metric lay groundwork for multidimensional skill.
-- Regions exist (queue entries carry them) and `hub_spoke` uses them, but
-  latency/ping cost is a placeholder in the match objective.
+- Role-aware matchmaking supports one role per side (e.g. 1v4 DbD, out of
+  scope for the general case in v0.1).
+- Latency/ping cost is a placeholder in the match objective (regions exist
+  and `hub_spoke` partitions by them, but there is no real ping model).
 - Some search strategies for matchmaking (Hungarian, genetic, integer
   programming) are declared in the objective/searcher design but not yet
   implemented.
