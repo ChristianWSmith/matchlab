@@ -386,17 +386,31 @@ crates/
     alternation exactly). Adjacent-by-rating players land on
     opposite teams, so the two teams are balanced and `match_quality` stays
     ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
-    population, failing the quality exit criterion).
+    population, failing the quality exit criterion). **Role-aware (T-08):**
+    when `teams.a.role`/`teams.b.role` are set, team A is filled exclusively
+    from entries whose `role` matches `teams.a.role` and team B from the
+    `teams.b.role` pool (each pool sorted by rating, consumption alternated);
+    an entry matching neither waits. Both roles unset ⇒ the legacy single-queue
+    alternation runs **byte-identically** (pinned by the
+    `batch_roles_unset_is_byte_identical_regression` validation test).
   - `expanding_window.lua` — spec §7.6 with stepped tiers
     `[(max_secs, allowed_diff)]` (default 5s→25, 10s→50, 20s→100, 30s→200,
     fallback `max_window: 400`) — skills matched within a window that widens
-    with queue wait.
+    with queue wait. **Role-aware:** team A from the `teams.a.role` pool, team B
+    from `teams.b.role`, role-less pool per side when unset; no cross-pool
+    borrowing. When a pool can't fill its side, those players wait (stall —
+    intended for strict/sparse roles).
   - `strict.lua` — spec §7.7: only matches players within a fixed skill diff;
-    outliers may wait indefinitely (intended "strict" behavior).
+    outliers may wait indefinitely (intended "strict" behavior). **Role-aware:**
+    same per-role fill rules as expanding_window; a role-starved side simply
+    waits like a skill outlier.
   - `hub_spoke.lua` — spec §7.9: partitions the queue by region (sorted region
     keys for determinism); under-capacity regions use an inlined regional
     greedy (no nested matchmakers in Lua), overflow regions fall to the hub
-    path (longest-waiting first).
+    path (longest-waiting first). **Role-aware:** both paths fill per-side by
+    role; when both sides declare the *same* role the hub overflow uses one
+    shared stream (A takes `size_a`, B the next `size_b`) so nobody is assigned
+    twice.
   - `random.lua` — uniform-random formation for the feedback-loop comparison:
     draws `size_a + size_b` players at random from the queue (via
     `matchlab.rng_range`, so it is deterministic per seed) with no rating
@@ -410,7 +424,10 @@ crates/
   with three implementations: `GreedySearch` (nearest-by-rating fill),
   `RandomSamplingSearch { samples }` (random compositions, keep best by
   objective), and `BeamSearch { width }` (partial assignments expanded and
-  truncated to `width`). NearestNeighbor/Hungarian/Genetic/IntegerProgramming/
+  truncated to `width`). All take `&TeamComposition` (per-side `team_size_a`/
+  `team_size_b`; equal sizes preserve the legacy `team_size` behavior exactly —
+  the role fields are carried for signature parity, role filtering happens at
+  the script/queue level). NearestNeighbor/Hungarian/Genetic/IntegerProgramming/
   SimulatedAnnealing are declared in `SearchStrategyKind` but not implemented.
 
 **`matchlab-loop` is implemented with the event-handler machine:**

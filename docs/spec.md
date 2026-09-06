@@ -1787,6 +1787,7 @@ The matchmaker can use different strategies to explore the space of candidate ma
 ```rust
 // crates/matchlab-matchmaking/src/search.rs
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::rng::SimRng;
 use crate::matchmaker::ProposedMatch;
 use crate::objective::MatchObjective;
@@ -1798,7 +1799,7 @@ pub trait SearchStrategy: Send + Sync {
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -1815,6 +1816,12 @@ pub enum SearchStrategyKind {
     SimulatedAnnealing { initial_temp: f64, cooling_rate: f64 },
 }
 ```
+
+The strategies are public API but are **not wired into the loop** in v0.1 (the
+Lua scripts under `plugins/matchmaking/` are the active matchmakers). Equal team
+sizes reproduce the legacy single `team_size` behavior exactly; role labels are
+carried for signature parity but strategy-side role filtering is out of scope
+(roles are enforced at the script/queue level, §7.6–§7.9).
 
 **Greedy:** For each queue entry, find the best available teammates and opponents by objective score. Fast, but may produce suboptimal global assignments.
 
@@ -1833,6 +1840,16 @@ pub enum SearchStrategyKind {
 **Simulated Annealing:** Start with a random assignment, perturb neighbors, accept worse solutions with decreasing probability. Good balance of quality and speed.
 
 ### 7.6 Expanding Window Matchmaker
+
+**Role-aware (T-08):** team A is filled exclusively from queued entries whose
+`role` equals `teams.a.role` when that role is set; team B likewise. When a
+side's role is unset, that side accepts any queued player (counts-only
+behavior). An entry whose `role` matches neither side's role waits. A side is
+filled from exactly one role — multi-role sides are a later consideration
+(single-role-per-side limitation). Within a side's pool the existing window
+tightness is preserved. When a pool cannot fill its side, nothing is formed for
+it: those players remain queued and the match may stall until the pool is
+replenished (intended for strict/sparse roles).
 
 ```rust
 // crates/matchlab-matchmaking/src/expanding.rs
@@ -1934,6 +1951,11 @@ impl Matchmaker for ExpandingWindowMatchmaker {
 
 ### 7.7 Strict Matchmaker
 
+**Role-aware (T-08):** identical per-role fill rules as §7.6 — team A from the
+`teams.a.role` pool, team B from `teams.b.role`, a role-less pool per side when
+unset, and no borrowing across pools. Because strict already allows indefinite
+waits for skill outliers, a role-starved side simply waits.
+
 ```rust
 // crates/matchlab-matchmaking/src/strict.rs
 
@@ -2006,6 +2028,13 @@ impl Matchmaker for StrictMatchmaker {
 ```
 
 ### 7.8 Batch Matchmaker
+
+**Role-aware (T-08):** identical per-role fill rules as §7.6. In the shipped
+`plugins/matchmaking/batch.lua` the role-aware path sorts each role pool by
+rating (ties by join order) and alternates consumption between the two pools,
+so within a side the rating-balanced alternation is preserved. With both roles
+unset the script runs the legacy single-queue alternation **byte-identically**
+(pinned by the `batch_roles_unset_is_byte_identical_regression` test).
 
 ```rust
 // crates/matchlab-matchmaking/src/batch.rs
@@ -2093,6 +2122,12 @@ impl Matchmaker for BatchMatchmaker {
 ### 7.9 Hub-and-Spoke Matchmaker
 
 Decomposes matchmaking into a hub (global orchestrator) and spokes (regional matchmakers). The hub distributes overflow workloads to spokes and rebalances when a spoke is overloaded or under-populated. This models how real matchmaking systems handle scale without a single coordination bottleneck.
+
+**Role-aware (T-08):** identical per-role fill rules as §7.6, applied in both the
+regional spoke greedy and the hub overflow path. When both sides declare the
+*same* role the overflow path falls back to a single shared stream (A takes the
+first `size_a`, B the next `size_b`) so no player is assigned twice.
+Role-less regions keep the counts-only behavior.
 
 ```rust
 // crates/matchlab-matchmaking/src/hub_spoke.rs

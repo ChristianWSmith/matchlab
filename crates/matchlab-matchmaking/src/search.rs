@@ -1,3 +1,4 @@
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::world::World;
@@ -6,12 +7,16 @@ use crate::matchmaker::ProposedMatch;
 use crate::objective::MatchObjective;
 use crate::queue::QueueEntry;
 
+/// `teams` carries the per-side sizes (XvY) and optional role labels. Equal
+/// sizes reproduce the legacy single `team_size` behavior exactly; the role
+/// fields are not used by the current strategies (role filtering happens at
+/// queue/script level), but the signatures keep pace with the trait.
 pub trait SearchStrategy: Send + Sync {
     fn search(
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -72,10 +77,12 @@ impl SearchStrategy for GreedySearch {
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         let mut used = Vec::new();
         let mut matches = Vec::new();
 
@@ -88,11 +95,12 @@ impl SearchStrategy for GreedySearch {
             let mut team_b: Vec<PlayerId> = Vec::new();
             let mut anchor_rating = anchor.observation.rating;
 
-            while team_a.len() < team_size || team_b.len() < team_size {
-                let avail = queue.iter();
-                if team_a.len() <= team_b.len() {
+            while team_a.len() < size_a || team_b.len() < size_b {
+                let take_a = team_a.len() < size_a
+                    && (team_a.len() <= team_b.len() || team_b.len() == size_b);
+                if take_a {
                     if let Some(pick) =
-                        GreedySearch::pick_nearest(anchor_rating, avail.clone(), &mut used)
+                        GreedySearch::pick_nearest(anchor_rating, queue.iter(), &mut used)
                     {
                         team_a.push(pick.player_id);
                         anchor_rating = team_a.iter().fold(0.0, |acc, p| {
@@ -110,7 +118,7 @@ impl SearchStrategy for GreedySearch {
                 }
             }
 
-            if team_a.len() == team_size && team_b.len() == team_size {
+            if team_a.len() == size_a && team_b.len() == size_b {
                 let quality = ProposedMatch::match_quality(&team_a, &team_b, world);
                 matches.push(ProposedMatch {
                     team_a,
@@ -136,10 +144,13 @@ impl SearchStrategy for RandomSamplingSearch {
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
+        let total = size_a + size_b;
         let mut matches = Vec::new();
         let mut used = Vec::new();
 
@@ -159,22 +170,22 @@ impl SearchStrategy for RandomSamplingSearch {
                     .map(|e| e.player_id)
                     .filter(|pid| !used.contains(pid) && *pid != anchor.player_id)
                     .collect();
-                if pool.len() < 2 * team_size - 1 {
+                if pool.len() < total - 1 {
                     break;
                 }
                 // Shuffle by drawing random indices.
                 let mut team_a = vec![anchor.player_id];
                 let mut team_b: Vec<PlayerId> = Vec::new();
-                while !pool.is_empty() && team_a.len() + team_b.len() < 2 * team_size {
+                while !pool.is_empty() && team_a.len() + team_b.len() < total {
                     let idx = rng.gen_range(0.0, pool.len() as f64) as usize;
                     let pid = pool.remove(idx);
-                    if team_a.len() < team_size {
+                    if team_a.len() < size_a {
                         team_a.push(pid);
                     } else {
                         team_b.push(pid);
                     }
                 }
-                if team_a.len() != team_size || team_b.len() != team_size {
+                if team_a.len() != size_a || team_b.len() != size_b {
                     continue;
                 }
                 let quality = ProposedMatch::match_quality(&team_a, &team_b, world);
@@ -191,7 +202,7 @@ impl SearchStrategy for RandomSamplingSearch {
                 }
             }
 
-            if best_team_a.len() == team_size && best_team_b.len() == team_size {
+            if best_team_a.len() == size_a && best_team_b.len() == size_b {
                 used.extend(best_team_a.iter().chain(&best_team_b));
                 let quality = ProposedMatch::match_quality(&best_team_a, &best_team_b, world);
                 matches.push(ProposedMatch {
@@ -217,10 +228,12 @@ impl SearchStrategy for BeamSearch {
         &self,
         queue: &[QueueEntry],
         objective: &MatchObjective,
-        team_size: usize,
+        teams: &TeamComposition,
         world: &World,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         let mut matches = Vec::new();
         let mut used = Vec::new();
 
@@ -235,11 +248,11 @@ impl SearchStrategy for BeamSearch {
 
             while beam
                 .iter()
-                .any(|(a, b)| a.len() < team_size || b.len() < team_size)
+                .any(|(a, b)| a.len() < size_a || b.len() < size_b)
             {
                 let mut next_beam: Vec<(Vec<PlayerId>, Vec<PlayerId>)> = Vec::new();
                 for (team_a, team_b) in &beam {
-                    if team_a.len() == team_size && team_b.len() == team_size {
+                    if team_a.len() == size_a && team_b.len() == size_b {
                         next_beam.push((team_a.clone(), team_b.clone()));
                         continue;
                     }
@@ -253,9 +266,9 @@ impl SearchStrategy for BeamSearch {
                         }
                         let mut na = team_a.clone();
                         let mut nb = team_b.clone();
-                        if na.len() <= nb.len() {
+                        if na.len() < size_a && (na.len() <= nb.len() || nb.len() == size_b) {
                             na.push(candidate.player_id);
-                        } else {
+                        } else if nb.len() < size_b {
                             nb.push(candidate.player_id);
                         }
                         next_beam.push((na, nb));
@@ -276,7 +289,7 @@ impl SearchStrategy for BeamSearch {
 
             let mut formed = false;
             for (team_a, team_b) in &beam {
-                if team_a.len() == team_size && team_b.len() == team_size {
+                if team_a.len() == size_a && team_b.len() == size_b {
                     let quality = ProposedMatch::match_quality(team_a, team_b, world);
                     used.extend(team_a.iter().chain(team_b.iter()));
                     matches.push(ProposedMatch {
@@ -362,6 +375,15 @@ mod tests {
         }
     }
 
+    fn comp(n: usize) -> TeamComposition {
+        TeamComposition {
+            team_size_a: n,
+            team_size_b: n,
+            role_a: None,
+            role_b: None,
+        }
+    }
+
     fn world_with(ratings: &[(u64, f64)]) -> World {
         let mut world = World::new(matchlab_core::rng::SimRng::from_seed(1));
         for &(id, rating) in ratings {
@@ -384,7 +406,7 @@ mod tests {
         let objective = MatchObjective::new(1.0, 0.5, 0.0, 0.1);
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);
 
-        let matches = GreedySearch.search(&queue, &objective, 2, &world, &mut rng);
+        let matches = GreedySearch.search(&queue, &objective, &comp(2), &world, &mut rng);
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].team_a.len(), 2);
         assert_eq!(matches[0].team_b.len(), 2);
@@ -399,7 +421,7 @@ mod tests {
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);
 
         let s1 = RandomSamplingSearch { samples: 1 };
-        let matches = s1.search(&queue, &objective, 2, &world, &mut rng);
+        let matches = s1.search(&queue, &objective, &comp(2), &world, &mut rng);
         // With 1 sample the team may be partial; but it should still return matches.
         assert!(!matches.is_empty());
     }
@@ -413,7 +435,7 @@ mod tests {
         let mut rng = matchlab_core::rng::SimRng::from_seed(7);
 
         let bs = BeamSearch { width: 5 };
-        let matches = bs.search(&queue, &objective, 5, &world, &mut rng);
+        let matches = bs.search(&queue, &objective, &comp(5), &world, &mut rng);
         assert!(!matches.is_empty());
     }
 }

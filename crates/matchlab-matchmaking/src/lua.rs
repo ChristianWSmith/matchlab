@@ -322,10 +322,52 @@ mod tests {
     }
 
     #[test]
-    fn batch_counts_only_asymmetric_1v4_sizes_teams_and_ignores_roles() {
-        // XvY counts-only: a 1v4 composition must yield a proposal with
-        // |team_a| = 1 and |team_b| = 4. Roles are not yet in play (T-08), so
-        // they must be inert even when the composition carries them.
+    fn batch_counts_only_asymmetric_1v4_sizes_teams() {
+        // XvY counts-only: a 1v4 composition with no roles must yield a
+        // proposal with |team_a| = 1 and |team_b| = 4.
+        let teams = TeamComposition {
+            team_size_a: 1,
+            team_size_b: 4,
+            role_a: None,
+            role_b: None,
+        };
+        let mut queue = Queue::default();
+        for (id, rating) in [
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ] {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), rating, Region::NA));
+        }
+        let world = build_world(&[
+            (1, 1000.0),
+            (2, 1000.0),
+            (3, 1000.0),
+            (4, 1000.0),
+            (5, 1000.0),
+        ]);
+        let mm = batch();
+        let mut rng = SimRng::from_seed(7);
+        let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].team_a.len() == 1 && matches[0].team_b.len() == 4);
+        let mut ids: Vec<u64> = matches[0]
+            .team_a
+            .iter()
+            .chain(matches[0].team_b.iter())
+            .map(|p| p.0)
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn batch_role_composition_with_roleless_queue_stalls() {
+        // Roles are now in play (T-08): a composition that requires
+        // killer/survivor roles but a queue of role-less entries must form
+        // nothing — the role filter is not short-circuited.
         let teams = TeamComposition {
             team_size_a: 1,
             team_size_b: 4,
@@ -352,20 +394,10 @@ mod tests {
         let mm = batch();
         let mut rng = SimRng::from_seed(7);
         let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].team_a.len(), 1);
-        assert_eq!(matches[0].team_b.len(), 4);
-        // Roles were passed through the adapter but must not affect formation.
-        let mut ids: Vec<u64> = matches[0]
-            .team_a
-            .iter()
-            .chain(matches[0].team_b.iter())
-            .map(|p| p.0)
-            .collect();
-        ids.sort();
-        assert_eq!(ids.len(), 5);
-        assert_eq!(ids[0], 1);
-        assert_eq!(ids[4], 5);
+        assert!(
+            matches.is_empty(),
+            "role-less entries must not satisfy roles"
+        );
     }
 
     #[test]
