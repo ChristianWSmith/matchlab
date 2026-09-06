@@ -15,7 +15,7 @@ pub trait MetricCollector: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MetricResult {
     Scalar(f64),
     Distribution(Vec<f64>),

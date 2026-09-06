@@ -310,6 +310,60 @@ mod tests {
         assert!(matches.is_empty(), "100 diff > 50 max_skill_diff");
     }
 
+    fn random_mm() -> LuaMatchmaker {
+        LuaMatchmaker::load("plugins/matchmaking/random.lua", &serde_yaml::Value::Null).unwrap()
+    }
+
+    fn fingerprint(matches: &[ProposedMatch]) -> Vec<Vec<u64>> {
+        let mut out: Vec<Vec<u64>> = matches
+            .iter()
+            .map(|m| {
+                let mut ids: Vec<u64> = m
+                    .team_a
+                    .iter()
+                    .chain(m.team_b.iter())
+                    .map(|p| p.0)
+                    .collect();
+                ids.sort();
+                ids
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn random_forms_full_matches_deterministically() {
+        let mut queue = Queue::default();
+        for id in 1..=100u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0, Region::NA));
+        }
+        let world = build_world(&(1..=100u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+        let mm = random_mm();
+
+        let mut rng = SimRng::from_seed(99);
+        let first = mm.find_matches(&queue, &world, 2, SimTime::ZERO, &mut rng);
+        let mut rng = SimRng::from_seed(99);
+        let second = mm.find_matches(&queue, &world, 2, SimTime::ZERO, &mut rng);
+        assert_eq!(fingerprint(&first), fingerprint(&second));
+
+        // Every player used exactly once: 100 players / (2*2 per match) = 25.
+        assert_eq!(first.len(), 25);
+        let mut ids: Vec<u64> = first
+            .iter()
+            .flat_map(|m| m.team_a.iter().chain(m.team_b.iter()))
+            .map(|p| p.0)
+            .collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 100);
+
+        // A different seed draws a different composition.
+        let mut rng = SimRng::from_seed(100);
+        let other = mm.find_matches(&queue, &world, 2, SimTime::ZERO, &mut rng);
+        assert_ne!(fingerprint(&first), fingerprint(&other));
+    }
+
     #[test]
     fn hub_spoke_partitions_by_region() {
         let mm = LuaMatchmaker::load(

@@ -374,6 +374,10 @@ crates/
     keys for determinism); under-capacity regions use an inlined regional
     greedy (no nested matchmakers in Lua), overflow regions fall to the hub
     path (longest-waiting first).
+  - `random.lua` — uniform-random formation for the feedback-loop comparison:
+    draws `2 × team_size` players at random from the queue (via
+    `matchlab.rng_range`, so it is deterministic per seed) with no rating
+    balancing; the third policy in the `rating × matchmaker` cell grid.
 - `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
   weight_ping, weight_rating_uncertainty }` (spec §7.4) with
   `score(proposed, queue_entries, world) = w_q·Q − w_t·T − w_p·P − w_r·R`
@@ -558,6 +562,11 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   commit, and the metrics table. Prints a `features:` summary line listing
   enabled subsystems (detection/ranking/adversarial/satisfaction/outcome
   variant/non-batch matchmaker) and the utility score when configured.
+  `matchlab compare <result.json>... [--json]` reads one or more exported
+  result JSONs (`ExperimentResult` is `Deserialize`), prints a
+  `generate_comparison_report` (Markdown by default, or the JSON report with
+  `--json`), and finishes with a utility ranking (`Comparator::ranking`) when
+  any result carries a `utility_score`.
 - `experiments/v0_1_basic.yaml` — the spec §17 minimal v0.1 manifest (10,000
    players, team size 5, cold ladder start with `initial_rating: 1000`, flat
    skill, no detection/ranking/objective/cohorts, capped by `max_time: 604800`).
@@ -579,6 +588,13 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
  - `experiments/novel_rating.yaml` — the dogfood example: a rating system with
    no Rust equivalent (`plugins/rating/decay_elo.lua`, Elo + idle decay) and a
    custom metric (`plugins/metrics/avg_rating_gap.lua`) added purely as Lua.
+ - `experiments/feedback_loop/*.yaml` — nine factorial cells
+   `feedback_{elo,glicko2,trueskill}_{random,strict,expanding}.yaml` (the
+   `rating × matchmaker` grid, all inheriting `base/standard.yaml`); the
+   `factorial_hand_derives_feedback_loop_cells` test proves
+   `FactorialDesign::generate_configs` derives the same nine from a base config,
+   and `matchlab compare results/feedback_*.json` reads them back for the
+   side-by-side feedback-loop comparison.
 
 **`matchlab-analysis` is implemented with the reporting/export layer:**
 - `stats.rs` — re-exports `matchlab_metrics::stats` as the `summary`/

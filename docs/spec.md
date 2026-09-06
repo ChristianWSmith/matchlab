@@ -5250,3 +5250,62 @@ the same serialization so every step is compared exactly.
   equal ratings keep μ and shrink both σ (beta 100 / sigma 100 / draw 0.5 give
   ~11% shrinkage); the numbers are documented for a future draw-capable
   outcome variable to hit.
+
+### 18.5 Feedback-Loop Baselines (T-04)
+
+The feedback loop is the coupled system this framework exists to study: the
+matchmaker forms matches from ratings, the rating system learns from those
+matches, and the updated ratings shape the next round of formation. The
+`experiments/feedback_loop/` directory pins the `rating × matchmaker` grid —
+nine cells (`elo|glicko2|trueskill` × `random|strict|expanding_window`) on a
+single inherited base (same population, seed, duration, and
+`rating_accuracy`/`match_quality`/`queue_time` metrics, all crossing the
+logistic game). Because each rating system feeds different ratings back into
+the same matchmaker, the formed matches differ across cells even for an
+identical seed — that divergence *is* the measured feedback effect.
+
+**Validation:**
+
+- `random.lua` matchmaker draws `2·team_size` players uniformly via
+  `matchlab.rng_range` with no rating balancing; its
+  `random_forms_full_matches_deterministically` test proves same-seed runs form
+  the identical composition, every player is used exactly once, and a different
+  seed draws a different one.
+- `factorial_hand_derives_feedback_loop_cells` proves `FactorialDesign`
+  generates the exact same nine cells from a base config (rating name ×
+  matchmaking script), so the hand-written manifests and the documented
+  factorial mechanism cannot drift apart.
+- `matchlab compare results/feedback_*.json` reads the exported results
+  (`ExperimentResult` is now `Deserialize`) into a side-by-side comparison
+  report; the JSON round-trip test preserves every `MetricResult` variant.
+
+**Trueskill robustness (found by this grid):** the `trueskill_random` cell
+exposed a stack overflow — under extreme compositions an upset makes
+`1 − Φ(alpha)` round to zero, driving `v = pdf/0 → ∞`, ratings to `inf`, and
+`inf − inf → NaN` inside `normal_cdf`'s negative-arm recursion. The script now
+floors both truncated-Gaussian denominators (`max(·, 1e-15)`), capping the
+factors exactly like `loss_factors` already did, and clamps negative posterior
+variance to 0 before `sqrt` (the reference's convention). The floor only
+engages past ~7σ, so every T-02 script-vs-reference case is untouched.
+
+**Recorded numbers** (2000-player standard population, 50k matches, seed 42;
+MAE = `rating_accuracy` mean, Q = `match_quality` mean, QT = `queue_time` mean):
+
+| cell | MAE | Q | QT (s) | sim time (s) |
+|------|-----|-----|--------|--------------|
+| elo × random | 139.5 | 0.661 | 5.05 | 459653 |
+| elo × strict | 153.3 | 0.973 | 54.95 | 473243 |
+| elo × expanding | 153.1 | 0.907 | 18.63 | 464113 |
+| glicko2 × random | 208.4 | 0.886 | 5.05 | 459653 |
+| glicko2 × strict | 399.5 | 0.972 | 108.63 | 486783 |
+| glicko2 × expanding | 283.5 | 0.901 | 18.48 | 464063 |
+| trueskill × random | 417.1 | 0.374 | 5.05 | 459653 |
+| trueskill × strict | 237.3 | 0.972 | 76.19 | 478863 |
+| trueskill × expanding | 231.7 | 0.891 | 21.17 | 464733 |
+
+Headline: quality-vs-wait tradeoff is real (strict ≈0.97 Q costs 55–109s
+wait vs random's 5s), and the systems diverge under it — elo is near-flat
+across matchmakers (139–153 MAE) while glicko2/trueskill degrade sharply under
+random/early matching, with trueskill's divergent ratings feeding back into
+0.374-Q random pairings. These values are deterministic regression pins for
+seed 42.

@@ -28,7 +28,7 @@ use crate::seed::{SeedManager, git_commit_hash, hash_config};
 
 pub struct ExperimentRunner;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExperimentResult {
     pub experiment_id: String,
     pub name: String,

@@ -1,0 +1,18 @@
+base: ../base/standard.yaml
+
+experiment:
+  name: feedback_glicko2_strict
+  description: "feedback-loop cell: glicko2 x strict matchmaking"
+  matchmaking:
+    script: plugins/matchmaking/strict.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+    max_skill_diff: 50.0
+  rating:
+    systems:
+      - name: glicko2
+        initial_rating: 1000.0
+        initial_rd: 350.0
+        initial_volatility: 0.06
+        tau: 0.5
+        epsilon: 0.000001

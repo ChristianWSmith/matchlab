@@ -8,11 +8,71 @@ fn main() -> ExitCode {
 
     match args.get(1).map(String::as_str) {
         Some("run") => run(&args[2..]),
+        Some("compare") => compare(&args[2..]),
         _ => {
             eprintln!("usage: matchlab run <manifest.yaml>");
+            eprintln!("       matchlab compare <result.json>... [--json]");
             ExitCode::from(2)
         }
     }
+}
+
+fn compare(args: &[String]) -> ExitCode {
+    let mut json_out = false;
+    let mut paths: Vec<&str> = Vec::new();
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json_out = true,
+            p => paths.push(p),
+        }
+    }
+    if paths.is_empty() {
+        eprintln!("usage: matchlab compare <result.json>... [--json]");
+        return ExitCode::from(2);
+    }
+
+    let mut results = Vec::new();
+    for path in &paths {
+        let bytes = match fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("cannot read {path}: {e}");
+                return ExitCode::from(1);
+            }
+        };
+        let result = match serde_json::from_slice::<matchlab_experiments::ExperimentResult>(&bytes)
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("cannot parse {path}: {e}");
+                return ExitCode::from(1);
+            }
+        };
+        results.push(result);
+    }
+
+    let format = if json_out {
+        matchlab_analysis::report::ReportFormat::Json
+    } else {
+        matchlab_analysis::report::ReportFormat::Markdown
+    };
+    let config = matchlab_analysis::report::ReportConfig {
+        include_plots: false,
+        include_raw_data: false,
+        format,
+    };
+    let report = matchlab_analysis::report::generate_comparison_report(&results, &config);
+    println!("{report}");
+
+    let comparator = matchlab_analysis::comparator::Comparator::new(results);
+    let ranked = comparator.ranking();
+    if !ranked.is_empty() {
+        println!("# Utility ranking\n");
+        for (i, (r, score)) in ranked.iter().enumerate() {
+            println!("{}. {} ({:.4})", i + 1, r.name, score);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 fn run(manifest_args: &[String]) -> ExitCode {
