@@ -12,6 +12,7 @@
 
 pub mod reference;
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::{
     PlayerId, PlayerObservation, PlayerReality, Region, SkillVector, VisibleRank,
 };
@@ -175,7 +176,7 @@ experiment:
         quit_probability: 0.0
         initial_rating: 1000.0
   game:
-    team_size: {team_size}
+    teams: {{ a: {team_size}, b: {team_size} }}
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -249,7 +250,7 @@ experiment:
         quit_probability: 0.0
         initial_rating: 1000.0
   game:
-    team_size: {team_size}
+    teams: {{ a: {team_size}, b: {team_size} }}
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.0
@@ -319,7 +320,12 @@ pub fn run_loop(
     .expect("batch loads");
 
     let config = LoopConfig {
-        team_size,
+        teams: TeamComposition {
+            team_size_a: team_size,
+            team_size_b: team_size,
+            role_a: None,
+            role_b: None,
+        },
         batch_interval_ticks: 10,
         rejoin_delay: SimTime::from_secs(30.0),
         max_matches,

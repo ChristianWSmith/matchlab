@@ -4,6 +4,7 @@
 //! arithmetic (saturating at `SimTime::ZERO` when `now < joined_at`), and a
 //! deterministic arrival tape must reproduce the analytic per-match wait.
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -12,6 +13,15 @@ use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::Queue;
 use matchlab_validation::{observation, queue_entry};
+
+fn sym(n: usize) -> TeamComposition {
+    TeamComposition {
+        team_size_a: n,
+        team_size_b: n,
+        role_a: None,
+        role_b: None,
+    }
+}
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
@@ -90,7 +100,7 @@ fn deterministic_arrival_tape_produces_analytic_waits() {
             .observations
             .insert(PlayerId(i), observation(i, 1000.0));
 
-        let matches = mm.find_matches(&queue, &world, 1, arrive, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(1), arrive, &mut rng);
         assert!(matches.len() <= 1, "at most one 1v1 match per cadence");
         for m in matches {
             let ids: Vec<u64> = m

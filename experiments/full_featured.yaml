@@ -4,7 +4,7 @@ experiment:
   name: full_featured
   description: "All subsystems enabled: detection, ranking, adversarial agents, satisfaction, fatigue variant"
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/fatigue.lua
     beta: 400.0
     noise: 0.05

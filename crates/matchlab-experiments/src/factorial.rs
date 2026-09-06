@@ -71,7 +71,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ArchetypeSpec, CohortSpec, DistributionSpec, DurationSpec, ExperimentSpec, GameSpec,
-        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, RatingSystemSpec,
+        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, RatingSystemSpec, TeamSpecs,
     };
     use std::collections::BTreeMap;
 
@@ -100,7 +100,7 @@ mod tests {
                     }],
                 },
                 game: GameSpec {
-                    team_size: 5,
+                    teams: TeamSpecs::default(),
                     script: "plugins/game/logistic.lua".to_string(),
                     skill_update_interval_secs: None,
                     params: BTreeMap::new(),

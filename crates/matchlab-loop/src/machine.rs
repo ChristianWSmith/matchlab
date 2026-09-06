@@ -2,7 +2,7 @@ use matchlab_adversarial::agent::AdversarialAgent;
 use matchlab_core::event::{
     MatchEndEvent, MatchFormedEvent, MatchTimerEvent, SkillChangeEvent, downcast,
 };
-use matchlab_core::match_::{MatchId, MatchResult, MatchState};
+use matchlab_core::match_::{MatchId, MatchResult, MatchState, TeamComposition};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -22,7 +22,7 @@ use std::collections::HashMap;
 /// Config for a full simulation loop.
 #[derive(Clone)]
 pub struct LoopConfig {
-    pub team_size: usize,
+    pub teams: TeamComposition,
     pub batch_interval_ticks: u64,
     pub rejoin_delay: SimTime,
     pub max_matches: u64,
@@ -44,7 +44,7 @@ pub struct MachineState {
     outcome_model: Box<dyn OutcomeModel>,
     matchmaker: Box<dyn Matchmaker>,
     pub metrics: MetricsEngine,
-    team_size: usize,
+    teams: TeamComposition,
     batch_interval: SimTime,
     rejoin_delay: SimTime,
     max_matches: u64,
@@ -108,7 +108,7 @@ impl MachineState {
             outcome_model,
             matchmaker,
             metrics,
-            team_size: config.team_size,
+            teams: config.teams,
             batch_interval,
             rejoin_delay: config.rejoin_delay,
             max_matches: config.max_matches,
@@ -233,12 +233,12 @@ pub fn handle_match_timer(
 
     let remaining = state.max_matches.saturating_sub(state.matches_formed) as usize;
     if remaining > 0 {
-        let team_size = state.team_size;
+        let teams = state.teams.clone();
         let now = world.time;
         let mut rng = std::mem::replace(&mut world.rng, SimRng::from_seed(0));
         let proposed = state
             .matchmaker
-            .find_matches(&state.queue, world, team_size, now, &mut rng);
+            .find_matches(&state.queue, world, &teams, now, &mut rng);
         world.rng = rng;
 
         let mut matched_ids: Vec<PlayerId> = Vec::new();
@@ -622,7 +622,12 @@ mod tests {
             lua_batch(),
             MetricsEngine::new(),
             LoopConfig {
-                team_size: 1,
+                teams: TeamComposition {
+                    team_size_a: 1,
+                    team_size_b: 1,
+                    role_a: None,
+                    role_b: None,
+                },
                 batch_interval_ticks: 10,
                 rejoin_delay: SimTime::from_secs(60.0),
                 max_matches: 100,
@@ -827,7 +832,7 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
@@ -889,7 +894,7 @@ mod tests {
             realities.into_iter().zip(obs_list).collect();
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 40,
@@ -964,7 +969,7 @@ mod tests {
         metrics.register(lua_metric("match_quality"));
 
         let cfg = LoopConfig {
-            team_size: 5,
+            teams: TeamComposition::default(),
             batch_interval_ticks: 60,
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: 20,

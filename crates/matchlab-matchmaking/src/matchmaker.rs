@@ -1,3 +1,4 @@
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -10,7 +11,7 @@ pub trait Matchmaker: Send + Sync {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;

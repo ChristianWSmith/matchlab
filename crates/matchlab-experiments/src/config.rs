@@ -71,8 +71,51 @@ pub enum DistributionSpec {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum TeamSpec {
+    Size(usize),
+    Detailed {
+        size: usize,
+        #[serde(default)]
+        role: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TeamSpecs {
+    pub a: TeamSpec,
+    pub b: TeamSpec,
+}
+
+impl Default for TeamSpecs {
+    fn default() -> Self {
+        TeamSpecs {
+            a: TeamSpec::Size(5),
+            b: TeamSpec::Size(5),
+        }
+    }
+}
+
+impl TeamSpec {
+    pub fn size(&self) -> usize {
+        match self {
+            TeamSpec::Size(s) => *s,
+            TeamSpec::Detailed { size, .. } => *size,
+        }
+    }
+
+    pub fn role(&self) -> Option<String> {
+        match self {
+            TeamSpec::Size(_) => None,
+            TeamSpec::Detailed { role, .. } => role.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameSpec {
-    pub team_size: usize,
+    #[serde(default)]
+    pub teams: TeamSpecs,
     /// Path to the Lua outcome-model script (e.g. plugins/game/logistic.lua).
     #[serde(default = "default_outcome_script")]
     pub script: String,
@@ -255,7 +298,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -290,7 +333,8 @@ experiment:
         assert_eq!(config.experiment.seed, 42);
         assert_eq!(config.experiment.population.size, 10000);
         assert_eq!(config.experiment.population.archetypes.len(), 1);
-        assert_eq!(config.experiment.game.team_size, 5);
+        assert_eq!(config.experiment.game.teams.a.size(), 5);
+        assert_eq!(config.experiment.game.teams.b.size(), 5);
         assert_eq!(
             config.experiment.game.skill_update_interval_secs, None,
             "absent skill_update_interval_secs must default to None (static skill)"
@@ -345,7 +389,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -397,7 +441,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     skill_update_interval_secs: 1.0
     beta: 400.0
@@ -455,7 +499,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/fatigue.lua
     beta: 400.0
     noise: 0.05
@@ -557,7 +601,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.0
@@ -585,5 +629,41 @@ experiment:
         let config: ExperimentConfig = serde_yaml::from_str(yaml).unwrap();
         let spec = &config.experiment.population.archetypes[0].skill_distribution;
         assert!(matches!(spec, DistributionSpec::LogNormal { .. }));
+    }
+
+    #[test]
+    fn team_spec_parses_int_shorthand() {
+        let game: GameSpec = serde_yaml::from_str("teams: { a: 1, b: 4 }").unwrap();
+        assert_eq!(game.teams.a.size(), 1);
+        assert_eq!(game.teams.b.size(), 4);
+        assert_eq!(game.teams.a.role(), None);
+        assert_eq!(game.teams.b.role(), None);
+    }
+
+    #[test]
+    fn team_spec_parses_detailed_mapping_with_roles() {
+        let game: GameSpec = serde_yaml::from_str(
+            "teams: { a: { size: 1, role: killer }, b: { size: 4, role: survivor } }",
+        )
+        .unwrap();
+        assert_eq!(game.teams.a.size(), 1);
+        assert_eq!(game.teams.b.size(), 4);
+        assert_eq!(game.teams.a.role(), Some("killer".to_string()));
+        assert_eq!(game.teams.b.role(), Some("survivor".to_string()));
+    }
+
+    #[test]
+    fn team_spec_defaults_to_5v5() {
+        let game: GameSpec = serde_yaml::from_str("script: plugins/game/logistic.lua").unwrap();
+        assert_eq!(game.teams.a.size(), 5);
+        assert_eq!(game.teams.b.size(), 5);
+        assert_eq!(game.teams.a.role(), None);
+        assert_eq!(game.teams.b.role(), None);
+    }
+
+    #[test]
+    fn team_spec_rejects_malformed() {
+        let err = serde_yaml::from_str::<TeamSpecs>("a: { size: 1 }, b: [1,2]");
+        assert!(err.is_err());
     }
 }

@@ -4,6 +4,7 @@
 //! reality reader) and assert the periodic skill-advancement semantics of
 //! spec §5.6 defined by `skill_update_interval_secs`.
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::{PlayerId, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -93,7 +94,12 @@ fn new_loop(
 ) -> MatchLoop {
     let (rating, outcome, matchmaker) = build_stack();
     let config = LoopConfig {
-        team_size,
+        teams: TeamComposition {
+            team_size_a: team_size,
+            team_size_b: team_size,
+            role_a: None,
+            role_b: None,
+        },
         batch_interval_ticks: 1,
         rejoin_delay: SimTime::from_secs(0.0),
         max_matches,
@@ -258,7 +264,12 @@ fn skill_stays_static_without_interval_flag() {
     let population = mixed_population(total, 0.5, s0, 5.0);
     let (rating, outcome, matchmaker) = build_stack();
     let config = LoopConfig {
-        team_size: 1,
+        teams: TeamComposition {
+            team_size_a: 1,
+            team_size_b: 1,
+            role_a: None,
+            role_b: None,
+        },
         batch_interval_ticks: 1,
         rejoin_delay: SimTime::from_secs(0.0),
         max_matches: 10_000,

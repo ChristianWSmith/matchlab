@@ -98,7 +98,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -174,7 +174,8 @@ experiment:
             vec!["match_quality", "queue_time"]
         );
         assert_eq!(config.experiment.population.size, 10000);
-        assert_eq!(config.experiment.game.team_size, 5);
+        assert_eq!(config.experiment.game.teams.a.size(), 5);
+        assert_eq!(config.experiment.game.teams.b.size(), 5);
         assert_eq!(config.experiment.duration.matches, 1_000_000);
         assert_eq!(config.experiment.seed, 42);
     }

@@ -18,7 +18,7 @@ experiment:
         initial_rating: 1000.0
 
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05

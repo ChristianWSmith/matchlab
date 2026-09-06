@@ -3,7 +3,9 @@
 -- with queue wait, via stepped tiers.
 -- config: tiers = { {max_secs, allowed_diff}, ... }, max_window
 
-function find_matches(queue, team_size, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context)
+    local size_a = teams.a.size
+    local size_b = teams.b.size
     local tiers = config.tiers or {
         { 5.0, 25.0 },
         { 10.0, 50.0 },
@@ -37,18 +39,18 @@ function find_matches(queue, team_size, now_secs, config, context)
                 if not used[other.player_id] and other.player_id ~= entry.player_id then
                     local diff = math.abs(entry.rating - other.rating)
                     if diff <= window then
-                        if #team_a <= #team_b then
+                        if #team_a < size_a and #team_a <= #team_b then
                             table.insert(team_a, other.player_id)
-                        else
+                        elseif #team_b < size_b then
                             table.insert(team_b, other.player_id)
                         end
                     end
-                    if #team_a == team_size and #team_b == team_size then
+                    if #team_a == size_a and #team_b == size_b then
                         break
                     end
                 end
             end
-            if #team_a == team_size and #team_b == team_size then
+            if #team_a == size_a and #team_b == size_b then
                 for _, pid in ipairs(team_a) do used[pid] = true end
                 for _, pid in ipairs(team_b) do used[pid] = true end
                 table.insert(matches, {

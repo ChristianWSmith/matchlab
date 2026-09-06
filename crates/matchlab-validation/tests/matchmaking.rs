@@ -6,6 +6,7 @@
 //! populations, and guard the truth-separation invariant (quality must track
 //! rating, never the ground-truth skill vector).
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::{PlayerId, SkillVector};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -14,6 +15,15 @@ use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_matchmaking::matchmaker::{Matchmaker, ProposedMatch};
 use matchlab_matchmaking::queue::Queue;
 use matchlab_validation::{observation, queue_entry};
+
+fn sym(n: usize) -> TeamComposition {
+    TeamComposition {
+        team_size_a: n,
+        team_size_b: n,
+        role_a: None,
+        role_b: None,
+    }
+}
 
 fn batch() -> LuaMatchmaker {
     LuaMatchmaker::load("plugins/matchmaking/batch.lua", &serde_yaml::Value::Null).unwrap()
@@ -66,7 +76,7 @@ fn uniform_population_quality_is_exact_one() {
         (6, 1200.0),
     ]);
     let mut rng = SimRng::from_seed(1);
-    let matches = mm.find_matches(&queue, &world, 3, SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng);
     assert_eq!(matches.len(), 1, "all 6 uniform players form one match");
     assert!(
         (matches[0].quality_score - 1.0).abs() < 1e-9,
@@ -133,7 +143,7 @@ fn mixed_population_quality_matches_alternate_assignment() {
         (6, 1250.0),
     ]);
     let mut rng = SimRng::from_seed(2);
-    let matches = mm.find_matches(&queue, &world, 3, SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng);
     assert_eq!(matches.len(), 1);
     let expected = expected_batch_quality(&mut ratings.clone());
     assert!(

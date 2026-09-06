@@ -1,10 +1,15 @@
 -- plugins/matchmaking/batch.lua
 -- Rating-balanced batch matchmaker: sort candidates by visible rating (ties by
 -- join order) and assign alternately to team A / team B in consecutive
--- 2*team_size blocks. Adjacent-by-rating players land on opposite teams, so the
--- teams stay balanced and match quality stays high.
+-- blocks of teams.a.size + teams.b.size. Adjacent-by-rating players land on
+-- opposite teams, so the teams stay balanced and match quality stays high.
+-- For equal sizes this is exactly the pre-XvY 2*team_size alternation; for
+-- XvY a full team simply skips its turns until the other fills.
 
-function find_matches(queue, team_size, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context)
+    local size_a = teams.a.size
+    local size_b = teams.b.size
+
     local candidates = {}
     for _, e in ipairs(queue) do
         table.insert(candidates, e)
@@ -29,7 +34,7 @@ function find_matches(queue, team_size, now_secs, config, context)
     local alternate = false
 
     local function emit()
-        if #team_a == team_size and #team_b == team_size then
+        if #team_a == size_a and #team_b == size_b then
             local quality = match_quality(team_a, team_b, ratings)
             table.insert(matches, {
                 team_a = team_a,
@@ -42,13 +47,21 @@ function find_matches(queue, team_size, now_secs, config, context)
     end
 
     for _, e in ipairs(candidates) do
-        if #team_a == team_size and #team_b == team_size then
+        if #team_a == size_a and #team_b == size_b then
             emit()
         end
         if alternate then
-            table.insert(team_b, e.player_id)
+            if #team_b < size_b then
+                table.insert(team_b, e.player_id)
+            else
+                table.insert(team_a, e.player_id)
+            end
         else
-            table.insert(team_a, e.player_id)
+            if #team_a < size_a then
+                table.insert(team_a, e.player_id)
+            else
+                table.insert(team_b, e.player_id)
+            end
         end
         alternate = not alternate
     end

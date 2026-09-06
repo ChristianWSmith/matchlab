@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use matchlab_core::match_::TeamComposition;
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
@@ -54,8 +55,14 @@ impl ExperimentRunner {
         register_metrics(&mut metrics, &config.experiment.metrics)?;
 
         let config_hash = hash_config(config);
+        let teams = TeamComposition {
+            team_size_a: config.experiment.game.teams.a.size(),
+            team_size_b: config.experiment.game.teams.b.size(),
+            role_a: config.experiment.game.teams.a.role(),
+            role_b: config.experiment.game.teams.b.role(),
+        };
         let loop_config = LoopConfig {
-            team_size: config.experiment.game.team_size,
+            teams,
             batch_interval_ticks: batch_interval_secs(&config.experiment.matchmaking),
             rejoin_delay: SimTime::from_secs(30.0),
             max_matches: config.experiment.duration.matches,
@@ -349,7 +356,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05

@@ -196,7 +196,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.0
   game:
-    team_size: 1
+    teams: { a: 1, b: 1 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05

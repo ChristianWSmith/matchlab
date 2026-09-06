@@ -208,7 +208,9 @@ crates/
 - `player.rs` — `PlayerId`, `Region`, `SkillVector`, `VisibleRank`,
   `DetectionFlag`, `PlayerReality` (ground truth), `PlayerObservation`.
 - `match_.rs` — `MatchId`, `Team`, `MatchState`, `MatchResult`,
-  `PlayerPerformance`, `MatchConfig`.
+  `PlayerPerformance`, and `TeamComposition { team_size_a, team_size_b,
+  role_a, role_b }` (XvY composition; `Default` = 5v5 no roles). The legacy
+  `MatchConfig { team_size }` type was removed (unused).
 - `event.rs` — `Event` trait (`time()`/`kind()`/`as_any()`), 13-variant
   `EventKind`, `TimestampedEvent` (min-heap ordered on `SimTime`), `EventHandler`
   (`Fn(&mut World, &dyn Event) -> Vec<Box<dyn Event>> + Send + Sync`),
@@ -349,23 +351,28 @@ crates/
   `remove_batch`, `waiting_time` (saturating `now − joined_at` — the basis of the
   v0.1 queue-time metric), `entries`/`len`/`is_empty`, `from_entries`.
 - `matchmaker.rs` — `Matchmaker` trait (spec §7.2)
-  `find_matches(queue, world, team_size, now, rng) -> Vec<ProposedMatch>`;
-  `ProposedMatch { team_a, team_b, quality_score }` with static `match_quality`
-  = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed from **observations** only.
+  `find_matches(queue, world, teams: &TeamComposition, now, rng) ->
+  Vec<ProposedMatch>`; `ProposedMatch { team_a, team_b, quality_score }` with
+  static `match_quality` = `1 − (|avg_a − avg_b| / 400).clamp(0,1)` computed
+  from **observations** only.
 - `constraint.rs` — `Constraint` trait (spec §7.3). No concrete constraints in
   v0.1; the matchmakers run with an empty list.
 - `lua.rs` — `LuaMatchmaker`: implements `Matchmaker` by delegating to a
   script's `find_matches` function. The queue is snapshotted to a Lua array
   (player_id, rating, rating_deviation, games_played, win_rate, `idx`,
   `joined_at_secs`, `wait_secs`, region, party_id, latency_ms, game_mode) —
-  observations only, never `PlayerReality`. Scripts set `quality_score` or the
-  adapter falls back to `ProposedMatch::match_quality`.
+  observations only, never `PlayerReality`. The `&TeamComposition` is pushed as
+  a second `teams` arg (`{a = {size, role}, b = {size, role}}`, role nil when
+  unset). Scripts set `quality_score` or the adapter falls back to
+  `ProposedMatch::match_quality`.
 - The matchmakers ship as Lua scripts under `plugins/matchmaking/`:
   - `batch.lua` — spec §7.8. **Rating-balanced** formation: sort candidates by
     `rating` (ties by `joined_at_secs`, then `idx` — Lua `table.sort` is
     unstable, so the index tie-break preserves the Rust stable-sort behavior
     and keeps results byte-identical) and assign alternately to team A / team B
-    in consecutive `2 × team_size` blocks. Adjacent-by-rating players land on
+    in consecutive `size_a + size_b` blocks (skip a turn when the target team
+    is already full, so equal sizes reproduce the pre-XvY `2 × team_size`
+    alternation exactly). Adjacent-by-rating players land on
     opposite teams, so the two teams are balanced and `match_quality` stays
     ~0.96–0.98 (the naive FIFO pairing caps near 0.68 on the standard
     population, failing the quality exit criterion).
@@ -380,7 +387,7 @@ crates/
     greedy (no nested matchmakers in Lua), overflow regions fall to the hub
     path (longest-waiting first).
   - `random.lua` — uniform-random formation for the feedback-loop comparison:
-    draws `2 × team_size` players at random from the queue (via
+    draws `size_a + size_b` players at random from the queue (via
     `matchlab.rng_range`, so it is deterministic per seed) with no rating
     balancing; the third policy in the `rating × matchmaker` cell grid.
 - `objective.rs` — `MatchObjective { weight_quality, weight_queue_time,
@@ -396,7 +403,7 @@ crates/
   SimulatedAnnealing are declared in `SearchStrategyKind` but not implemented.
 
 **`matchlab-loop` is implemented with the event-handler machine:**
-- `machine.rs` — `LoopConfig { team_size, batch_interval_ticks, rejoin_delay,
+- `machine.rs` — `LoopConfig { teams: TeamComposition, batch_interval_ticks, rejoin_delay,
   max_matches, skill_update_interval: Option<SimTime> }` and `MachineState { population: HashMap<PlayerId,
   (PlayerReality, PlayerObservation)>, queue, active_matches: HashMap<MatchId,
   MatchResult>, matches_completed, matches_formed, pub metrics: MetricsEngine,
@@ -506,7 +513,9 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   adversarial/satisfaction/cohorts/duration/output), `PopulationSpec`/
   `ArchetypeSpec`/`DistributionSpec`
   (normal/uniform/log_normal), `GameSpec` (with `variant` + flattened params,
-  plus `skill_update_interval_secs: Option<f64>` — absent ⇒ static skill),
+  `teams: TeamSpecs { a, b }` — each a `TeamSpec` untagged over int `size` or
+  `{ size, role }`, default 5v5 — plus `skill_update_interval_secs:
+  Option<f64>` — absent ⇒ static skill),
   `MatchmakingSpec`
   (script + flattened params, max_queue_time), `RatingSpec { systems: Vec<RatingSystemSpec> }`
   with `RatingSystemSpec { name?, script?, params }` flatten, `DetectionSpec`,
@@ -785,7 +794,7 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   waits (`now − joined_at` in `ticks()`), the saturating boundary when
   `now < joined_at` (reverting `duration_since` to `wrapping_sub` makes the
   suite fail — asserted locally), and a fixed-interval arrival tape under
-  batch/team_size 1 producing analytic per-match waits (exactly `Δt` for
+  batch 1v1 producing analytic per-match waits (exactly `Δt` for
   every formed match, pairing oldest-unmatched players).
 - `tests/dynamic_skill.rs` (ticket T-05) — dynamic-skill baselines: with
   `skill_update_interval_secs` set, improvers sit at exactly `S0 + k·t` after

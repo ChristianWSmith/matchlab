@@ -4,7 +4,9 @@
 -- policy in the rating x matchmaking feedback-loop comparison. Deterministic
 -- given the seed (draws flow through matchlab.rng_range).
 
-function find_matches(queue, team_size, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context)
+    local size_a = teams.a.size
+    local size_b = teams.b.size
     local pool = {}
     for _, e in ipairs(queue) do
         table.insert(pool, e)
@@ -15,7 +17,7 @@ function find_matches(queue, team_size, now_secs, config, context)
         ratings[e.player_id] = e.rating
     end
 
-    local needed = 2 * team_size
+    local needed = size_a + size_b
     local matches = {}
     while #pool >= needed do
         local team_a, team_b = {}, {}
@@ -23,7 +25,7 @@ function find_matches(queue, team_size, now_secs, config, context)
             local idx = math.floor(matchlab.rng_range(1.0, #pool + 1.0))
             if idx > #pool then idx = #pool end
             local e = table.remove(pool, idx)
-            if i <= team_size then
+            if i <= size_a then
                 table.insert(team_a, e.player_id)
             else
                 table.insert(team_b, e.player_id)

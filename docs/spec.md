@@ -1447,8 +1447,22 @@ pub struct PlayerPerformance {
 }
 
 #[derive(Debug, Clone)]
-pub struct MatchConfig {
-    pub team_size: usize,
+pub struct TeamComposition {
+    pub team_size_a: usize,
+    pub team_size_b: usize,
+    pub role_a: Option<String>,
+    pub role_b: Option<String>,
+}
+
+impl Default for TeamComposition {
+    fn default() -> Self {
+        Self {
+            team_size_a: 5,
+            team_size_b: 5,
+            role_a: None,
+            role_b: None,
+        }
+    }
 }
 ```
 
@@ -1533,7 +1547,7 @@ pub trait Matchmaker: Send + Sync {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch>;
@@ -1846,10 +1860,12 @@ impl Matchmaker for ExpandingWindowMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         let mut matches = Vec::new();
         let mut used = Vec::new();
 
@@ -1870,18 +1886,18 @@ impl Matchmaker for ExpandingWindowMatchmaker {
                 }
                 let diff = (entry.observation.rating - other.observation.rating).abs();
                 if diff <= window {
-                    if team_a.len() <= team_b.len() {
+                    if team_a.len() < size_a && team_a.len() <= team_b.len() {
                         team_a.push(other);
-                    } else {
+                    } else if team_b.len() < size_b {
                         team_b.push(other);
                     }
                 }
-                if team_a.len() == team_size && team_b.len() == team_size {
+                if team_a.len() == size_a && team_b.len() == size_b {
                     break;
                 }
             }
 
-            if team_a.len() == team_size && team_b.len() == team_size {
+            if team_a.len() == size_a && team_b.len() == size_b {
                 let team_a_ids: Vec<_> = team_a.iter().map(|e| e.player_id).collect();
                 let team_b_ids: Vec<_> = team_b.iter().map(|e| e.player_id).collect();
                 used.extend(&team_a_ids);
@@ -1919,10 +1935,12 @@ impl Matchmaker for StrictMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         _now: SimTime,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         // Only match players within max_skill_diff of each other, so outliers
         // may wait indefinitely (that is the intended "strict" behavior).
         let mut matches = Vec::new();
@@ -1941,18 +1959,18 @@ impl Matchmaker for StrictMatchmaker {
                 }
                 let diff = (entry.observation.rating - other.observation.rating).abs();
                 if diff <= self.max_skill_diff {
-                    if team_a.len() <= team_b.len() {
+                    if team_a.len() < size_a && team_a.len() <= team_b.len() {
                         team_a.push(other);
-                    } else {
+                    } else if team_b.len() < size_b {
                         team_b.push(other);
                     }
                 }
-                if team_a.len() == team_size && team_b.len() == team_size {
+                if team_a.len() == size_a && team_b.len() == size_b {
                     break;
                 }
             }
 
-            if team_a.len() == team_size && team_b.len() == team_size {
+            if team_a.len() == size_a && team_b.len() == size_b {
                 let team_a_ids: Vec<_> = team_a.iter().map(|e| e.player_id).collect();
                 let team_b_ids: Vec<_> = team_b.iter().map(|e| e.player_id).collect();
                 used.extend(&team_a_ids);
@@ -2009,10 +2027,12 @@ impl Matchmaker for BatchMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         _now: SimTime,
         _rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
         // Every N ticks, process all queued players:
         // 1. Sort by queue time (longest waiting first)
         // 2. Greedily form teams subject to constraints
@@ -2029,9 +2049,9 @@ impl Matchmaker for BatchMatchmaker {
         for entry in candidates {
             if used.contains(&entry.player_id) { continue; }
 
-            if team_a.len() < team_size {
+            if team_a.len() < size_a {
                 team_a.push(entry.player_id);
-            } else if team_b.len() < team_size {
+            } else if team_b.len() < size_b {
                 team_b.push(entry.player_id);
             } else {
                 let proposed = ProposedMatch {
@@ -2078,11 +2098,13 @@ impl Matchmaker for HubSpokeMatchmaker {
         &self,
         queue: &Queue,
         world: &World,
-        team_size: usize,
+        teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
         let mut matches = Vec::new();
+        let size_a = teams.team_size_a;
+        let size_b = teams.team_size_b;
 
         // Partition queue by region
         let mut by_region: std::collections::HashMap<_, Vec<_>> =
@@ -2096,7 +2118,7 @@ impl Matchmaker for HubSpokeMatchmaker {
                 // If under capacity, delegate to the regional spoke
                 if entries.len() <= self.spoke_capacity {
                     let sub_queue = Queue::from_entries(entries.clone());
-                    matches.extend(spoke.find_matches(&sub_queue, world, team_size, now, rng));
+                    matches.extend(spoke.find_matches(&sub_queue, world, teams, now, rng));
                 }
                 // Otherwise spill over: the hub forms matches directly for the
                 // overflow (longest-waiting first) using the batch greedy path.
@@ -2106,9 +2128,9 @@ impl Matchmaker for HubSpokeMatchmaker {
                     let mut team_a: Vec<_> = Vec::new();
                     let mut team_b: Vec<_> = Vec::new();
                     for entry in overflow {
-                        if team_a.len() < team_size {
+                        if team_a.len() < size_a {
                             team_a.push(entry.player_id);
-                        } else if team_b.len() < team_size {
+                        } else if team_b.len() < size_b {
                             team_b.push(entry.player_id);
                         } else {
                             matches.push(ProposedMatch {
@@ -3871,7 +3893,7 @@ experiment:
         initial_rating: 700
 
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -4025,8 +4047,35 @@ pub enum DistributionSpec {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum TeamSpec {
+    Size(usize),
+    Detailed {
+        size: usize,
+        #[serde(default)]
+        role: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TeamSpecs {
+    pub a: TeamSpec,
+    pub b: TeamSpec,
+}
+
+impl Default for TeamSpecs {
+    fn default() -> Self {
+        TeamSpecs {
+            a: TeamSpec::Size(5),
+            b: TeamSpec::Size(5),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GameSpec {
-    pub team_size: usize,
+    #[serde(default)]
+    pub teams: TeamSpecs,
     pub script: String,
     /// Optional periodic-skill gate: when absent, skills are static (v0.1
     /// baseline); when set to `N`, the loop advances every online player's
@@ -4148,7 +4197,7 @@ experiment:
         session_length: 1800.0
         quit_probability: 0.01
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     outcome_model: logistic
     beta: 400.0
     noise: 0.05
@@ -5128,7 +5177,7 @@ experiment:
         initial_rating: 1000.0
 
   game:
-    team_size: 5
+    teams: { a: 5, b: 5 }
     script: plugins/game/logistic.lua
     beta: 400.0
     noise: 0.05
@@ -5222,7 +5271,7 @@ observations only. The validation crate pins it:
   in tick arithmetic.
 - **Saturating boundary**: `now < joined_at` reads `ZERO`, not a wrapper (the
   suite fails if `duration_since` reverts to `wrapping_sub`).
-- **Arrival tape**: a fixed-interval tape under batch/team_size-1 produces
+- **Arrival tape**: a fixed-interval tape under batch 1v1 produces
   analytic waits — match `k` pairs the two oldest players and every formed
   match's max wait is exactly `Δt`.
 
@@ -5285,7 +5334,7 @@ identical seed — that divergence *is* the measured feedback effect.
 
 **Validation:**
 
-- `random.lua` matchmaker draws `2·team_size` players uniformly via
+- `random.lua` matchmaker draws `size_a + size_b` players uniformly via
   `matchlab.rng_range` with no rating balancing; its
   `random_forms_full_matches_deterministically` test proves same-seed runs form
   the identical composition, every player is used exactly once, and a different
