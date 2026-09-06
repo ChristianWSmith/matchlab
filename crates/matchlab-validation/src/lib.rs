@@ -297,14 +297,15 @@ pub struct LoopOutcome {
     pub simulated_time_secs: f64,
 }
 
-pub fn run_loop(
+/// Build a `MatchLoop` for the standard elo + logistic(noise 0) + batch stack
+/// with an explicit `TeamComposition` (XvY sizes + optional roles).
+pub fn build_loop(
     population: Vec<(PlayerReality, PlayerObservation)>,
-    team_size: usize,
+    teams: TeamComposition,
     max_matches: u64,
-    max_time_secs: f64,
     seed: u64,
     metrics: MetricsEngine,
-) -> LoopOutcome {
+) -> MatchLoop {
     let rating = registry::from_name(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
@@ -322,18 +323,13 @@ pub fn run_loop(
     .expect("batch loads");
 
     let config = LoopConfig {
-        teams: TeamComposition {
-            team_size_a: team_size,
-            team_size_b: team_size,
-            role_a: None,
-            role_b: None,
-        },
+        teams,
         batch_interval_ticks: 10,
         rejoin_delay: SimTime::from_secs(30.0),
         max_matches,
         skill_update_interval: None,
     };
-    let mut loop_ = MatchLoop::new(
+    MatchLoop::new(
         population,
         rating,
         Box::new(outcome),
@@ -341,7 +337,24 @@ pub fn run_loop(
         metrics,
         config,
         seed,
-    );
+    )
+}
+
+pub fn run_loop(
+    population: Vec<(PlayerReality, PlayerObservation)>,
+    team_size: usize,
+    max_matches: u64,
+    max_time_secs: f64,
+    seed: u64,
+    metrics: MetricsEngine,
+) -> LoopOutcome {
+    let teams = TeamComposition {
+        team_size_a: team_size,
+        team_size_b: team_size,
+        role_a: None,
+        role_b: None,
+    };
+    let mut loop_ = build_loop(population, teams, max_matches, seed, metrics);
     let until = SimTime::from_secs(max_time_secs);
     loop_.run_until(until);
     let (matches_completed, simulated_time_secs) = {

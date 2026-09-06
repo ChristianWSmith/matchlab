@@ -5462,3 +5462,36 @@ visible rating = true skill = 1000, elo + logistic(noise 0) + batch):
   dynamism, proving v0.1 (and any manifest without the field) is untouched.
   `GameSpec.skill_update_interval_secs` defaults to `None` via serde, so the
   `v0_1_basic` manifest remains byte-identical without a manifest change.
+
+### 18.7 XvY 1v4 Role Baselines (T-09)
+
+`experiments/dbd_1v4.yaml` is a Dead-by-Daylight-style asymmetric manifest:
+killer archetype (role `killer`, 18% of population, N(1250, 250)) vs survivor
+archetype (role `survivor`, 82%, N(1000, 100)), game teams
+`{ a: { size: 1, role: killer }, b: { size: 4, role: survivor } }`,
+batch matchmaker, elo. It exercises the T-08 role-aware formation path on an
+asymmetric composition and terminates fast in CI (wall-time ≈ 1 s for ≈ 600
+completed matches over 7200 s sim time — killer scarcity caps throughput).
+
+`crates/matchlab-validation/tests/xvy.rs` proves correctness analytically:
+
+- **Quality on unequal sizes**: uniform 1000-rated killers + survivors form
+  two role-gated matches with quality exactly `1.0` (fp tolerance). A
+  known-gap population (killers 1500, survivors 1400) produces exactly
+  `1 − |1500 − 1400| / 400 = 0.75` per match — the closed-form formula
+  survives the team-size asymmetry.
+- **Role-composition guard**: a test-side `RoleCompositionGuard` collector
+  registers on a live `build_loop` run (220 players, 1v4 role teams) and
+  asserts *every* formed match is exactly one killer + four survivors,
+  proving the role path fires and the counts-only fallback never slips.
+- **Role-stall (scarcity invariant)**: a killer-only population under the
+  same 1v4 role composition stalls — zero matches formed/completed, queue
+  non-empty. Role gating is what produces the scarcity.
+- **Determinism**: two same-seed `ExperimentRunner::run` calls on the
+  `dbd_1v4.yaml` manifest produce identical metrics and match counts.
+
+The acceptance logs for this manifest are: ≥ 600 completed matches,
+mean queue time < 1 s (p90 < 15 s with the 20% killer pool), mean quality ≈
+0.48 (the natural gap between killer initial rating 1200 and survivor rating
+1000 gives `1 − 200/400 = 0.50`, diluted slightly by in-flight convergence),
+rating_accuracy mean ≈ 100 MAE.

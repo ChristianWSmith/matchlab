@@ -633,7 +633,10 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
  - `experiments/matchmaker_comparison.yaml` — expanding_window (script) on the
    standard population.
  - `experiments/detection_test.yaml` — smurf detection enabled.
- - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
+  - `experiments/dbd_1v4.yaml` — Dead-by-Daylight-style 1v4 asymmetric
+    manifest: killer archetype (role killer, N(1250,250)) vs survivor archetype
+    (role survivor, N(1000,100)), teams 1v4 role-gated, batch matchmaker, elo.
+  - `experiments/full_featured.yaml` — all subsystems enabled: fatigue outcome,
    smurf detection, Lua rank brackets, adversarial agents (afk + deranker),
    satisfaction, all 12 metrics, objectives.
  - `experiments/novel_rating.yaml` — the dogfood example: a rating system with
@@ -764,9 +767,12 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   seed)` (two skill classes re-numbered so adjacent ids alternate class, which
   makes the batch matchmaker form cross-class matches),
   `single_class_config`/`two_class_config` (serde-built `ExperimentConfig`
-  manifests), and `run_loop(...) -> LoopOutcome` (drives a `MatchLoop` directly
+  manifests), `run_loop(...) -> LoopOutcome` (drives a `MatchLoop` directly
   with elo + logistic(noise 0) + batch and returns finalized metrics +
-  completion stats). `pub mod reference` exposes the T-02 reference math.
+  completion stats), and `build_loop(population, teams, max_matches, seed,
+  metrics)` (same stack with an explicit `TeamComposition` — XvY sizes +
+  optional roles; `run_loop` is `build_loop` with an equal-size role-less
+  composition). `pub mod reference` exposes the T-02 reference math.
 - `tests/elo.rs` — Elo baselines: (1) with a two class population, the
   observed high-class win rate must match the logistic ground truth
   `1/(1+exp(-500/400)) ≈ 0.7773` within 6σ; (2) on a homogeneous `N(1000,250)`
@@ -834,6 +840,18 @@ are the sole legitimate reader of `PlayerReality` besides the simulation):
   continuous target; same-seed determinism leaves skills + ratings
   byte-identical; and the negative control proves *no* interval flag ⇒ no
   drift even with `improvement_rate` set.
+- `tests/xvy.rs` (ticket T-09) — XvY 1v4 (DbD) role baselines: uniform
+  killers+survivors (1000) form two matches under the T-08 role-aware batch
+  path with quality exactly `1.0`, and a known-gap population (1500 killers vs
+  1400 survivors) produces exactly `1 − 100/400 = 0.75` per match — matching
+  on *unequal* team sizes is the analytic formula, proving the quality measure
+  survives the team-size asymmetry; a `RoleCompositionGuard` metric collector
+  registers on a live loop run and asserts *every* formed match is exactly
+  one killer + four survivors (the role path, never the counts-only fallback);
+  a killer-only population stalls (0 formed/completed, queue grows — role
+  gating is what produces scarcity); and the full `dbd_1v4.yaml` experiment
+  is deterministic across two same-seed runs (`build_loop` drives the loop
+  with an explicit `TeamComposition`).
 - The outcome scripts (logistic, variance, momentum, fatigue) guard `noise ==
   0.0` by skipping the empty-range `rng_range(-noise, noise)` draw (deterministic
   outcomes when configured; RNG behavior is unchanged for `noise > 0`, so

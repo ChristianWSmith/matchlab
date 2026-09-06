@@ -48,7 +48,7 @@ pub struct PlayerPerformance {
 }
 
 /// Team sizes (and optional role labels) for an XvY match composition. Roles
-/// are carried here but remain inert until T-08 wires role-aware formation.
+/// are enforced by role-aware matchmakers (T-08); a `None` role means "any".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamComposition {
     pub team_size_a: usize,
