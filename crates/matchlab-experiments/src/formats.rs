@@ -37,7 +37,7 @@ pub struct VersionedArtifact<T> {
 impl<T: serde::Serialize + serde::de::DeserializeOwned> VersionedArtifact<T> {
     pub fn new(content: T, engine_version: &str) -> Self {
         Self {
-            format_version: "1.0.0".to_string(),
+            format_version: "1.1.0".to_string(),
             engine_version: engine_version.to_string(),
             content,
         }
@@ -91,14 +91,14 @@ mod tests {
         let json = artifact.serialize_json().unwrap();
         let back: VersionedArtifact<serde_json::Value> =
             VersionedArtifact::deserialize_json(&json).unwrap();
-        assert_eq!(back.format_version, "1.0.0");
+        assert_eq!(back.format_version, "1.1.0");
         assert_eq!(back.engine_version, "0.8.0");
         assert_eq!(back.content, data);
     }
     #[test]
     fn validate_format_version_ok() {
         let artifact = VersionedArtifact::new(serde_json::json!({}), "0.8.0");
-        assert!(validate_format_version(&artifact, "1.0.0").is_ok());
+        assert!(validate_format_version(&artifact, "1.1.0").is_ok());
     }
     #[test]
     fn validate_format_version_mismatch() {
