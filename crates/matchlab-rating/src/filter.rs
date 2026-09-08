@@ -18,7 +18,7 @@ pub struct FilteredMatchResult {
     pub team_b: Vec<PlayerId>,
     pub team_a_score: Option<f64>,
     pub team_b_score: Option<f64>,
-    pub player_performances: Option<Vec<FilteredPerformance>>,
+    pub player_performances: Option<Vec<PlayerPerformance>>,
     pub duration: Option<SimTime>,
     pub disconnected: Option<bool>,
     pub forfeited: Option<bool>,
@@ -38,22 +38,15 @@ impl FilteredMatchResult {
             team_b_score: self.team_b_score.unwrap_or(0.0),
             player_performances: self
                 .player_performances
-                .as_ref()
-                .map(|perfs| {
-                    perfs
-                        .iter()
-                        .map(|p| PlayerPerformance {
-                            player_id: p.player_id,
-                            kills: p.kills.unwrap_or(0),
-                            deaths: p.deaths.unwrap_or(0),
-                            assists: p.assists.unwrap_or(0),
-                            objective_score: p.objective_score.unwrap_or(0.0),
-                            impact: p.impact.unwrap_or(0.0),
-                            variance: 0.0,
-                        })
-                        .collect()
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|mut p| {
+                    p.stats.clear();
+                    p.variance = 0.0;
+                    p
                 })
-                .unwrap_or_default(),
+                .collect(),
             duration: self.duration.unwrap_or(SimTime::ZERO),
             disconnected: self.disconnected.unwrap_or(false),
             forfeited: self.forfeited.unwrap_or(false),
@@ -62,19 +55,8 @@ impl FilteredMatchResult {
         }
     }
 }
-/// A per-player performance with optional granular fields per the budget.
-#[derive(Debug, Clone)]
-pub struct FilteredPerformance {
-    pub player_id: PlayerId,
-    pub kills: Option<u32>,
-    pub deaths: Option<u32>,
-    pub assists: Option<u32>,
-    pub objective_score: Option<f64>,
-    pub impact: Option<f64>,
-}
 pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> FilteredMatchResult {
     let has = |o: ObservationType| budget.contains(&o);
-    let has_any = |types: &[ObservationType]| types.iter().any(|t| budget.contains(t));
     FilteredMatchResult {
         winner: mr.winner,
         team_a: mr.team_a.clone(),
@@ -89,46 +71,8 @@ pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> Filt
         } else {
             None
         },
-        player_performances: if has_any(&[
-            ObservationType::Kills,
-            ObservationType::Deaths,
-            ObservationType::Assists,
-            ObservationType::ObjectiveScore,
-            ObservationType::Impact,
-        ]) {
-            Some(
-                mr.player_performances
-                    .iter()
-                    .map(|p| FilteredPerformance {
-                        player_id: p.player_id,
-                        kills: if has(ObservationType::Kills) {
-                            Some(p.kills)
-                        } else {
-                            None
-                        },
-                        deaths: if has(ObservationType::Deaths) {
-                            Some(p.deaths)
-                        } else {
-                            None
-                        },
-                        assists: if has(ObservationType::Assists) {
-                            Some(p.assists)
-                        } else {
-                            None
-                        },
-                        objective_score: if has(ObservationType::ObjectiveScore) {
-                            Some(p.objective_score)
-                        } else {
-                            None
-                        },
-                        impact: if has(ObservationType::Impact) {
-                            Some(p.impact)
-                        } else {
-                            None
-                        },
-                    })
-                    .collect(),
-            )
+        player_performances: if has(ObservationType::PerformanceData) {
+            Some(mr.player_performances.clone())
         } else {
             None
         },
@@ -154,14 +98,16 @@ pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> Filt
 mod tests {
     use super::*;
     use matchlab_core::match_::{MatchId, PlayerPerformance};
+    use std::collections::HashMap;
     fn perf() -> PlayerPerformance {
+        let mut stats = HashMap::new();
+        stats.insert("kills".to_string(), 12.0);
+        stats.insert("deaths".to_string(), 3.0);
+        stats.insert("assists".to_string(), 7.0);
+        stats.insert("impact".to_string(), 1.2);
         PlayerPerformance {
             player_id: PlayerId(1),
-            kills: 12,
-            deaths: 3,
-            assists: 7,
-            objective_score: 42.5,
-            impact: 1.2,
+            stats,
             variance: 0.4,
         }
     }
@@ -211,16 +157,13 @@ mod tests {
         assert!(s.unexpected_events.is_empty());
     }
     #[test]
-    fn kills_budget_exposes_roster_and_winloss() {
-        let f = filter_match_result(&mr(), &[ObservationType::Kills]);
+    fn performance_data_budget_exposes_stats() {
+        let f = filter_match_result(&mr(), &[ObservationType::PerformanceData]);
         assert_eq!(f.team_a_score, None);
-        let perfs = f.player_performances.expect("kills in budget");
+        let perfs = f.player_performances.expect("PerformanceData in budget");
         assert_eq!(perfs.len(), 1);
-        assert_eq!(perfs[0].kills, Some(12));
-        assert_eq!(perfs[0].deaths, None);
-        assert_eq!(perfs[0].assists, None);
-        assert_eq!(perfs[0].objective_score, None);
-        assert_eq!(perfs[0].impact, None);
+        assert_eq!(perfs[0].stats.get("kills"), Some(&12.0));
+        assert_eq!(perfs[0].stats.get("deaths"), Some(&3.0));
         assert!(f.duration.is_none());
         assert_eq!(f.forfeited, Some(false));
     }
@@ -249,11 +192,7 @@ mod tests {
     fn full_budget_exposes_everything() {
         let budget = vec![
             ObservationType::Score,
-            ObservationType::Kills,
-            ObservationType::Deaths,
-            ObservationType::Assists,
-            ObservationType::ObjectiveScore,
-            ObservationType::Impact,
+            ObservationType::PerformanceData,
             ObservationType::Duration,
             ObservationType::Disconnects,
             ObservationType::SessionHistory,
@@ -264,11 +203,21 @@ mod tests {
         assert_eq!(f.disconnected, Some(true));
         assert_eq!(f.forfeited, Some(false));
         assert_eq!(f.unexpected_events, Some(vec!["dc".to_string()]));
-        let perfs = f.player_performances.expect("all perf fields in budget");
-        assert_eq!(perfs[0].kills, Some(12));
-        assert_eq!(perfs[0].deaths, Some(3));
-        assert_eq!(perfs[0].assists, Some(7));
-        assert_eq!(perfs[0].objective_score, Some(42.5));
-        assert_eq!(perfs[0].impact, Some(1.2));
+        let perfs = f.player_performances.expect("PerformanceData in budget");
+        assert_eq!(perfs[0].stats.get("kills"), Some(&12.0));
+        assert_eq!(perfs[0].stats.get("deaths"), Some(&3.0));
+        assert_eq!(perfs[0].stats.get("assists"), Some(&7.0));
+        assert_eq!(perfs[0].stats.get("impact"), Some(&1.2));
+    }
+    #[test]
+    fn sanitized_performance_clears_stats() {
+        let budget = vec![ObservationType::PerformanceData];
+        let f = filter_match_result(&mr(), &budget);
+        let s = f.into_match_result(MatchId(1));
+        let perf = &s.player_performances[0];
+        assert!(
+            perf.stats.is_empty(),
+            "stats should be cleared after sanitization"
+        );
     }
 }

@@ -18,7 +18,7 @@ This guide walks you through installing matchlab, running your first experiment,
 matchlab requires Rust (edition 2024). Install Rust via [rustup](https://rustup.rs/), then:
 
 ```bash
-git clone https://github.com/anomalyco/matchlab.git
+git clone https://github.com/ChristianWSmith/matchlab.git
 cd matchlab
 cargo build --release
 ```

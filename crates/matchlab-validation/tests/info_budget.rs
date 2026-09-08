@@ -136,11 +136,14 @@ fn unfiltered_result_trips_the_rating_spy() {
         team_b_score: 5.0,
         player_performances: vec![PlayerPerformance {
             player_id: PlayerId(1),
-            kills: 10,
-            deaths: 2,
-            assists: 4,
-            objective_score: 55.0,
-            impact: 0.8,
+            stats: {
+                let mut s = std::collections::HashMap::new();
+                s.insert("kills".to_string(), 10.0);
+                s.insert("deaths".to_string(), 2.0);
+                s.insert("assists".to_string(), 4.0);
+                s.insert("impact".to_string(), 0.8);
+                s
+            },
             variance: 0.2,
         }],
         duration: SimTime::from_secs(1800.0),

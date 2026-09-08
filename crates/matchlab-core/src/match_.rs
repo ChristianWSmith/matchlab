@@ -1,5 +1,6 @@
 use crate::player::PlayerId;
 use crate::time::SimTime;
+use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MatchId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,11 +34,7 @@ pub struct MatchResult {
 #[derive(Debug, Clone)]
 pub struct PlayerPerformance {
     pub player_id: PlayerId,
-    pub kills: u32,
-    pub deaths: u32,
-    pub assists: u32,
-    pub objective_score: f64,
-    pub impact: f64,
+    pub stats: HashMap<String, f64>,
     /// Per-performance randomness.
     pub variance: f64,
 }

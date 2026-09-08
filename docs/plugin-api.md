@@ -60,7 +60,7 @@ end
 
 | Global | Type | Description |
 |--------|------|-------------|
-| `information_budget` | `{string, ...}` | Observation types used. Default: `{"WinLoss"}`. Options: `"WinLoss"`, `"Score"`, `"Kills"`, `"Deaths"`, `"Assists"`, `"ObjectiveScore"`, `"Impact"`, `"Duration"`, `"Disconnects"`, `"SessionHistory"`, `"QuitBehavior"` |
+| `information_budget` | `{string, ...}` | Observation types used. Default: `{"WinLoss"}`. Options: `"WinLoss"`, `"Score"`, `"PerformanceData"`, `"Duration"`, `"Disconnects"`, `"SessionHistory"`, `"QuitBehavior"`. Legacy names `"Kills"`, `"Deaths"`, `"Assists"`, `"ObjectiveScore"`, `"Impact"` are accepted and map to `"PerformanceData"`. |
 
 ### Information Budget
 
@@ -168,7 +168,7 @@ All rating-system fields, plus: `skill_overall` (f64), `skill_vector` (table of 
 | `forfeited` | `bool` | `false` | Forfeit occurred |
 | `performances` | `{row, ...}` | `{}` | Per-player performance rows |
 
-Performance row: `{player_id, kills, deaths, assists, objective_score, impact, variance}`
+Performance row: `{player_id, stats: {key: value, ...}, variance}` — `stats` is a generic map of game-specific performance metrics (e.g. `"kills"`, `"deaths"`, `"impact"`). Game scripts define their own keys; the Rust core is agnostic.
 
 ### Truth Separation
 

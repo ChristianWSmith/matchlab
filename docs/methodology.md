@@ -293,3 +293,21 @@ MatchLab includes power analysis tools:
 - Effect sizes are interpreted relative to Cohen's conventions, which may not apply to all metrics
 
 See `docs/assumptions-limitations.md` for a comprehensive treatment of assumptions and threats to validity.
+
+---
+
+## Validation Coverage
+
+| Subsystem | Unit | Property | Known Answer | Integration | E2E |
+|-----------|:----:|:--------:|:------------:|:-----------:|:---:|
+| Configuration | ✓ | | ✓ | ✓ | |
+| Population | ✓ | | ✓ | ✓ | |
+| Skill | ✓ | ✓ | ✓ | ✓ | |
+| Game/Outcome | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Rating | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Matchmaking | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Detection | ✓ | | ✓ | ✓ | |
+| Ecosystem | ✓ | | | ✓ | ✓ |
+| Analysis | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Plugins (Lua) | ✓ | | ✓ | ✓ | ✓ |
+| CLI | ✓ | | ✓ | ✓ | ✓ |

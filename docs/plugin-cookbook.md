@@ -56,8 +56,9 @@ end
 The `information_budget` global controls what data the loop sanitizes before calling your `update`. Valid values:
 
 - `"WinLoss"` -- only winner/loser, no scores or performances (Elo, Glicko-2, TrueSkill use this)
-- `"Scores"` -- scores are available
-- `"Performances"` -- per-player stats (kills, deaths, etc.) are available
+- `"Score"` -- team scores are available
+- `"PerformanceData"` -- per-player performance stats are available (the `stats` map on each performance row)
+- `"Duration"`, `"Disconnects"`, `"SessionHistory"` -- other match metadata
 - `nil` or absent -- full match result passed through
 
 If your budget is `"WinLoss"`, the `match_result` table your `update` receives will have scores zeroed and performances emptied.
@@ -166,8 +167,7 @@ The `simulate` function must return a table with these fields:
     team_b_score = 5.0,
     duration_secs = 1800.0,
     performances = {
-        { player_id = 1, kills = 10, deaths = 2, assists = 4,
-          objective_score = 55.0, impact = 0.8, variance = 0.2 },
+        { player_id = 1, stats = { kills = 10, deaths = 2, assists = 4, impact = 0.8 }, variance = 0.2 },
         ...
     },
     variance = 0.05,

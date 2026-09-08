@@ -10,7 +10,7 @@ pub mod incremental;
 pub mod lua;
 pub mod stability;
 pub mod stats;
-pub use cohort::{CohortFilter, tier_for_skill};
+pub use cohort::CohortFilter;
 pub use collector::{MetricCollector, MetricResult};
 pub use engine::MetricsEngine;
 pub use incremental::{

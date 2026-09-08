@@ -15,7 +15,7 @@ Release engineering, compatibility, and contribution guidelines.
 ### Quick start
 
 ```bash
-git clone https://github.com/anomalyco/matchlab.git
+git clone https://github.com/ChristianWSmith/matchlab.git
 cd matchlab
 cargo build --workspace
 cargo test --workspace
@@ -87,6 +87,10 @@ The exception is:
 | Lua scripts | `snake_case.lua` | `elo.lua`, `expanding_window.lua` |
 | Config keys | `snake_case` YAML | `skill_update_interval_secs` |
 
+### Rustdoc conventions
+
+Every public type must have a `///` doc comment explaining what it is, when to use it, and key invariants. Every public function must document what it does, parameters, return value, panics/errors, and include at least one `# Examples` block. All numeric fields must document their units.
+
 ### Workspace structure
 
 The workspace root `Cargo.toml` declares shared dependencies. Never add
@@ -131,7 +135,7 @@ Use an existing script as a template. For example, to add a new rating system:
 local M = {}
 
 M.name = "my_system"
-M.information_budget = { "WinLoss" }  -- or {"WinLoss", "Score", "Duration", "Performance"}
+M.information_budget = { "WinLoss" }  -- or {"WinLoss", "Score", "Duration", "PerformanceData"}
 
 function M.initialize(player_id)
     return {
@@ -435,7 +439,7 @@ Reviewers will check:
 - [ ] New code has tests
 - [ ] No comments in code (unless explicitly needed)
 - [ ] Public API items have `#[doc]` attributes
-- [ ] Config schema changes are reflected in `docs/spec.md`
+- [ ] Config schema changes are reflected in documentation
 - [ ] Breaking changes are noted in the PR description
 
 ### After review
@@ -487,7 +491,7 @@ Rating systems declare what data they are allowed to see:
 ```lua
 M.information_budget = { "WinLoss" }                    -- Elo, Flat
 M.information_budget = { "WinLoss", "Score" }           -- score-aware
-M.information_budget = { "WinLoss", "Score", "Duration", "Performance" }  -- full
+M.information_budget = { "WinLoss", "Score", "Duration", "PerformanceData" }  -- full
 ```
 
 The loop sanitizes `MatchResult` data through `filter_match_result` before

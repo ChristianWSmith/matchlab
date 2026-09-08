@@ -103,7 +103,7 @@ pub fn generate_research_report(
             config_hash: study.config_hash.clone(),
             git_commit: study.git_commit.clone(),
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
-            report_version: "1.0.0".to_string(),
+            report_version: "1.1.0".to_string(),
         },
     }
 }

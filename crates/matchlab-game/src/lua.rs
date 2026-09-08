@@ -58,13 +58,22 @@ fn parse_result(t: &Table) -> MatchResult {
     let mut performances = Vec::new();
     if let Ok(perfs) = t.get::<Table>("performances") {
         for (_, row) in perfs.pairs::<mlua::Value, Table>().map_while(Result::ok) {
+            let mut stats = std::collections::HashMap::new();
+            if let Ok(player_id) = row.get::<u64>("player_id") {
+                stats.insert("player_id".to_string(), player_id as f64);
+            }
+            for pair in row.pairs::<String, mlua::Value>().map_while(Result::ok) {
+                let key = pair.0;
+                if key == "player_id" || key == "variance" {
+                    continue;
+                }
+                if let Some(v) = pair.1.as_f64() {
+                    stats.insert(key, v);
+                }
+            }
             performances.push(PlayerPerformance {
-                player_id: PlayerId(row.get::<u64>("player_id").unwrap_or(0)),
-                kills: row.get::<u32>("kills").unwrap_or(0),
-                deaths: row.get::<u32>("deaths").unwrap_or(0),
-                assists: row.get::<u32>("assists").unwrap_or(0),
-                objective_score: row.get::<f64>("objective_score").unwrap_or(0.0),
-                impact: row.get::<f64>("impact").unwrap_or(0.0),
+                player_id: PlayerId(stats.remove("player_id").unwrap_or(0.0) as u64),
+                stats,
                 variance: row.get::<f64>("variance").unwrap_or(0.0),
             });
         }
@@ -202,8 +211,7 @@ mod tests {
             .iter()
             .zip(b.player_performances.iter())
         {
-            assert_eq!(pa.kills, pb.kills);
-            assert_eq!(pa.impact, pb.impact);
+            assert_eq!(pa.stats, pb.stats);
         }
     }
     #[test]

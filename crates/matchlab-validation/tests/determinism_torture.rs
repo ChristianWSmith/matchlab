@@ -144,7 +144,7 @@ fn checkpoint_round_trip_determinism() {
     )
     .config_hash("abc".to_string())
     .git_commit("def".to_string())
-    .engine_version("1.0.0".to_string())
+    .engine_version("1.1.0".to_string())
     .seed(42)
     .build();
     let mut progress = std::collections::HashMap::new();

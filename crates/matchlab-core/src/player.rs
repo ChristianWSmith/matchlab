@@ -165,24 +165,6 @@ pub struct VisibleRank {
     pub tier: String,
     pub division: u8,
 }
-impl VisibleRank {
-    /// Approximate numeric midpoint of the visible rank bracket, for comparing
-    /// the communicated rank to true skill.
-    pub fn midpoint(&self) -> f64 {
-        let tier_base: f64 = match self.tier.as_str() {
-            "iron" => 300.0,
-            "bronze" => 600.0,
-            "silver" => 900.0,
-            "gold" => 1200.0,
-            "platinum" => 1500.0,
-            "diamond" => 1800.0,
-            "radiant" => 2100.0,
-            _ => 1200.0,
-        };
-        let div = (self.division.clamp(1, 4) as f64 - 1.0) * 50.0;
-        tier_base + div
-    }
-}
 #[derive(Debug, Clone)]
 pub enum DetectionFlag {
     PerformanceAnomaly { confidence: f64 },
@@ -293,32 +275,6 @@ mod tests {
         };
         assert_eq!(sv.overall(), 0.0);
         assert_eq!(sv.weighted_overall(&HashMap::new()), 0.0);
-    }
-    #[test]
-    fn visible_rank_midpoint_bases_and_divisions() {
-        let iron = VisibleRank {
-            tier: "iron".to_string(),
-            division: 1,
-        };
-        assert_eq!(iron.midpoint(), 300.0);
-        let diamond3 = VisibleRank {
-            tier: "diamond".to_string(),
-            division: 3,
-        };
-        assert_eq!(diamond3.midpoint(), 1800.0 + 100.0);
-    }
-    #[test]
-    fn visible_rank_midpoint_clamps_division() {
-        let high = VisibleRank {
-            tier: "silver".to_string(),
-            division: 9,
-        };
-        assert_eq!(high.midpoint(), 900.0 + (4 - 1) as f64 * 50.0);
-        let low = VisibleRank {
-            tier: "silver".to_string(),
-            division: 0,
-        };
-        assert_eq!(low.midpoint(), 900.0);
     }
     #[test]
     fn skill_dimension_elo_like_bounds() {
