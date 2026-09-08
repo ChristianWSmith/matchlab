@@ -1,0 +1,19 @@
+study:
+  name: matchmaking_tradeoff
+  description: "Batch vs expanding_window matchmaker tradeoff analysis"
+  base: ../base/standard.yaml
+  arms:
+    - name: batch
+      overrides:
+        experiment.matchmaking.script: plugins/matchmaking/batch.lua
+    - name: expanding_window
+      overrides:
+        experiment.matchmaking.script: plugins/matchmaking/expanding_window.lua
+  replication:
+    count: 50
+    strategy: crn
+    base_seed: 42
+  metrics: [match_quality, queue_time, rating_accuracy]
+  cohorts: []
+  output:
+    directory: results/studies/matchmaking_tradeoff/

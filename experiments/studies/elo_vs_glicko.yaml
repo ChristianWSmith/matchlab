@@ -1,0 +1,23 @@
+study:
+  name: elo_vs_glicko
+  base: ../base/standard.yaml
+  arms:
+    - name: elo
+      overrides: {}
+    - name: glicko2
+      overrides:
+        experiment.rating.systems.0.script: plugins/rating/glicko2.lua
+        experiment.rating.systems.0.initial_rating: 1000.0
+        experiment.rating.systems.0.initial_rd: 350.0
+        experiment.rating.systems.0.initial_volatility: 0.06
+        experiment.rating.systems.0.tau: 0.5
+  replication:
+    # 50 replicates ≈ a few minutes; the production-size run is
+    # `--replicates 500` (each replicate = a full 50k-match sim per arm).
+    count: 50
+    strategy: crn
+    base_seed: 42
+  metrics: [match_quality, queue_time, rating_accuracy]
+  cohorts: []
+  output:
+    directory: results/studies/elo_vs_glicko/

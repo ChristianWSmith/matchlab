@@ -1,0 +1,16 @@
+base: ../base/standard.yaml
+
+experiment:
+  name: feedback_elo_strict
+  description: "feedback-loop cell: elo x strict matchmaking"
+  matchmaking:
+    script: plugins/matchmaking/strict.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+    max_skill_diff: 50.0
+  rating:
+    systems:
+      - name: elo
+        k_factor: 32.0
+        initial_rating: 1000.0
+        beta: 400.0

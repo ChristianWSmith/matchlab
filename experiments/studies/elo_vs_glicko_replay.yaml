@@ -1,0 +1,26 @@
+study:
+  name: elo_vs_glicko_replay
+  base: ../base/standard.yaml
+  arms:
+    - name: elo
+      overrides: {}
+    - name: glicko2
+      overrides:
+        experiment.rating.systems.0.script: plugins/rating/glicko2.lua
+        experiment.rating.systems.0.initial_rating: 1000.0
+        experiment.rating.systems.0.initial_rd: 350.0
+        experiment.rating.systems.0.initial_volatility: 0.06
+        experiment.rating.systems.0.tau: 0.5
+  replication:
+    # Counterfactual comparison: the elo arm runs live and records; the
+    # glicko2 arm replays that identical recorded match history through the
+    # ReplayEngine. Only the replay-valid metrics survive
+    # (rating_accuracy-family; see REPLAY_VALID_METRICS).
+    # `--replicates 500` is the production-size run.
+    count: 50
+    strategy: counterfactual
+    base_seed: 42
+  metrics: [match_quality, queue_time, rating_accuracy]
+  cohorts: []
+  output:
+    directory: results/studies/elo_vs_glicko_replay/

@@ -1,0 +1,17 @@
+base: ../base/standard.yaml
+
+experiment:
+  name: feedback_glicko2_random
+  description: "feedback-loop cell: glicko2 x random matchmaking"
+  matchmaking:
+    script: plugins/matchmaking/random.lua
+    batch_interval: 10
+    max_queue_time: 60.0
+  rating:
+    systems:
+      - name: glicko2
+        initial_rating: 1000.0
+        initial_rd: 350.0
+        initial_volatility: 0.06
+        tau: 0.5
+        epsilon: 0.000001
