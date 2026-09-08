@@ -204,6 +204,12 @@ pub struct SatisfactionSpec {
 fn default_satisfaction_script() -> String {
     "plugins/utility/satisfaction.lua".to_string()
 }
+fn default_smurf_min_skill() -> f64 {
+    1300.0
+}
+fn default_smurf_max_games() -> u64 {
+    20
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ObjectiveWeightsSpec {
     pub match_quality: Option<f64>,
@@ -227,7 +233,12 @@ pub enum CohortFilterSpec {
     #[serde(rename = "archetype")]
     Archetype { value: String },
     #[serde(rename = "smurf_by_properties")]
-    SmurfByProperties,
+    SmurfByProperties {
+        #[serde(default = "default_smurf_min_skill")]
+        min_skill: f64,
+        #[serde(default = "default_smurf_max_games")]
+        max_games: u64,
+    },
     #[serde(rename = "games_played_range")]
     GamesPlayedRange { low: u64, high: u64 },
     #[serde(rename = "skill_range")]
@@ -236,8 +247,6 @@ pub enum CohortFilterSpec {
     PartySize { size: usize },
     #[serde(rename = "session_length")]
     SessionLength { min: f64, max: f64 },
-    #[serde(rename = "rank_tier")]
-    RankTier { tier: String },
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DurationSpec {

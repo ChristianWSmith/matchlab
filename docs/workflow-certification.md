@@ -337,8 +337,6 @@ cargo run -- run experiments/v0_1_basic.yaml
 
 **Expected result:** `rating_accuracy_by_time` decreases from ~198 to ~166 over 1,000,000 matches. MAE decreases = Elo is learning.
 
-**Reference:** Acceptance numbers in `docs/spec.md` §18.
-
 ### Example 2: Elo vs Glicko-2
 
 **Question:** Does Glicko-2 achieve lower rating error than Elo?

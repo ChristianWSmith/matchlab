@@ -4,8 +4,7 @@
 //! discrete-event engine, the simulation clock (SimTime), the World state
 //! container, deterministic RNG, and the player/match data structures.
 //!
-//! Core types are implemented incrementally per the v0.1 build order in
-//! `docs/spec.md` section 17.
+//! Core types are implemented incrementally per the v0.1 build order.
 pub mod event;
 pub mod logging;
 pub mod match_;

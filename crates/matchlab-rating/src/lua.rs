@@ -33,11 +33,9 @@ fn observation_type(name: &str) -> Option<ObservationType> {
     match name {
         "WinLoss" => Some(ObservationType::WinLoss),
         "Score" => Some(ObservationType::Score),
-        "Kills" => Some(ObservationType::Kills),
-        "Deaths" => Some(ObservationType::Deaths),
-        "Assists" => Some(ObservationType::Assists),
-        "ObjectiveScore" => Some(ObservationType::ObjectiveScore),
-        "Impact" => Some(ObservationType::Impact),
+        "PerformanceData" | "Kills" | "Deaths" | "Assists" | "ObjectiveScore" | "Impact" => {
+            Some(ObservationType::PerformanceData)
+        }
         "Duration" => Some(ObservationType::Duration),
         "Disconnects" => Some(ObservationType::Disconnects),
         "SessionHistory" => Some(ObservationType::SessionHistory),

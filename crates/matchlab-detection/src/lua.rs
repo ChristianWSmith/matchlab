@@ -206,11 +206,14 @@ mod tests {
         for i in 0..5u64 {
             let perf = PlayerPerformance {
                 player_id: PlayerId(1),
-                kills: 5,
-                deaths: 5,
-                assists: 3,
-                objective_score: 50.0,
-                impact: 0.0,
+                stats: {
+                    let mut s = std::collections::HashMap::new();
+                    s.insert("kills".to_string(), 5.0);
+                    s.insert("deaths".to_string(), 5.0);
+                    s.insert("assists".to_string(), 3.0);
+                    s.insert("impact".to_string(), 0.0);
+                    s
+                },
                 variance: 0.5,
             };
             d.observe(&mr(i, perf), &world);
@@ -226,11 +229,14 @@ mod tests {
         for i in 0..5u64 {
             let perf = PlayerPerformance {
                 player_id: PlayerId(1),
-                kills: 50,
-                deaths: 0,
-                assists: 0,
-                objective_score: 100.0,
-                impact: 10.0,
+                stats: {
+                    let mut s = std::collections::HashMap::new();
+                    s.insert("kills".to_string(), 50.0);
+                    s.insert("deaths".to_string(), 0.0);
+                    s.insert("assists".to_string(), 0.0);
+                    s.insert("impact".to_string(), 10.0);
+                    s
+                },
                 variance: 0.0,
             };
             d.observe(&mr(i, perf), &world);
@@ -259,11 +265,14 @@ mod tests {
         for i in 0..5u64 {
             let perf = PlayerPerformance {
                 player_id: PlayerId(1),
-                kills: 50,
-                deaths: 0,
-                assists: 0,
-                objective_score: 100.0,
-                impact: 10.0,
+                stats: {
+                    let mut s = std::collections::HashMap::new();
+                    s.insert("kills".to_string(), 50.0);
+                    s.insert("deaths".to_string(), 0.0);
+                    s.insert("assists".to_string(), 0.0);
+                    s.insert("impact".to_string(), 10.0);
+                    s
+                },
                 variance: 0.0,
             };
             d.observe(&mr(i, perf), &world);

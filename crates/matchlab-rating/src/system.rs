@@ -28,11 +28,7 @@ pub struct RatingState {
 pub enum ObservationType {
     WinLoss,
     Score,
-    Kills,
-    Deaths,
-    Assists,
-    ObjectiveScore,
-    Impact,
+    PerformanceData,
     Duration,
     Disconnects,
     SessionHistory,

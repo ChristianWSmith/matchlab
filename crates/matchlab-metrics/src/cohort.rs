@@ -1,18 +1,5 @@
 use matchlab_core::player::{PlayerId, PlayerReality, Region};
 use matchlab_core::world::World;
-/// Map a true-skill value to a coarse tier label, used to align a player's
-/// reality with the `RankTier` cohort filter and visible-rank brackets.
-pub fn tier_for_skill(skill: f64) -> String {
-    match skill {
-        s if s < 400.0 => "iron".to_string(),
-        s if s < 700.0 => "bronze".to_string(),
-        s if s < 1000.0 => "silver".to_string(),
-        s if s < 1300.0 => "gold".to_string(),
-        s if s < 1600.0 => "platinum".to_string(),
-        s if s < 1900.0 => "diamond".to_string(),
-        _ => "radiant".to_string(),
-    }
-}
 #[derive(Debug, Clone)]
 pub enum CohortFilter {
     All,
@@ -22,8 +9,7 @@ pub enum CohortFilter {
     Region(Region),
     PartySize(usize),
     SessionLength(f64, f64),
-    RankTier(String),
-    IsSmurfByProperties,
+    IsSmurfByProperties { min_skill: f64, max_games: u64 },
 }
 impl CohortFilter {
     pub fn matches(&self, reality: &PlayerReality) -> bool {
@@ -46,12 +32,8 @@ impl CohortFilter {
                 let s = reality.session_length;
                 s >= *min && s <= *max
             }
-            CohortFilter::RankTier(tier) => {
-                let t = tier_for_skill(reality.skill.overall());
-                t == *tier
-            }
-            CohortFilter::IsSmurfByProperties => {
-                reality.skill.overall() > 1300.0 && reality.games_played < 20
+            CohortFilter::IsSmurfByProperties { min_skill, max_games } => {
+                reality.skill.overall() > *min_skill && reality.games_played < *max_games
             }
         }
     }
@@ -106,20 +88,10 @@ mod tests {
     }
     #[test]
     fn smurf_by_properties_filters_correctly() {
-        let f = CohortFilter::IsSmurfByProperties;
+        let f = CohortFilter::IsSmurfByProperties { min_skill: 1300.0, max_games: 20 };
         assert!(f.matches(&reality(1500.0, 5, "stable")));
         assert!(!f.matches(&reality(1500.0, 50, "stable")));
         assert!(!f.matches(&reality(1000.0, 5, "stable")));
-    }
-    #[test]
-    fn tier_for_skill_maps_boundaries() {
-        assert_eq!(tier_for_skill(300.0), "iron");
-        assert_eq!(tier_for_skill(500.0), "bronze");
-        assert_eq!(tier_for_skill(900.0), "silver");
-        assert_eq!(tier_for_skill(1200.0), "gold");
-        assert_eq!(tier_for_skill(1500.0), "platinum");
-        assert_eq!(tier_for_skill(1800.0), "diamond");
-        assert_eq!(tier_for_skill(2200.0), "radiant");
     }
     #[test]
     fn all_matches_everything() {

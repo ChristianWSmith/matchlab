@@ -124,12 +124,9 @@ fn performance_to_table(lua: &Lua, p: &PlayerPerformance) -> Result<Table, Strin
     let t = lua.create_table().map_err(|e| e.to_string())?;
     t.set("player_id", p.player_id.0)
         .map_err(|e| e.to_string())?;
-    t.set("kills", p.kills).map_err(|e| e.to_string())?;
-    t.set("deaths", p.deaths).map_err(|e| e.to_string())?;
-    t.set("assists", p.assists).map_err(|e| e.to_string())?;
-    t.set("objective_score", p.objective_score)
-        .map_err(|e| e.to_string())?;
-    t.set("impact", p.impact).map_err(|e| e.to_string())?;
+    for (key, value) in &p.stats {
+        t.set(key.as_str(), *value).map_err(|e| e.to_string())?;
+    }
     t.set("variance", p.variance).map_err(|e| e.to_string())?;
     Ok(t)
 }
@@ -342,11 +339,14 @@ mod tests {
             team_b_score: 5.0,
             player_performances: vec![PlayerPerformance {
                 player_id: PlayerId(1),
-                kills: 10,
-                deaths: 2,
-                assists: 4,
-                objective_score: 55.0,
-                impact: 0.8,
+                stats: {
+                    let mut s = std::collections::HashMap::new();
+                    s.insert("kills".to_string(), 10.0);
+                    s.insert("deaths".to_string(), 2.0);
+                    s.insert("assists".to_string(), 4.0);
+                    s.insert("impact".to_string(), 0.8);
+                    s
+                },
                 variance: 0.2,
             }],
             duration: SimTime::from_secs(1800.0),
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(t.get::<f64>("duration_secs").unwrap(), 1800.0);
         let perfs: Table = t.get("performances").unwrap();
         let first: Table = perfs.get(1).unwrap();
-        assert_eq!(first.get::<u32>("kills").unwrap(), 10);
+        assert_eq!(first.get::<f64>("kills").unwrap(), 10.0);
     }
     #[test]
     fn metric_snapshot_builds() {

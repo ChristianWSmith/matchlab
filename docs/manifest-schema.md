@@ -203,12 +203,11 @@ The `skill_distribution` field accepts a tagged enum:
 |------|--------|---------|
 | `all` | _(none)_ | `{ type: all }` |
 | `archetype` | `value: <string>` | `{ type: archetype, value: smurf }` |
-| `smurf_by_properties` | _(none)_ | `{ type: smurf_by_properties }` |
+| `smurf_by_properties` | `min_skill: <f64>` (default 1300.0), `max_games: <u64>` (default 20) | `{ type: smurf_by_properties, min_skill: 1300.0, max_games: 20 }` |
 | `games_played_range` | `low: <u64>`, `high: <u64>` | `{ type: games_played_range, low: 10, high: 100 }` |
 | `skill_range` | `low: <f64>`, `high: <f64>` | `{ type: skill_range, low: 1200.0, high: 1500.0 }` |
 | `party_size` | `size: <usize>` | `{ type: party_size, size: 2 }` |
 | `session_length` | `min: <f64>`, `max: <f64>` | `{ type: session_length, min: 300.0, max: 3600.0 }` |
-| `rank_tier` | `tier: <string>` | `{ type: rank_tier, tier: Gold }` |
 
 ---
 

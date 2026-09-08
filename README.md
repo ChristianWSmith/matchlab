@@ -444,7 +444,7 @@ the legacy behavior. See `experiments/dbd_1v4.yaml` for a working example.
 
 | Script | What it does | Key config |
 |--------|--------------|------------|
-| `smurf.lua` | Infers smurf status from behavior: expected performance from visible rating vs. actual from impact and kills. Consecutive anomalies ramp the suspicion probability; an escalation ladder walks from none → accelerate rating → flag → restrict → temp ban → probation → ban | `sigma_threshold`, `min_anomalous_games`, `min_games_before_action`, `escalation_factor`, `ladder` |
+| `smurf.lua` | Infers smurf status from behavior: expected performance from visible rating vs. actual from performance stats. Consecutive anomalies ramp the suspicion probability; an escalation ladder walks from none → accelerate rating → flag → restrict → temp ban → probation → ban | `sigma_threshold`, `min_anomalous_games`, `min_games_before_action`, `escalation_factor`, `ladder` |
 
 ### Ranking (`plugins/ranking/`)
 
@@ -701,7 +701,6 @@ docs/                     Documentation
   api-stability.md        Public API stability policy
   artifact-formats.md     Research artifact schemas
   security-review.md      Trust model and security
-  dependency-audit.md     Workspace dependency review
 ```
 
 ---
@@ -723,7 +722,5 @@ docs/                     Documentation
 | [`docs/api-stability.md`](docs/api-stability.md) | Public API stability policy |
 | [`docs/artifact-formats.md`](docs/artifact-formats.md) | Research artifact schemas |
 | [`docs/security-review.md`](docs/security-review.md) | Trust model and security |
-| [`docs/dependency-audit.md`](docs/dependency-audit.md) | Workspace dependency review |
 | [`docs/reproduction-studies.md`](docs/reproduction-studies.md) | How to conduct independent reproduction studies |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup and contribution guide |
-| [`CHANGELOG.md`](CHANGELOG.md) | Version history |
