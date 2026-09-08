@@ -215,6 +215,9 @@ mod tests {
         let f = filter_match_result(&mr(), &budget);
         let s = f.into_match_result(MatchId(1));
         let perf = &s.player_performances[0];
-        assert!(perf.stats.is_empty(), "stats should be cleared after sanitization");
+        assert!(
+            perf.stats.is_empty(),
+            "stats should be cleared after sanitization"
+        );
     }
 }

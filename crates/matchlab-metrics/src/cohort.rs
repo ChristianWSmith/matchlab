@@ -32,9 +32,10 @@ impl CohortFilter {
                 let s = reality.session_length;
                 s >= *min && s <= *max
             }
-            CohortFilter::IsSmurfByProperties { min_skill, max_games } => {
-                reality.skill.overall() > *min_skill && reality.games_played < *max_games
-            }
+            CohortFilter::IsSmurfByProperties {
+                min_skill,
+                max_games,
+            } => reality.skill.overall() > *min_skill && reality.games_played < *max_games,
         }
     }
     pub fn filter_player_ids(&self, world: &World) -> Vec<PlayerId> {
@@ -88,7 +89,10 @@ mod tests {
     }
     #[test]
     fn smurf_by_properties_filters_correctly() {
-        let f = CohortFilter::IsSmurfByProperties { min_skill: 1300.0, max_games: 20 };
+        let f = CohortFilter::IsSmurfByProperties {
+            min_skill: 1300.0,
+            max_games: 20,
+        };
         assert!(f.matches(&reality(1500.0, 5, "stable")));
         assert!(!f.matches(&reality(1500.0, 50, "stable")));
         assert!(!f.matches(&reality(1000.0, 5, "stable")));
