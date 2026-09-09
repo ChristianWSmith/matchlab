@@ -134,7 +134,7 @@ The following modules and types are considered stable public API. Breaking chang
 | `policy` | `AdaptivePolicy`, `LossAversionPolicy`, `ThresholdQueuePolicy`, etc. | Stable |
 | `manipulation` | `ManipulationStrategy`, `RatingDumpStrategy`, etc. | Stable |
 
-### CLI (`match-lab`)
+### CLI (`matchlab`)
 
 | Command | Status |
 |---------|--------|
