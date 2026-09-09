@@ -10,6 +10,7 @@ use crate::counterfactual::ReplayEngine;
 use crate::runner::{ExperimentResult, ExperimentRunner};
 use crate::seed::{derive, git_commit_hash, hash_config};
 use matchlab_loop::GameHistory;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 /// How the arms of a replicate share (or do not share) random streams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,14 +175,15 @@ impl ReplicationRunner {
     pub fn run_single(
         config: &ExperimentConfig,
         spec: &ReplicationSpec,
+        threads: usize,
     ) -> Result<StudyResult, String> {
         let arm = ArmConfig {
             name: config.experiment.name.clone(),
             config: config.clone(),
         };
-        Self::run_arms(&[arm], spec)
+        Self::run_arms(&[arm], spec, threads)
     }
-    pub fn run_arms(arms: &[ArmConfig], spec: &ReplicationSpec) -> Result<StudyResult, String> {
+    pub fn run_arms(arms: &[ArmConfig], spec: &ReplicationSpec, threads: usize) -> Result<StudyResult, String> {
         if arms.is_empty() {
             return Err("run_arms needs at least one arm".into());
         }
@@ -189,6 +191,7 @@ impl ReplicationRunner {
             count = spec.count,
             strategy = spec.strategy.key(),
             arms = arms.len(),
+            threads,
             "replication started"
         );
         let config_hash = hash_config(&arms[0].config);
@@ -201,36 +204,133 @@ impl ReplicationRunner {
         );
         let mut arm_results: Vec<Vec<ReplicateResult>> =
             vec![Vec::with_capacity(spec.count as usize); arms.len()];
-        for r in 0..spec.count {
-            let repl = replicate_seed(spec.base_seed, r);
-            let mut recorded: Option<GameHistory> = None;
-            for (arm_i, arm) in arms.iter().enumerate() {
-                let seed = arm_seed(spec.strategy, repl, arm_i as u64);
-                let mut cfg = arm.config.clone();
-                cfg.experiment.seed = seed;
-                let result = if spec.strategy == SeedStrategy::Counterfactual && arm_i > 0 {
-                    let history = recorded
-                        .as_ref()
-                        .ok_or("counterfactual replay needs the live arm to record first")?;
-                    let system =
-                        crate::runner::build_rating_system(&cfg.experiment.rating.systems)?;
-                    ReplayEngine::replay(history, system.as_ref(), &cfg, &cfg.experiment.metrics)?
+
+        match spec.strategy {
+            SeedStrategy::Counterfactual => {
+                // Counterfactual: arm 0 must complete before arms 1+ can replay.
+                // Parallelize across replicates only.
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                // Phase 1: run arm 0 (live) across all replicates in parallel
+                let live_results: Vec<(u64, u64, ExperimentResult, Option<GameHistory>)> =
+                    pool.install(|| {
+                        (0..spec.count)
+                            .into_par_iter()
+                            .map(|r| {
+                                let repl = replicate_seed(spec.base_seed, r);
+                                let seed = arm_seed(spec.strategy, repl, 0);
+                                let mut cfg = arms[0].config.clone();
+                                cfg.experiment.seed = seed;
+                                let (result, history) =
+                                    ExperimentRunner::run_recording(&cfg, true)
+                                        .expect("live arm experiment failed");
+                                (r, seed, result, history)
+                            })
+                            .collect()
+                    });
+
+                // Phase 2: run arms 1+ (replay) across all replicates in parallel
+                let replay_results: Vec<(u64, usize, u64, ExperimentResult)> = if arms.len() > 1 {
+                    pool.install(|| {
+                        live_results
+                            .par_iter()
+                            .flat_map(|(r, _live_seed, _live_result, history)| {
+                                let history = history.as_ref().expect("live arm must record history");
+                                let repl = replicate_seed(spec.base_seed, *r);
+                                (1..arms.len())
+                                    .into_par_iter()
+                                    .map(move |arm_i| {
+                                        let seed = arm_seed(spec.strategy, repl, arm_i as u64);
+                                        let mut cfg = arms[arm_i].config.clone();
+                                        cfg.experiment.seed = seed;
+                                        let system =
+                                            crate::runner::build_rating_system(&cfg.experiment.rating.systems)
+                                                .expect("build rating system failed");
+                                        let result = ReplayEngine::replay(
+                                            history,
+                                            system.as_ref(),
+                                            &cfg,
+                                            &cfg.experiment.metrics,
+                                        )
+                                        .expect("replay failed");
+                                        (*r, arm_i, seed, result)
+                                    })
+                            })
+                            .collect()
+                    })
                 } else {
-                    let record = spec.strategy == SeedStrategy::Counterfactual && arm_i == 0;
-                    let (result, history) = ExperimentRunner::run_recording(&cfg, record)?;
-                    if record {
-                        recorded = history;
-                    }
-                    result
+                    Vec::new()
                 };
-                arm_results[arm_i].push(ReplicateResult {
-                    replicate_index: r,
-                    seed,
-                    parent_seed: repl,
-                    result,
+
+                // Fold results
+                for (r, seed, result, _history) in &live_results {
+                    arm_results[0].push(ReplicateResult {
+                        replicate_index: *r,
+                        seed: *seed,
+                        parent_seed: replicate_seed(spec.base_seed, *r),
+                        result: result.clone(),
+                    });
+                }
+                for (r, arm_i, seed, result) in &replay_results {
+                    arm_results[*arm_i].push(ReplicateResult {
+                        replicate_index: *r,
+                        seed: *seed,
+                        parent_seed: replicate_seed(spec.base_seed, *r),
+                        result: result.clone(),
+                    });
+                }
+            }
+            _ => {
+                // Independent or CRN: all (replicate, arm) pairs are independent.
+                // Flatten and run in parallel.
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                let jobs: Vec<(u64, usize)> = (0..spec.count)
+                    .flat_map(|r| (0..arms.len()).map(move |ai| (r, ai)))
+                    .collect();
+
+                let results: Vec<(u64, usize, u64, ReplicateResult)> = pool.install(|| {
+                    jobs.par_iter()
+                        .map(|&(r, arm_i)| {
+                            let repl = replicate_seed(spec.base_seed, r);
+                            let seed = arm_seed(spec.strategy, repl, arm_i as u64);
+                            let mut cfg = arms[arm_i].config.clone();
+                            cfg.experiment.seed = seed;
+                            let result = ExperimentRunner::run_recording(&cfg, false)
+                                .expect("experiment failed")
+                                .0;
+                            (
+                                r,
+                                arm_i,
+                                seed,
+                                ReplicateResult {
+                                    replicate_index: r,
+                                    seed,
+                                    parent_seed: repl,
+                                    result,
+                                },
+                            )
+                        })
+                        .collect()
                 });
+
+                for (_r, arm_i, _seed, repl_result) in results {
+                    arm_results[arm_i].push(repl_result);
+                }
             }
         }
+
+        // Sort each arm's replicates by index for deterministic output
+        for arm_repls in &mut arm_results {
+            arm_repls.sort_by_key(|r| r.replicate_index);
+        }
+
         let arms: Vec<ArmResult> = arms
             .iter()
             .zip(arm_results)
@@ -505,6 +605,7 @@ experiment:
                 strategy: SeedStrategy::Crn,
                 base_seed: 42,
             },
+            1,
         )
         .expect("single-arm study runs");
         let json = serde_json::to_string(&study).expect("serialize");
@@ -542,8 +643,8 @@ experiment:
             base_seed: 42,
         };
         let cfg = mini_config();
-        let mut a = ReplicationRunner::run_single(&cfg, &spec).expect("run a");
-        let mut b = ReplicationRunner::run_single(&cfg, &spec).expect("run b");
+        let mut a = ReplicationRunner::run_single(&cfg, &spec, 1).expect("run a");
+        let mut b = ReplicationRunner::run_single(&cfg, &spec, 1).expect("run b");
         for arm in a.arms.iter_mut().chain(b.arms.iter_mut()) {
             for repl in arm.replicates.iter_mut() {
                 repl.result.timestamp.clear();
@@ -642,7 +743,7 @@ experiment:
                 config: glicko,
             },
         ];
-        let study = ReplicationRunner::run_arms(&arms, &spec).expect("counterfactual study runs");
+        let study = ReplicationRunner::run_arms(&arms, &spec, 1).expect("counterfactual study runs");
         assert_eq!(study.strategy, SeedStrategy::Counterfactual);
         assert_eq!(study.arms.len(), 2);
         assert_eq!(study.arms[0].replicates.len(), 5);
@@ -706,8 +807,8 @@ experiment:
                 config: cfg,
             },
         ];
-        let mut a = ReplicationRunner::run_arms(&arms, &spec).expect("study a");
-        let mut b = ReplicationRunner::run_arms(&arms, &spec).expect("study b");
+        let mut a = ReplicationRunner::run_arms(&arms, &spec, 1).expect("study a");
+        let mut b = ReplicationRunner::run_arms(&arms, &spec, 1).expect("study b");
         for study in [&mut a, &mut b] {
             for arm in &mut study.arms {
                 for repl in &mut arm.replicates {
@@ -730,7 +831,7 @@ experiment:
             strategy: SeedStrategy::Crn,
             base_seed: 42,
         };
-        let study = ReplicationRunner::run_single(&mini_config(), &spec).expect("single-arm study");
+        let study = ReplicationRunner::run_single(&mini_config(), &spec, 1).expect("single-arm study");
         let view = study.expands_to();
         assert_eq!(view.nodes.len(), 3, "one leaf per replicate");
         let indices: Vec<u64> = view.nodes.iter().map(|n| n.replicate_index).collect();
@@ -769,6 +870,7 @@ experiment:
                 strategy: SeedStrategy::Crn,
                 base_seed: 42,
             },
+            1,
         )
         .unwrap();
         let original_count: usize = study.arms.iter().map(|a| a.replicates.len()).sum();
@@ -819,6 +921,7 @@ experiment:
                 strategy: SeedStrategy::Crn,
                 base_seed: 42,
             },
+            1,
         )
         .unwrap();
         let original_indices: Vec<u64> = study.arms[0]
@@ -865,6 +968,7 @@ experiment:
                 strategy: SeedStrategy::Crn,
                 base_seed: 42,
             },
+            1,
         )
         .unwrap();
         let ext_config =

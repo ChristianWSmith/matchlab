@@ -155,6 +155,7 @@ fn run_study(arms: &[ArmConfig], strategy: SeedStrategy, count: u64) -> StudyRes
             strategy,
             base_seed: 42,
         },
+        1,
     )
     .expect("study runs")
 }

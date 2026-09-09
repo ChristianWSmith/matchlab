@@ -8,6 +8,18 @@ pub mod registry {
             ("flatpoints", "plugins/rating/flat.lua"),
             ("glicko2", "plugins/rating/glicko2.lua"),
             ("trueskill", "plugins/rating/trueskill.lua"),
+            ("bradley_terry", "plugins/rating/bradley_terry.lua"),
+            ("thurstone", "plugins/rating/thurstone.lua"),
+            ("massey", "plugins/rating/massey.lua"),
+            ("colley", "plugins/rating/colley.lua"),
+            ("whr", "plugins/rating/whr.lua"),
+            ("trueskill_through_time", "plugins/rating/trueskill_through_time.lua"),
+            ("openskill", "plugins/rating/openskill.lua"),
+            ("rank_centrality", "plugins/rating/rank_centrality.lua"),
+            ("pagerank", "plugins/rating/pagerank.lua"),
+            ("bayesian_logistic", "plugins/rating/bayesian_logistic.lua"),
+            ("bayesian_hierarchical", "plugins/rating/bayesian_hierarchical.lua"),
+            ("decay_elo", "plugins/rating/decay_elo.lua"),
         ]
     }
     /// Resolve a rating system by script path.

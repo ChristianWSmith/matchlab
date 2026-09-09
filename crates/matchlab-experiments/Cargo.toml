@@ -25,3 +25,4 @@ serde_yaml.workspace = true
 rand.workspace = true
 rusqlite.workspace = true
 tracing.workspace = true
+rayon.workspace = true

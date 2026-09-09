@@ -38,7 +38,7 @@ match-lab/              # workspace root
     ├── matchlab-players/       # archetypes, population generation, skill process
     ├── matchlab-game/          # outcome models, match execution
     ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search strategies
-    ├── matchlab-rating/        # rating systems (Elo, Glicko-2, TrueSkill, Flat)
+    ├── matchlab-rating/        # rating systems (Elo, Glicko-2, TrueSkill, Flat, Bradley-Terry, Thurstone, Massey, Colley, WHR, OpenSkill, Rank Centrality, PageRank, Bayesian Logistic, Bayesian Hierarchical)
     ├── matchlab-detection/     # smurf detection, interventions
     ├── matchlab-ranking/       # rank mapping, leaderboard
     ├── matchlab-loop/          # simulation loop, event handlers, machine state
