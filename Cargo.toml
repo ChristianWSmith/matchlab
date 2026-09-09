@@ -39,7 +39,7 @@ tracing-appender = "0.2"
 rayon = "1.10"
 
 [package]
-name = "match-lab"
+name = "matchlab"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
