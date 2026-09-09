@@ -31,7 +31,8 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let threads =
+        threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let level = log_level.unwrap_or_else(|| {
         if verbose {
             "debug".to_string()
@@ -89,7 +90,9 @@ fn print_help() {
     eprintln!("    --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)");
     eprintln!("    --log-file <PATH>  Write logs to a file in addition to stdout");
     eprintln!("    --json-logs   Output logs as JSON Lines (for tooling)");
-    eprintln!("    --threads <N> Number of threads for parallel study execution (default: num_cpus)");
+    eprintln!(
+        "    --threads <N> Number of threads for parallel study execution (default: num_cpus)"
+    );
     eprintln!();
     eprintln!("EXAMPLES:");
     eprintln!("    matchlab run experiments/v0_1_basic.yaml");

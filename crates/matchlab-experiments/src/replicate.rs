@@ -183,7 +183,11 @@ impl ReplicationRunner {
         };
         Self::run_arms(&[arm], spec, threads)
     }
-    pub fn run_arms(arms: &[ArmConfig], spec: &ReplicationSpec, threads: usize) -> Result<StudyResult, String> {
+    pub fn run_arms(
+        arms: &[ArmConfig],
+        spec: &ReplicationSpec,
+        threads: usize,
+    ) -> Result<StudyResult, String> {
         if arms.is_empty() {
             return Err("run_arms needs at least one arm".into());
         }
@@ -215,8 +219,8 @@ impl ReplicationRunner {
                     .map_err(|e| e.to_string())?;
 
                 // Phase 1: run arm 0 (live) across all replicates in parallel
-                let live_results: Vec<(u64, u64, ExperimentResult, Option<GameHistory>)> =
-                    pool.install(|| {
+                let live_results: Vec<(u64, u64, ExperimentResult, Option<GameHistory>)> = pool
+                    .install(|| {
                         (0..spec.count)
                             .into_par_iter()
                             .map(|r| {
@@ -224,9 +228,8 @@ impl ReplicationRunner {
                                 let seed = arm_seed(spec.strategy, repl, 0);
                                 let mut cfg = arms[0].config.clone();
                                 cfg.experiment.seed = seed;
-                                let (result, history) =
-                                    ExperimentRunner::run_recording(&cfg, true)
-                                        .expect("live arm experiment failed");
+                                let (result, history) = ExperimentRunner::run_recording(&cfg, true)
+                                    .expect("live arm experiment failed");
                                 (r, seed, result, history)
                             })
                             .collect()
@@ -238,26 +241,26 @@ impl ReplicationRunner {
                         live_results
                             .par_iter()
                             .flat_map(|(r, _live_seed, _live_result, history)| {
-                                let history = history.as_ref().expect("live arm must record history");
+                                let history =
+                                    history.as_ref().expect("live arm must record history");
                                 let repl = replicate_seed(spec.base_seed, *r);
-                                (1..arms.len())
-                                    .into_par_iter()
-                                    .map(move |arm_i| {
-                                        let seed = arm_seed(spec.strategy, repl, arm_i as u64);
-                                        let mut cfg = arms[arm_i].config.clone();
-                                        cfg.experiment.seed = seed;
-                                        let system =
-                                            crate::runner::build_rating_system(&cfg.experiment.rating.systems)
-                                                .expect("build rating system failed");
-                                        let result = ReplayEngine::replay(
-                                            history,
-                                            system.as_ref(),
-                                            &cfg,
-                                            &cfg.experiment.metrics,
-                                        )
-                                        .expect("replay failed");
-                                        (*r, arm_i, seed, result)
-                                    })
+                                (1..arms.len()).into_par_iter().map(move |arm_i| {
+                                    let seed = arm_seed(spec.strategy, repl, arm_i as u64);
+                                    let mut cfg = arms[arm_i].config.clone();
+                                    cfg.experiment.seed = seed;
+                                    let system = crate::runner::build_rating_system(
+                                        &cfg.experiment.rating.systems,
+                                    )
+                                    .expect("build rating system failed");
+                                    let result = ReplayEngine::replay(
+                                        history,
+                                        system.as_ref(),
+                                        &cfg,
+                                        &cfg.experiment.metrics,
+                                    )
+                                    .expect("replay failed");
+                                    (*r, arm_i, seed, result)
+                                })
                             })
                             .collect()
                     })
@@ -743,7 +746,8 @@ experiment:
                 config: glicko,
             },
         ];
-        let study = ReplicationRunner::run_arms(&arms, &spec, 1).expect("counterfactual study runs");
+        let study =
+            ReplicationRunner::run_arms(&arms, &spec, 1).expect("counterfactual study runs");
         assert_eq!(study.strategy, SeedStrategy::Counterfactual);
         assert_eq!(study.arms.len(), 2);
         assert_eq!(study.arms[0].replicates.len(), 5);
@@ -831,7 +835,8 @@ experiment:
             strategy: SeedStrategy::Crn,
             base_seed: 42,
         };
-        let study = ReplicationRunner::run_single(&mini_config(), &spec, 1).expect("single-arm study");
+        let study =
+            ReplicationRunner::run_single(&mini_config(), &spec, 1).expect("single-arm study");
         let view = study.expands_to();
         assert_eq!(view.nodes.len(), 3, "one leaf per replicate");
         let indices: Vec<u64> = view.nodes.iter().map(|n| n.replicate_index).collect();
