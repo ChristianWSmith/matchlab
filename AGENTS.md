@@ -29,7 +29,7 @@ When updating, keep the same terse style. Do not narrate what changed — just m
 A Cargo workspace under `crates/` with one binary at `src/main.rs`:
 
 ```
-match-lab/              # workspace root
+matchlab/               # workspace root
 ├── Cargo.toml          # workspace root (NOT a library crate)
 ├── src/main.rs         # CLI binary: `matchlab run <manifest>`
 └── crates/
@@ -38,7 +38,7 @@ match-lab/              # workspace root
     ├── matchlab-players/       # archetypes, population generation, skill process
     ├── matchlab-game/          # outcome models, match execution
     ├── matchlab-matchmaking/   # queue, matchmaker, constraints, search strategies
-    ├── matchlab-rating/        # rating systems (Elo, Glicko-2, TrueSkill, Flat)
+    ├── matchlab-rating/        # rating systems (Elo, Glicko-2, TrueSkill, Flat, Bradley-Terry, Thurstone, Massey, Colley, WHR, OpenSkill, Rank Centrality, PageRank, Bayesian Logistic, Bayesian Hierarchical)
     ├── matchlab-detection/     # smurf detection, interventions
     ├── matchlab-ranking/       # rank mapping, leaderboard
     ├── matchlab-loop/          # simulation loop, event handlers, machine state
@@ -137,7 +137,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/main.rs`. `cargo build --workspace`, `cargo test --workspace`, and `cargo check --workspace` all pass.
 
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (lua54, vendored); `[workspace.package]` sets `edition = "2024"`.
-- `src/main.rs` is the `match-lab` binary (`matchlab run`, `matchlab study`, `matchlab compare`); depends on `matchlab-experiments` and `matchlab-analysis`.
+- `src/main.rs` is the `matchlab` binary (`matchlab run`, `matchlab study`, `matchlab compare`); depends on `matchlab-experiments` and `matchlab-analysis`.
 - All algorithms are Lua scripts under `plugins/`. Rust holds types, traits, and thin `Lua*System` adapters — there are no inherent Rust algorithms.
 - The v0.1 build order (steps 1–12) and v0.2 experimental rigor features are complete.
 

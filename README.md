@@ -404,6 +404,17 @@ the full plugin API contract, see [`docs/plugin-api.md`](docs/plugin-api.md).
 | `trueskill.lua` | TrueSkill (Herbrich, Minka, Graepel): each player is N(μ, σ²), truncated-Gaussian conditioning with draw margin | `initial_mean`, `initial_variance`, `beta`, `dynamics`, `draw_probability` |
 | `flat.lua` | Fixed points for a win/loss — a baseline that shows why adaptive systems are needed | `win_points`, `loss_points`, `initial_rating` |
 | `decay_elo.lua` | **Novel, no Rust equivalent.** Elo plus idle decay: absent players drift back toward the initial rating | `k_factor`, `initial_rating`, `beta`, `decay_rate` |
+| `bradley_terry.lua` | Bradley-Terry pairwise comparison model: P(i>j) = sigmoid(r_i - r_j) | `initial_rating`, `learning_rate` |
+| `thurstone.lua` | Thurstone-Mosteller: P(i>j) = Φ((μ_i - μ_j)/√(σ_i² + σ_j²)) | `initial_rating`, `initial_sigma`, `learning_rate` |
+| `massey.lua` | Massey rating: uses score differentials via linear system Mr = p | `initial_rating`, `learning_rate`, `regularization` |
+| `colley.lua` | Colley rating: regularized win/loss system C r = b | `initial_rating` |
+| `whr.lua` | Whole-History Rating: Bayesian logistic with Gaussian prior | `initial_rating`, `prior_variance`, `learning_rate` |
+| `trueskill_through_time.lua` | TrueSkill with skill drift: σ² += γ² between observations | `initial_mean`, `initial_variance`, `beta`, `gamma` |
+| `openskill.lua` | OpenSkill: team-weighted TrueSkill variant | `initial_mean`, `initial_variance`, `beta` |
+| `rank_centrality.lua` | Rank Centrality: spectral inference over match graph | `initial_rating`, `damping_factor`, `iterations` |
+| `pagerank.lua` | PageRank-style rating: eigenvector centrality on match graph | `initial_rating`, `damping_factor`, `iterations` |
+| `bayesian_logistic.lua` | Bayesian logistic: MAP estimate with Gaussian prior | `initial_rating`, `prior_variance`, `learning_rate` |
+| `bayesian_hierarchical.lua` | Bayesian hierarchical: population-level shrinkage | `initial_rating`, `population_prior_mean`, `learning_rate` |
 
 *Information budgets:* rating systems declare what match data they may read
 (e.g. Elo and Glicko-2 read only win/loss). The loop enforces the budget by

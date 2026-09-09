@@ -170,13 +170,13 @@ fn run_experiment() -> matchlab_experiments::ExperimentResult {
     }
 }
 fn run_matchlab(args: &[&str]) -> Command {
-    let bin = std::env::var("CARGO_BIN_EXE_match-lab").unwrap_or_else(|_| {
+    let bin = std::env::var("CARGO_BIN_EXE_matchlab").unwrap_or_else(|_| {
         let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.pop();
         path.pop();
         path.push("target");
         path.push("debug");
-        path.push("match-lab");
+        path.push("matchlab");
         path.to_string_lossy().into_owned()
     });
     let mut manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));

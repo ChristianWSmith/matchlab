@@ -8,6 +8,7 @@ fn main() -> ExitCode {
     let mut log_level: Option<String> = None;
     let mut log_file: Option<String> = None;
     let mut json_logs = false;
+    let mut threads: Option<usize> = None;
     let mut positional_args: Vec<String> = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -22,10 +23,16 @@ fn main() -> ExitCode {
                 log_file = args.get(i).cloned();
             }
             "--json-logs" => json_logs = true,
+            "--threads" => {
+                i += 1;
+                threads = args.get(i).and_then(|s| s.parse().ok());
+            }
             other => positional_args.push(other.to_string()),
         }
         i += 1;
     }
+    let threads =
+        threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let level = log_level.unwrap_or_else(|| {
         if verbose {
             "debug".to_string()
@@ -36,8 +43,8 @@ fn main() -> ExitCode {
     let _ =
         matchlab_core::logging::init_logging_with_options(&level, log_file.as_deref(), json_logs);
     match positional_args.get(1).map(String::as_str) {
-        Some("run") => run(&positional_args[2..]),
-        Some("study") => study(&positional_args[2..]),
+        Some("run") => run(&positional_args[2..], threads),
+        Some("study") => study(&positional_args[2..], threads),
         Some("compare") => compare(&positional_args[2..]),
         Some("package") => package(&positional_args[2..]),
         Some("analyze") => analyze(&positional_args[2..]),
@@ -83,6 +90,9 @@ fn print_help() {
     eprintln!("    --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)");
     eprintln!("    --log-file <PATH>  Write logs to a file in addition to stdout");
     eprintln!("    --json-logs   Output logs as JSON Lines (for tooling)");
+    eprintln!(
+        "    --threads <N> Number of threads for parallel study execution (default: num_cpus)"
+    );
     eprintln!();
     eprintln!("EXAMPLES:");
     eprintln!("    matchlab run experiments/v0_1_basic.yaml");
@@ -199,7 +209,7 @@ fn package(args: &[String]) -> ExitCode {
     );
     ExitCode::SUCCESS
 }
-fn run(manifest_args: &[String]) -> ExitCode {
+fn run(manifest_args: &[String], threads: usize) -> ExitCode {
     let Some(manifest) = manifest_args.first() else {
         eprintln!("usage: matchlab run <manifest.yaml>");
         return ExitCode::from(2);
@@ -213,7 +223,7 @@ fn run(manifest_args: &[String]) -> ExitCode {
         }
     };
     if let Some(spec) = &config.experiment.replication {
-        return run_replicated(&config, spec);
+        return run_replicated(&config, spec, threads);
     }
     let result = match matchlab_experiments::runner::ExperimentRunner::run(&config) {
         Ok(r) => r,
@@ -267,8 +277,9 @@ fn run(manifest_args: &[String]) -> ExitCode {
 fn run_replicated(
     config: &matchlab_experiments::ExperimentConfig,
     spec: &matchlab_experiments::ReplicationSpec,
+    threads: usize,
 ) -> ExitCode {
-    let study = match matchlab_experiments::ReplicationRunner::run_single(config, spec) {
+    let study = match matchlab_experiments::ReplicationRunner::run_single(config, spec, threads) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("replication failed: {} — {e}", config.experiment.name);
@@ -277,7 +288,7 @@ fn run_replicated(
     };
     finish_study(&study, &config.experiment.output.directory, false)
 }
-fn study(args: &[String]) -> ExitCode {
+fn study(args: &[String], threads: usize) -> ExitCode {
     let mut json_out = false;
     let mut replicates_override: Option<u64> = None;
     let mut path: Option<String> = None;
@@ -316,7 +327,7 @@ fn study(args: &[String]) -> ExitCode {
     if let Some(n) = replicates_override {
         config.study.replication.count = n;
     }
-    let result = match matchlab_experiments::study::StudyRunner::run(&config) {
+    let result = match matchlab_experiments::study::StudyRunner::run(&config, threads) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("run study failed: {path} — {e}");

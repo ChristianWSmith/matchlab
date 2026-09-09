@@ -81,7 +81,7 @@ impl StudyRunner {
     /// `config_hash` semantics (documented): `StudyResult.config_hash` is the
     /// hash of arm[0]'s resolved full config (base + that arm's overrides +
     /// study-level `metrics`/`cohorts`).
-    pub fn run(study: &StudyConfig) -> Result<StudyResult, String> {
+    pub fn run(study: &StudyConfig, threads: usize) -> Result<StudyResult, String> {
         let mut base_config = inherit::load(Path::new(&study.study.base))?;
         base_config.experiment.metrics = study.study.metrics.clone();
         base_config.experiment.cohorts = study.study.cohorts.clone();
@@ -102,7 +102,7 @@ impl StudyRunner {
                 config: cfg,
             });
         }
-        let mut result = ReplicationRunner::run_arms(&arms, &study.study.replication)?;
+        let mut result = ReplicationRunner::run_arms(&arms, &study.study.replication, threads)?;
         result.name = study.study.name.clone();
         let hash8 = &result.config_hash[..8];
         result.study_id = format!(
@@ -318,7 +318,7 @@ study:
 "#
         );
         let config: StudyConfig = serde_yaml::from_str(&text).expect("parses");
-        let err = StudyRunner::run(&config).expect_err("seed override must be rejected");
+        let err = StudyRunner::run(&config, 1).expect_err("seed override must be rejected");
         assert!(err.contains("seed"), "error names the seed: {err}");
         let _ = std::fs::remove_file(&base);
     }
@@ -326,8 +326,8 @@ study:
     fn mini_study_runs_deterministically() {
         let base = temp_base();
         let config: StudyConfig = serde_yaml::from_str(&study_yaml(&base)).expect("valid study");
-        let mut a = StudyRunner::run(&config).expect("run study a");
-        let mut b = StudyRunner::run(&config).expect("run study b");
+        let mut a = StudyRunner::run(&config, 1).expect("run study a");
+        let mut b = StudyRunner::run(&config, 1).expect("run study b");
         assert_eq!(a.arms.len(), 2);
         let elo = &a.arms[0];
         assert_eq!(elo.name, "elo");
