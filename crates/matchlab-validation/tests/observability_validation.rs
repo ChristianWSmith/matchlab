@@ -177,6 +177,9 @@ fn run_matchlab(args: &[&str]) -> Command {
         path.push("target");
         path.push("debug");
         path.push("match-lab");
+        if cfg!(windows) {
+            path.set_extension("exe");
+        }
         path.to_string_lossy().into_owned()
     });
     let mut manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
