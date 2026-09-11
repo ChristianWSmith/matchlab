@@ -12,6 +12,7 @@ use crate::rng;
 use crate::validate;
 use matchlab_core::rng::SimRng;
 use mlua::{FromLua, Function, Lua, Table, Value};
+use smallvec::SmallVec;
 use std::sync::Mutex;
 use tracing;
 /// Global under which the persistent context table is stored.
@@ -121,11 +122,11 @@ impl LuaVm {
             }
         };
         let config_value = self.config_lua.clone();
-        let mut call_args = args.to_vec();
+        let mut call_args: SmallVec<[Value; 8]> = args.iter().cloned().collect();
         call_args.push(config_value);
         call_args.push(Value::Table(ctx_table.clone()));
         let results = func
-            .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args))
+            .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args.into_vec()))
             .map_err(|e| format!("{name} failed in {}: {}", self.script_path, e))?;
         let mut iter = results.into_vec().into_iter();
         let first = iter

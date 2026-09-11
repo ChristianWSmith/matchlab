@@ -394,6 +394,7 @@ dependencies = [
  "matchlab-core",
  "mlua",
  "serde_yaml",
+ "smallvec",
  "tracing",
 ]
 
