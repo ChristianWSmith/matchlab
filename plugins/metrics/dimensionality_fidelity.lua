@@ -1,6 +1,7 @@
 -- plugins/metrics/dimensionality_fidelity.lua
 -- Correlation of 1D ratings and skill-vector predictions vs true overall skill;
 -- fidelity = how much multiD improves over 1D. Population-level metric.
+-- Population is columnar: snapshot.population = { rating = {...}, ... }
 
 name = "dimensionality_fidelity"
 needs_population = true
@@ -10,9 +11,11 @@ function on_record(match_result, snapshot, config, context)
     if snapshot.population == nil then
         return context
     end
-    for _, p in ipairs(snapshot.population) do
-        if p.true_skill ~= nil then
-            table.insert(context.samples, { p.rating, p.skill_overall, p.true_skill })
+    local pop = snapshot.population
+    for i = 1, #pop.rating do
+        local ts = pop.true_skill[i]
+        if ts ~= nil then
+            table.insert(context.samples, { pop.rating[i], pop.skill_overall[i], ts })
         end
     end
     return context
