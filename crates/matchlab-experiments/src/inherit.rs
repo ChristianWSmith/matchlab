@@ -156,7 +156,10 @@ experiment:
         assert_eq!(config.experiment.rating.systems.len(), 1);
         assert_eq!(
             config.experiment.metrics,
-            vec!["match_quality", "queue_time"]
+            vec![
+                crate::config::MetricEntry::Name("match_quality".to_string()),
+                crate::config::MetricEntry::Name("queue_time".to_string())
+            ]
         );
         assert_eq!(config.experiment.population.size, 10000);
         assert_eq!(config.experiment.game.teams.a.size(), 5);
@@ -176,7 +179,10 @@ experiment:
         assert_eq!(config.experiment.population.size, 10000);
         assert_eq!(
             config.experiment.metrics,
-            vec!["match_quality", "queue_time"]
+            vec![
+                crate::config::MetricEntry::Name("match_quality".to_string()),
+                crate::config::MetricEntry::Name("queue_time".to_string())
+            ]
         );
         fs::remove_dir_all(&dir).ok();
     }

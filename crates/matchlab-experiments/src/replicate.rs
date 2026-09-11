@@ -733,7 +733,10 @@ experiment:
             base_seed: 42,
         };
         let mut elo = mini_config();
-        elo.experiment.metrics = vec!["match_quality".to_string(), "rating_accuracy".to_string()];
+        elo.experiment.metrics = vec![
+            crate::config::MetricEntry::Name("match_quality".to_string()),
+            crate::config::MetricEntry::Name("rating_accuracy".to_string()),
+        ];
         elo.experiment.population.size = 16;
         elo.experiment.duration.matches = 100;
         let arms = [
@@ -797,9 +800,9 @@ experiment:
         };
         let mut cfg = mini_config();
         cfg.experiment.metrics = vec![
-            "match_quality".to_string(),
-            "rating_accuracy".to_string(),
-            "queue_time".to_string(),
+            crate::config::MetricEntry::Name("match_quality".to_string()),
+            crate::config::MetricEntry::Name("rating_accuracy".to_string()),
+            crate::config::MetricEntry::Name("queue_time".to_string()),
         ];
         let arms = [
             ArmConfig {

@@ -127,6 +127,7 @@ matchlab package <manifest.yaml>       # Create a reproduction package
 matchlab analyze <result.json>         # Analyze a stored result
 matchlab compare-stats <study.json>... # Compare study results statistically
 matchlab power                         # Compute power analysis
+matchlab optimize <optimize.yaml>      # Bayesian hyperparameter optimization
 ```
 
 CLI flags for controlling output:
@@ -698,6 +699,7 @@ crates/                   Rust crate workspace
   matchlab-experiments/   manifest parsing, config inheritance, runner, factorial design, replication
   matchlab-analysis/      statistics, Pareto, cohorts, reports, provenance
   matchlab-validation/    analytical-baseline regression tests (test-side only)
+  matchlab-optimize/      Bayesian hyperparameter optimization (GP, EI, ParEGO)
 docs/                     Documentation
   manifest-schema.md      Complete manifest schema reference
   plugin-api.md           Plugin API contracts for all 7 types

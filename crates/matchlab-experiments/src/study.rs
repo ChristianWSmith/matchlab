@@ -29,7 +29,7 @@ pub struct StudySpec {
     pub replication: ReplicationSpec,
     /// Study-level settings applied to every arm.
     #[serde(default)]
-    pub metrics: Vec<String>,
+    pub metrics: Vec<crate::config::MetricEntry>,
     #[serde(default)]
     pub cohorts: Vec<CohortSpec>,
     /// Optional declared primary estimand . A name string parsed by

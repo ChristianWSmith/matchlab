@@ -105,8 +105,11 @@ experiment:
     # Additional script params (flattened):
     brackets: <list>
 
-  metrics:                      # required, list of metric names
-    - <string>
+  metrics:                      # required, list of metric names or scripts
+    - <string>                  #   a metric name (e.g. "match_quality")
+    # OR:
+    - script: <path>            #   a custom metric script path
+      param1: <value>           #   optional script params
 
   objectives:                   # optional, absent = no utility score
     match_quality: <f64>        #   all optional, weight values
@@ -368,4 +371,93 @@ study:
     - queue_time
   output:
     directory: results/studies/
+```
+
+---
+
+## Optimization Manifest
+
+```yaml
+optimize:
+  name: <string>                # required, optimization run name
+  base: <path>                  # required, base experiment manifest
+  seed: <u64>                   # required, master optimization seed
+  budget: <u64>                 # required, total experiments to evaluate
+
+  search_space:                 # required, parameters to optimize
+    parameters:
+      <dot.path>:               # dotted path into the experiment config
+        type: float             #   parameter type
+        bounds: [<f64>, <f64>]  #   [min, max]
+        log_scale: <bool>       #   optional, default false
+      <dot.path>:
+        type: categorical       #   categorical parameter
+        values: [<string>, ...] #   allowed values
+
+  objectives:                   # required, what to optimize
+    - metric: <string>          #   metric name to optimize
+      direction: maximize       #   or minimize
+
+  bo:                           # optional, Bayesian optimization settings
+    initial_design: latin_hypercube  # or "random"
+    initial_points: <u64>       #   optional, default 10
+    kernel: matern52            #   optional, default "matern52"
+    acquisition: ehvi           #   optional, default "ehvi"
+    noise: inferred             #   optional, default "inferred"
+    xi: <f64>                   #   optional, EI exploration-exploitation tradeoff
+
+  output:                       # optional
+    directory: <string>         #   default "results/optimization/"
+    report: <bool>              #   default false
+```
+
+### Search Space Parameters
+
+Search space parameters use dotted paths into the experiment config tree. Common paths:
+
+| Path | What it controls |
+|------|-----------------|
+| `experiment.rating.systems.0.k_factor` | Elo K-factor |
+| `experiment.rating.systems.0.beta` | Elo beta/divisor |
+| `experiment.rating.systems.0.initial_rating` | Starting rating |
+| `experiment.rating.systems.0.name` | Rating system choice (categorical) |
+| `experiment.rating.systems.0.initial_rd` | Glicko-2 initial RD |
+| `experiment.rating.systems.0.initial_volatility` | Glicko-2 initial volatility |
+| `experiment.rating.systems.0.tau` | Glicko-2 tau constraint |
+| `experiment.game.beta` | Outcome model logistic steepness |
+| `experiment.game.noise` | Outcome model noise |
+| `experiment.game.fatigue_decay_rate` | Fatigue decay rate |
+| `experiment.game.momentum_factor` | Momentum factor |
+| `experiment.matchmaking.max_queue_time` | Maximum queue wait |
+| `experiment.matchmaking.script` | Matchmaker choice (categorical) |
+| `experiment.detection.sigma_threshold` | Detection sensitivity |
+| `experiment.detection.min_anomalous_games` | Detection confirmation threshold |
+
+### Example: Optimize Elo K-factor
+
+```yaml
+optimize:
+  name: elo_kfactor_optimization
+  base: experiments/base/standard.yaml
+  seed: 42
+  budget: 50
+
+  search_space:
+    parameters:
+      experiment.rating.systems.0.k_factor:
+        type: float
+        bounds: [1.0, 100.0]
+      experiment.rating.systems.0.beta:
+        type: float
+        bounds: [100.0, 800.0]
+
+  objectives:
+    - metric: match_quality
+      direction: maximize
+    - metric: rating_accuracy
+      direction: minimize
+
+  bo:
+    initial_points: 10
+    acquisition: ehvi
 ```

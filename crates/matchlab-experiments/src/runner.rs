@@ -252,12 +252,26 @@ fn batch_interval_secs(spec: &MatchmakingSpec) -> u64 {
         })
         .unwrap_or(60)
 }
-pub(crate) fn register_metrics(engine: &mut MetricsEngine, names: &[String]) -> Result<(), String> {
-    for name in names {
-        let path = format!("plugins/metrics/{name}.lua");
-        let collector =
-            matchlab_metrics::lua::LuaMetricCollector::load(&path, &serde_yaml::Value::Null)
-                .map_err(|_| format!("unknown metric collector: {name}"))?;
+pub(crate) fn register_metrics(
+    engine: &mut MetricsEngine,
+    entries: &[crate::config::MetricEntry],
+) -> Result<(), String> {
+    for entry in entries {
+        let (path, params) = match entry {
+            crate::config::MetricEntry::Name(name) => (
+                format!("plugins/metrics/{name}.lua"),
+                serde_yaml::Value::Null,
+            ),
+            crate::config::MetricEntry::Script { script, params } => {
+                let mut mapping = serde_yaml::Mapping::new();
+                for (k, v) in params {
+                    mapping.insert(serde_yaml::Value::String(k.clone()), v.clone());
+                }
+                (script.clone(), serde_yaml::Value::Mapping(mapping))
+            }
+        };
+        let collector = matchlab_metrics::lua::LuaMetricCollector::load(&path, &params)
+            .map_err(|e| format!("failed to load metric {}: {e}", path))?;
         engine.register(Box::new(collector));
     }
     Ok(())
@@ -441,7 +455,10 @@ experiment:
     #[test]
     fn unknown_metric_is_rejected() {
         let mut config = mini_config();
-        config.experiment.metrics.push("bogus".to_string());
+        config
+            .experiment
+            .metrics
+            .push(crate::config::MetricEntry::Name("bogus".to_string()));
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
@@ -525,25 +542,26 @@ experiment:
     fn all_metric_collectors_register() {
         let mut config = mini_config();
         config.experiment.metrics = vec![
-            "rating_accuracy".to_string(),
-            "match_quality".to_string(),
-            "queue_time".to_string(),
-            "match_inequality".to_string(),
-            "ndcg".to_string(),
-            "dimensionality_fidelity".to_string(),
-            "convergence".to_string(),
-            "responsiveness".to_string(),
-            "stability".to_string(),
-            "streaks".to_string(),
-            "population_health".to_string(),
-            "smurf".to_string(),
+            crate::config::MetricEntry::Name("rating_accuracy".to_string()),
+            crate::config::MetricEntry::Name("match_quality".to_string()),
+            crate::config::MetricEntry::Name("queue_time".to_string()),
+            crate::config::MetricEntry::Name("match_inequality".to_string()),
+            crate::config::MetricEntry::Name("ndcg".to_string()),
+            crate::config::MetricEntry::Name("dimensionality_fidelity".to_string()),
+            crate::config::MetricEntry::Name("convergence".to_string()),
+            crate::config::MetricEntry::Name("responsiveness".to_string()),
+            crate::config::MetricEntry::Name("stability".to_string()),
+            crate::config::MetricEntry::Name("streaks".to_string()),
+            crate::config::MetricEntry::Name("population_health".to_string()),
+            crate::config::MetricEntry::Name("smurf".to_string()),
         ];
         let result = ExperimentRunner::run(&config).unwrap();
-        for metric in &config.experiment.metrics {
-            assert!(
-                result.metrics.contains_key(metric),
-                "missing metric: {metric}"
-            );
+        for entry in &config.experiment.metrics {
+            let key = match entry {
+                crate::config::MetricEntry::Name(name) => name.clone(),
+                crate::config::MetricEntry::Script { script, .. } => script.clone(),
+            };
+            assert!(result.metrics.contains_key(&key), "missing metric: {key}");
         }
     }
 }

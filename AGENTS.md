@@ -48,7 +48,8 @@ matchlab/               # workspace root
     ├── matchlab-utility/       # player satisfaction / retention model
     ├── matchlab-experiments/   # runner, YAML config, factorial design, counterfactual eval, replication
     ├── matchlab-analysis/      # statistics, Pareto, cohorts, reports, provenance
-    └── matchlab-validation/    # analytical-baseline regression tests (test-side references)
+    ├── matchlab-validation/    # analytical-baseline regression tests (test-side references)
+    └── matchlab-optimize/      # Bayesian hyperparameter optimization (GP, EI, ParEGO)
 ```
 
 **Dependency flow** (each layer only depends on layers below it):
@@ -71,7 +72,8 @@ matchlab-loop          (depends on core + players + game + rating + matchmaking 
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
 matchlab-validation    (depends on core + players + game + rating + matchmaking + loop + metrics + experiments; test-side references only)
-matchlab (binary)      (depends on experiments + analysis)
+matchlab-optimize      (depends on core + experiments + metrics + ndarray)
+matchlab (binary)      (depends on experiments + analysis + optimize)
 ```
 
 ---
@@ -134,10 +136,10 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 ## Current State
 
-The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/main.rs`. `cargo build --workspace`, `cargo test --workspace`, and `cargo check --workspace` all pass.
+The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/main.rs`. `cargo build --workspace`, `cargo test --workspace`, and `cargo check --workspace` all pass.
 
 - `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (luau, vendored); `[workspace.package]` sets `edition = "2024"`.
-- `src/main.rs` is the `matchlab` binary (`matchlab run`, `matchlab study`, `matchlab compare`); depends on `matchlab-experiments` and `matchlab-analysis`.
+- `src/main.rs` is the `matchlab` binary (`matchlab run`, `matchlab study`, `matchlab compare`, `matchlab optimize`); depends on `matchlab-experiments`, `matchlab-analysis`, and `matchlab-optimize`.
 - All algorithms are Lua scripts under `plugins/`. Rust holds types, traits, and thin `Lua*System` adapters — there are no inherent Rust algorithms.
 - The v0.1 build order (steps 1–12) and v0.2 experimental rigor features are complete.
 
@@ -161,12 +163,14 @@ The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/
 | `matchlab-experiments` | YAML config, inheritance, factorial design, replication, counterfactual replay, study manifests |
 | `matchlab-analysis` | Statistics (CIs, effect sizes, power), Pareto, cohorts, reporting, provenance |
 | `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget) |
+| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate, Matern 5/2 kernel, EI/EHVI acquisition, ParEGO multi-objective, Latin Hypercube sampling |
 
 ### CLI commands
 
 - `matchlab run <manifest.yaml>` — run a single experiment
 - `matchlab study <study.yaml> [--replicates N] [--json]` — run a multi-arm replicated study
 - `matchlab compare <result.json>... [--json]` — compare exported results
+- `matchlab optimize <optimize.yaml>` — Bayesian hyperparameter optimization
 
 ---
 

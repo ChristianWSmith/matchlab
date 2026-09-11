@@ -17,10 +17,11 @@ members = [
     "crates/matchlab-adversarial",
     "crates/matchlab-utility",
     "crates/matchlab-validation",
+    "crates/matchlab-optimize",
 ]
 
 [workspace.package]
-version = "1.2.0"
+version = "1.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -49,5 +50,6 @@ license.workspace = true
 matchlab-experiments = { path = "crates/matchlab-experiments" }
 matchlab-analysis = { path = "crates/matchlab-analysis" }
 matchlab-core = { path = "crates/matchlab-core" }
+matchlab-optimize = { path = "crates/matchlab-optimize" }
 serde_json.workspace = true
 tracing.workspace = true

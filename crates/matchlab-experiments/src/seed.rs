@@ -81,8 +81,8 @@ fn collect_script_paths(config: &ExperimentConfig) -> Vec<String> {
         }
     }
     walk(&value, &mut paths);
-    for name in &config.experiment.metrics {
-        paths.push(format!("plugins/metrics/{name}.lua"));
+    for entry in &config.experiment.metrics {
+        paths.push(entry.script_path());
     }
     paths.sort();
     paths.dedup();

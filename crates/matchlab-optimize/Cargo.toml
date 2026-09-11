@@ -1,0 +1,18 @@
+[package]
+name = "matchlab-optimize"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+matchlab-core = { path = "../matchlab-core" }
+matchlab-experiments = { path = "../matchlab-experiments" }
+matchlab-metrics = { path = "../matchlab-metrics" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+rand.workspace = true
+rayon.workspace = true
+ndarray = "0.17"
+tracing.workspace = true

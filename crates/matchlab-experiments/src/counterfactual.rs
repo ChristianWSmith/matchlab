@@ -83,15 +83,21 @@ impl ReplayEngine {
         history: &GameHistory,
         system: &dyn RatingSystem,
         config: &crate::config::ExperimentConfig,
-        requested_metrics: &[String],
+        requested_metrics: &[crate::config::MetricEntry],
     ) -> Result<crate::runner::ExperimentResult, String> {
         if history.is_empty() {
             return Err("counterfactual replay requires a non-empty history".to_string());
         }
         let mut engine = MetricsEngine::new();
-        let valid: Vec<String> = requested_metrics
+        let valid: Vec<crate::config::MetricEntry> = requested_metrics
             .iter()
-            .filter(|name| REPLAY_VALID_METRICS.contains(&name.as_str()))
+            .filter(|entry| {
+                let name = match entry {
+                    crate::config::MetricEntry::Name(n) => n.as_str(),
+                    crate::config::MetricEntry::Script { .. } => return true,
+                };
+                REPLAY_VALID_METRICS.contains(&name)
+            })
             .cloned()
             .collect();
         crate::runner::register_metrics(&mut engine, &valid)?;
@@ -400,7 +406,10 @@ experiment:
             &h,
             sys.as_ref(),
             &replay_config(),
-            &["rating_accuracy".to_string(), "queue_time".to_string()],
+            &[
+                crate::config::MetricEntry::Name("rating_accuracy".to_string()),
+                crate::config::MetricEntry::Name("queue_time".to_string()),
+            ],
         )
         .expect("replay succeeds");
         assert_eq!(res.matches_completed, 3);
@@ -418,12 +427,24 @@ experiment:
         let sys_a = lua_elo();
         let sys_b = lua_elo();
         let cfg = replay_config();
-        let mut a =
-            ReplayEngine::replay(&h, sys_a.as_ref(), &cfg, &["rating_accuracy".to_string()])
-                .expect("replay a");
-        let mut b =
-            ReplayEngine::replay(&h, sys_b.as_ref(), &cfg, &["rating_accuracy".to_string()])
-                .expect("replay b");
+        let mut a = ReplayEngine::replay(
+            &h,
+            sys_a.as_ref(),
+            &cfg,
+            &[crate::config::MetricEntry::Name(
+                "rating_accuracy".to_string(),
+            )],
+        )
+        .expect("replay a");
+        let mut b = ReplayEngine::replay(
+            &h,
+            sys_b.as_ref(),
+            &cfg,
+            &[crate::config::MetricEntry::Name(
+                "rating_accuracy".to_string(),
+            )],
+        )
+        .expect("replay b");
         a.timestamp.clear();
         b.timestamp.clear();
         assert_eq!(a, b, "same system + history must replay identically");
@@ -436,7 +457,9 @@ experiment:
             &h,
             sys.as_ref(),
             &replay_config(),
-            &["rating_accuracy".to_string()],
+            &[crate::config::MetricEntry::Name(
+                "rating_accuracy".to_string(),
+            )],
         )
         .expect("spy-rating replay must pass sanitized updates");
         assert_eq!(res.matches_completed, 3);
@@ -455,8 +478,15 @@ experiment:
             crate::runner::ExperimentRunner::run_recording(&cfg, true).expect("recording run");
         let h = history.expect("history captured");
         let sys = lua_elo();
-        let replay = ReplayEngine::replay(&h, sys.as_ref(), &cfg, &["rating_accuracy".to_string()])
-            .expect("replay");
+        let replay = ReplayEngine::replay(
+            &h,
+            sys.as_ref(),
+            &cfg,
+            &[crate::config::MetricEntry::Name(
+                "rating_accuracy".to_string(),
+            )],
+        )
+        .expect("replay");
         let live_mean = extract_mean(
             &live.metrics["rating_accuracy"],
             "recording run rating_accuracy",
