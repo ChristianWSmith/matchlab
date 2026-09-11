@@ -389,10 +389,7 @@ pub fn handle_match_end(
                 let rank = ranker.rating_to_rank(o.rating);
                 let tier = rank.tier.clone();
                 let division = rank.division;
-                o.visible_rank = matchlab_core::player::VisibleRank {
-                    tier,
-                    division,
-                };
+                o.visible_rank = matchlab_core::player::VisibleRank { tier, division };
                 tracing::trace!(
                     player_id = pid.0,
                     rating = o.rating,

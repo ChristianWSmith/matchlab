@@ -54,7 +54,7 @@ impl MetricObservation {
     }
     /// The documented step from an observation to the estimator's barrier type.
     /// `None` for N/A replicates — a `Vec<ReplicationScalar>` can only be built
-    /// through this (or [`per_replication::from_*`]) extraction, never by
+    /// through this (or `per_replication::from_metric` / `per_replication::from_distribution`) extraction, never by
     /// pairing per-match samples directly.
     pub fn replication_scalar(&self) -> Option<ReplicationScalar> {
         match self.value {

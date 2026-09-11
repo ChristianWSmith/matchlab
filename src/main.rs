@@ -2,7 +2,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
-use tracing;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let mut verbose = false;
@@ -395,19 +394,19 @@ fn analyze(args: &[String]) -> ExitCode {
     };
     let bytes = match fs::read(&path) {
         Ok(b) => b,
-            Err(e) => {
-                tracing::error!(path, error = %e, "failed to read result file");
-                eprintln!("read failed: {path} — {e}");
-                return ExitCode::from(1);
-            }
+        Err(e) => {
+            tracing::error!(path, error = %e, "failed to read result file");
+            eprintln!("read failed: {path} — {e}");
+            return ExitCode::from(1);
+        }
     };
     let study: matchlab_experiments::StudyResult = match serde_json::from_slice(&bytes) {
         Ok(r) => r,
-            Err(e) => {
-                tracing::error!(path, error = %e, "failed to parse result file");
-                eprintln!("parse failed: {path} — {e}");
-                return ExitCode::from(1);
-            }
+        Err(e) => {
+            tracing::error!(path, error = %e, "failed to parse result file");
+            eprintln!("parse failed: {path} — {e}");
+            return ExitCode::from(1);
+        }
     };
     let cfg = matchlab_analysis::study::StudyReportConfig::default();
     if json_out {

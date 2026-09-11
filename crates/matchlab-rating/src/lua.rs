@@ -78,7 +78,11 @@ impl RatingSystem for LuaRatingSystem {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, false))
             .expect("build team_b table");
-        tracing::debug!(team_a_size = team_a.len(), team_b_size = team_b.len(), "rating predict called");
+        tracing::debug!(
+            team_a_size = team_a.len(),
+            team_b_size = team_b.len(),
+            "rating predict called"
+        );
         self.vm
             .call_with_context("predict", &[team_a_val, team_b_val])
             .expect("rating predict failed")

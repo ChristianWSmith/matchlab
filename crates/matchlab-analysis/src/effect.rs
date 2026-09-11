@@ -488,11 +488,11 @@ pub fn effect_size_for(
 /// The estimator respects the nesting rule: its inputs are
 /// [`ReplicationScalar`]s (never bare per-match `f64`s), so calling it requires
 /// having first extracted replication-level values through the documented
-/// [`per_replication`] steps or [`MetricObservation::replication_scalar`].
+/// `hierarchy::per_replication` steps or `MetricObservation::replication_scalar`.
 ///
 /// `paired` is the first-class design flag : `true` for a
-/// [`DesignType::Paired`] or [`DesignType::Counterfactual`] study, `false` for
-/// [`DesignType::Independent`]. A paired design with unequal arm lengths is an
+/// `DesignType::Paired` or `DesignType::Counterfactual` study, `false` for
+/// `DesignType::Independent`. A paired design with unequal arm lengths is an
 /// error (the design is misspecified), not a silent fallback.
 ///
 /// The CI is **paired** (per-replicate differences) when `paired` is true —

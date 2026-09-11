@@ -18,7 +18,10 @@ impl MetricsEngine {
         self.collectors.push(collector);
     }
     pub fn record_match(&mut self, match_result: &MatchResult, world: &World) {
-        tracing::trace!(collectors = self.collectors.len(), "recording match to metrics");
+        tracing::trace!(
+            collectors = self.collectors.len(),
+            "recording match to metrics"
+        );
         for collector in &mut self.collectors {
             collector.record_match(match_result, world);
         }

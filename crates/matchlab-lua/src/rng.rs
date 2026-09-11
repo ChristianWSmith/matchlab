@@ -6,8 +6,8 @@
 //! cleared around every guarded Lua call by [`with_active`].
 use matchlab_core::rng::SimRng;
 use mlua::{Lua, Table};
-use tracing;
 use std::cell::RefCell;
+use tracing;
 thread_local! {
     static ACTIVE: RefCell<Option<*mut SimRng>> = const { RefCell::new(None) };
 }

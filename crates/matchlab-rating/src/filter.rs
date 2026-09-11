@@ -59,11 +59,11 @@ impl FilteredMatchResult {
 pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> FilteredMatchResult {
     let has = |o: ObservationType| budget.contains(&o);
     let stripped: Vec<&str> = [
-        (!has(ObservationType::Score)).then(|| "score"),
-        (!has(ObservationType::PerformanceData)).then(|| "performances"),
-        (!has(ObservationType::Duration)).then(|| "duration"),
-        (!has(ObservationType::Disconnects)).then(|| "disconnects"),
-        (!has(ObservationType::SessionHistory)).then(|| "session_history"),
+        (!has(ObservationType::Score)).then_some("score"),
+        (!has(ObservationType::PerformanceData)).then_some("performances"),
+        (!has(ObservationType::Duration)).then_some("duration"),
+        (!has(ObservationType::Disconnects)).then_some("disconnects"),
+        (!has(ObservationType::SessionHistory)).then_some("session_history"),
     ]
     .into_iter()
     .flatten()
