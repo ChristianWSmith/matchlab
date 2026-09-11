@@ -97,14 +97,14 @@ fn parse_result(t: &Table) -> MatchResult {
 }
 impl OutcomeModel for LuaOutcomeModel {
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let a_val = self
+        let (a_val, b_val) = self
             .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_a, true))
-            .expect("build team_a table");
-        let b_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
-            .expect("build team_b table");
+            .with_lua(|lua| {
+                let a = convert::observations_to_value(lua, team_a, true)?;
+                let b = convert::observations_to_value(lua, team_b, true)?;
+                Ok((a, b))
+            })
+            .expect("build team tables");
         tracing::debug!(
             team_a_size = team_a.len(),
             team_b_size = team_b.len(),
@@ -127,14 +127,14 @@ impl OutcomeModel for LuaOutcomeModel {
             team_b_size = team_b.len(),
             "match simulation started"
         );
-        let a_val = self
+        let (a_val, b_val) = self
             .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_a, true))
-            .expect("build team_a table");
-        let b_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
-            .expect("build team_b table");
+            .with_lua(|lua| {
+                let a = convert::observations_to_value(lua, team_a, true)?;
+                let b = convert::observations_to_value(lua, team_b, true)?;
+                Ok((a, b))
+            })
+            .expect("build team tables");
         let result_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "simulate",

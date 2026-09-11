@@ -261,9 +261,9 @@ mod tests {
         );
         let mut rng = SimRng::from_seed(7);
         a.tick(PlayerId(1), &mut rng, &mut w);
-        let expected_party = (1 * 65537 + 2) % 2147483647;
-        assert_eq!(w.observations[&PlayerId(1)].party_id, Some(expected_party));
-        assert_eq!(w.players[&PlayerId(1)].party_id, Some(expected_party));
+        let expected_party: i64 = (PlayerId(1).0 as i64 * 65537 + 2) % 2147483647;
+        assert_eq!(w.observations[&PlayerId(1)].party_id, Some(expected_party as u64));
+        assert_eq!(w.players[&PlayerId(1)].party_id, Some(expected_party as u64));
     }
     #[test]
     fn rating_farmer_goes_offline() {

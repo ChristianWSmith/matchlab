@@ -18,7 +18,10 @@ pub fn observation_to_table(
     obs: &PlayerObservation,
     include_skill: bool,
 ) -> Result<Table, String> {
-    let t = lua.create_table().map_err(|e| e.to_string())?;
+    let capacity = if include_skill { 20 } else { 16 };
+    let t = lua
+        .create_table_with_capacity(capacity, 0)
+        .map_err(|e| e.to_string())?;
     t.set("player_id", obs.id.0).map_err(|e| e.to_string())?;
     t.set("rating", obs.rating).map_err(|e| e.to_string())?;
     t.set("hidden_mmr", obs.hidden_mmr)
@@ -113,6 +116,19 @@ pub fn observations_to_map(
     }
     Ok(Value::Table(t))
 }
+/// Like `observations_to_map` but accepts borrowed references, avoiding clones.
+pub fn observations_to_map_from_refs(
+    lua: &Lua,
+    list: &[(&PlayerId, &PlayerObservation)],
+    include_skill: bool,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for (id, obs) in list {
+        t.set(id.0, observation_to_table(lua, obs, include_skill)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
 fn team_to_value(lua: &Lua, team: &[PlayerId]) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for (i, id) in team.iter().enumerate() {
@@ -163,6 +179,23 @@ pub fn match_result_to_table(lua: &Lua, mr: &MatchResult) -> Result<Table, Strin
 }
 /// The metrics-only snapshot: the match result, the current tick, and
 /// per-participant tables carrying observation + reality fields.
+/// If `mr_table` is provided, it is used directly instead of re-marshalling.
+pub fn metric_snapshot_with_table(
+    lua: &Lua,
+    mr_table: Value,
+    mr: &MatchResult,
+    world: &World,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    t.set("match_result", mr_table).map_err(|e| e.to_string())?;
+    t.set("tick", world.time.ticks())
+        .map_err(|e| e.to_string())?;
+    t.set("time_secs", world.time.as_secs_f64())
+        .map_err(|e| e.to_string())?;
+    let players = participant_players(lua, mr, world)?;
+    t.set("players", players).map_err(|e| e.to_string())?;
+    Ok(Value::Table(t))
+}
 pub fn metric_snapshot(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     t.set("match_result", match_result_to_table(lua, mr)?)

@@ -21,6 +21,7 @@ pub struct LuaVm {
     lua: Mutex<Lua>,
     script_path: String,
     config: serde_yaml::Value,
+    config_lua: Value,
 }
 impl LuaVm {
     /// Load and execute a script, storing `params` as its `config`.
@@ -39,14 +40,18 @@ impl LuaVm {
             .exec()
             .map_err(|e| format!("lua error in {}: {}", resolved_str, e))?;
         rng::register(&lua)?;
+        let config = if params.is_null() {
+            context::empty()
+        } else {
+            params.clone()
+        };
+        let config_lua = context::yaml_to_lua(&lua, &config)
+            .map_err(|e| format!("config conversion failed: {}", e))?;
         Ok(Self {
             lua: Mutex::new(lua),
             script_path: resolved_str,
-            config: if params.is_null() {
-                context::empty()
-            } else {
-                params.clone()
-            },
+            config,
+            config_lua,
         })
     }
     pub fn script_path(&self) -> &str {
@@ -115,7 +120,7 @@ impl LuaVm {
                 t
             }
         };
-        let config_value = context::yaml_to_lua(&lua, &self.config)?;
+        let config_value = self.config_lua.clone();
         let mut call_args = args.to_vec();
         call_args.push(config_value);
         call_args.push(Value::Table(ctx_table.clone()));

@@ -72,17 +72,16 @@ fn participant_observations(
 }
 impl DetectionSystem for LuaDetectionSystem {
     fn observe(&mut self, match_result: &MatchResult, world: &World) {
-        let mr_val = self
+        let (mr_val, obs_val) = self
             .vm
             .with_lua(|lua| {
-                convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)
+                let mr =
+                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
+                let obs = participant_observations(world, match_result);
+                let obs = convert::observations_to_map(lua, &obs, false)?;
+                Ok((mr, obs))
             })
-            .expect("build match result table");
-        let obs = participant_observations(world, match_result);
-        let obs_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_map(lua, &obs, false))
-            .expect("build observations table");
+            .expect("build match result and observations tables");
         let _: Value = self
             .vm
             .call_with_context("observe", &[mr_val, obs_val])

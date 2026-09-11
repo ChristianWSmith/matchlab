@@ -70,14 +70,14 @@ impl RatingSystem for LuaRatingSystem {
         state_from_table(&state_tbl)
     }
     fn predict(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let team_a_val = self
+        let (team_a_val, team_b_val) = self
             .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_a, false))
-            .expect("build team_a table");
-        let team_b_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_b, false))
-            .expect("build team_b table");
+            .with_lua(|lua| {
+                let a = convert::observations_to_value(lua, team_a, false)?;
+                let b = convert::observations_to_value(lua, team_b, false)?;
+                Ok((a, b))
+            })
+            .expect("build team tables");
         tracing::debug!(
             team_a_size = team_a.len(),
             team_b_size = team_b.len(),
@@ -97,18 +97,18 @@ impl RatingSystem for LuaRatingSystem {
             players = observations.len(),
             "rating update called"
         );
-        let mr_val = self
+        let (mr_val, obs_val) = self
             .vm
             .with_lua(|lua| {
-                convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)
+                let mr =
+                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
+                let mut obs_list: Vec<(&PlayerId, &PlayerObservation)> =
+                    observations.iter().collect();
+                obs_list.sort_by_key(|(id, _)| id.0);
+                let obs = convert::observations_to_map_from_refs(lua, &obs_list, false)?;
+                Ok((mr, obs))
             })
-            .expect("build match result table");
-        let mut obs_list: Vec<PlayerObservation> = observations.values().cloned().collect();
-        obs_list.sort_by_key(|o| o.id.0);
-        let obs_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_map(lua, &obs_list, false))
-            .expect("build observations table");
+            .expect("build match result and observations tables");
         let updates_tbl: Table = self
             .vm
             .call_with_context("update", &[mr_val, obs_val])

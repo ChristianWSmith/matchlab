@@ -33,11 +33,11 @@ impl LuaMatchmaker {
 fn queue_to_table(lua: &Lua, queue: &Queue, now: SimTime) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for (i, entry) in queue.entries().iter().enumerate() {
-        let row = lua.create_table().map_err(|e| e.to_string())?;
+        let row = lua
+            .create_table_with_capacity(14, 0)
+            .map_err(|e| e.to_string())?;
         row.set("idx", i).map_err(|e| e.to_string())?;
         row.set("player_id", entry.player_id.0)
-            .map_err(|e| e.to_string())?;
-        row.set("rating", entry.observation.rating)
             .map_err(|e| e.to_string())?;
         row.set("rating", entry.observation.rating)
             .map_err(|e| e.to_string())?;
@@ -105,14 +105,14 @@ impl Matchmaker for LuaMatchmaker {
         rng: &mut SimRng,
     ) -> Vec<ProposedMatch> {
         tracing::debug!(queue_len = queue.len(), "matchmaker called");
-        let queue_val = self
+        let (queue_val, teams_val) = self
             .vm
-            .with_lua(|lua| queue_to_table(lua, queue, now))
-            .expect("build queue table");
-        let teams_val = self
-            .vm
-            .with_lua(|lua| teams_to_table(lua, teams))
-            .expect("build teams table");
+            .with_lua(|lua| {
+                let q = queue_to_table(lua, queue, now)?;
+                let t = teams_to_table(lua, teams)?;
+                Ok((q, t))
+            })
+            .expect("build queue and teams tables");
         let matches_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "find_matches",
@@ -550,5 +550,42 @@ mod tests {
             .collect();
         pairs.sort();
         assert_eq!(pairs, vec![vec![1, 2], vec![3, 4]]);
+    }
+    #[test]
+    fn queue_to_table_all_fields_present() {
+        let lua = Lua::new();
+        let mut queue = Queue::default();
+        let mut e = entry(42, SimTime::from_secs(10.0), 1500.0, Region::EU);
+        e.role = Some("support".to_string());
+        e.party_id = Some(7);
+        e.latency_ms = 45.5;
+        e.game_mode = "competitive".to_string();
+        queue.enqueue(e);
+        queue.enqueue(entry(99, SimTime::from_secs(20.0), 800.0, Region::NA));
+        let val = queue_to_table(&lua, &queue, SimTime::from_secs(30.0)).unwrap();
+        let arr: Table = match val {
+            Value::Table(t) => t,
+            _ => panic!("expected table"),
+        };
+        assert_eq!(arr.raw_len(), 2);
+        let row: Table = arr.get(1).unwrap();
+        assert_eq!(row.get::<u64>("player_id").unwrap(), 42);
+        assert!((row.get::<f64>("rating").unwrap() - 1500.0).abs() < 1e-9);
+        assert!((row.get::<f64>("rating_deviation").unwrap() - 350.0).abs() < 1e-9);
+        assert_eq!(row.get::<u64>("games_played").unwrap(), 0);
+        assert!((row.get::<f64>("win_rate").unwrap() - 0.5).abs() < 1e-9);
+        assert!((row.get::<f64>("joined_at_secs").unwrap() - 10.0).abs() < 1e-9);
+        assert!((row.get::<f64>("wait_secs").unwrap() - 20.0).abs() < 1e-9);
+        assert_eq!(row.get::<String>("region").unwrap(), "eu");
+        assert_eq!(row.get::<u64>("party_id").unwrap(), 7);
+        assert!((row.get::<f64>("latency_ms").unwrap() - 45.5).abs() < 1e-9);
+        assert_eq!(row.get::<String>("game_mode").unwrap(), "competitive");
+        assert_eq!(row.get::<String>("role").unwrap(), "support");
+        let row2: Table = arr.get(2).unwrap();
+        assert_eq!(row2.get::<u64>("player_id").unwrap(), 99);
+        assert!((row2.get::<f64>("rating").unwrap() - 800.0).abs() < 1e-9);
+        assert_eq!(row2.get::<String>("region").unwrap(), "na");
+        assert!(row2.get::<mlua::Value>("party_id").unwrap().is_nil());
+        assert!(row2.get::<mlua::Value>("role").unwrap().is_nil());
     }
 }

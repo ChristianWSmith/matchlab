@@ -91,7 +91,8 @@ impl MetricCollector for LuaMetricCollector {
             .with_lua(|lua| {
                 let mr_val =
                     convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
-                let snap = convert::metric_snapshot(lua, match_result, world)?;
+                let snap =
+                    convert::metric_snapshot_with_table(lua, mr_val.clone(), match_result, world)?;
                 if sample_population {
                     let population = convert::population_snapshot(lua, world)?;
                     snap.as_table()
