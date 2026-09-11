@@ -1,6 +1,6 @@
 # Plugin API Reference
 
-MatchLab's algorithms are implemented as Lua 5.4 plugins. This document specifies the contracts that plugins must satisfy.
+MatchLab's algorithms are implemented as Lua plugins (Luau runtime). This document specifies the contracts that plugins must satisfy.
 
 ## Quick Start
 

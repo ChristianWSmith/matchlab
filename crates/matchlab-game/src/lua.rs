@@ -138,7 +138,11 @@ impl OutcomeModel for LuaOutcomeModel {
         let result_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "simulate",
-                &[mlua::Value::Integer(match_id.0 as i64), a_val, b_val],
+                &[
+                    mlua::Value::Integer(match_id.0 as mlua::Integer),
+                    a_val,
+                    b_val,
+                ],
             )
             .expect("outcome simulate failed")
         });

@@ -124,7 +124,11 @@ impl AdversarialAgent for LuaAdversarialAgent {
         let new_behavior: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "tick",
-                &[Value::Integer(player_id.0 as i64), behavior_val, obs_val],
+                &[
+                    Value::Integer(player_id.0 as mlua::Integer),
+                    behavior_val,
+                    obs_val,
+                ],
             )
             .expect("agent tick failed")
         });
@@ -257,8 +261,9 @@ mod tests {
         );
         let mut rng = SimRng::from_seed(7);
         a.tick(PlayerId(1), &mut rng, &mut w);
-        assert_eq!(w.observations[&PlayerId(1)].party_id, Some(3));
-        assert_eq!(w.players[&PlayerId(1)].party_id, Some(3));
+        let expected_party = (1 * 65537 + 2) % 2147483647;
+        assert_eq!(w.observations[&PlayerId(1)].party_id, Some(expected_party));
+        assert_eq!(w.players[&PlayerId(1)].party_id, Some(expected_party));
     }
     #[test]
     fn rating_farmer_goes_offline() {

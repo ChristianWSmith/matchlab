@@ -6,7 +6,7 @@ function tick(player_id, behavior, observation, config, context)
     local target = config.boost_target
     local boostee = config.boostee
     if not target or not boostee then return behavior, context end
-    local party = math.floor(target) ~ math.floor(boostee)
+    local party = (math.floor(target) * 65537 + math.floor(boostee)) % 2147483647
     behavior.party_id = party
     if player_id == boostee then
         behavior.win_rate = 1.0

@@ -37,7 +37,7 @@ function time_buckets(config, context)
     local counts = {}
     for i = 1, n do sums[i] = 0.0; counts[i] = 0 end
     for i, err in ipairs(samples) do
-        local idx = math.min(ticks[i] // width, n - 1) + 1
+        local idx = math.min(math.floor(ticks[i] / width), n - 1) + 1
         sums[idx] = sums[idx] + err
         counts[idx] = counts[idx] + 1
     end

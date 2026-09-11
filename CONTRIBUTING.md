@@ -102,7 +102,7 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 rand = "0.8"
 rand_chacha = "0.3"
-mlua = { version = "0.10", features = ["lua54", "vendored"] }
+mlua = { version = "0.10", features = ["luau", "vendored"] }
 ```
 
 ---

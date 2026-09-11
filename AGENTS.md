@@ -136,7 +136,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 The workspace is fully implemented: 15 crates under `crates/`, a binary at `src/main.rs`. `cargo build --workspace`, `cargo test --workspace`, and `cargo check --workspace` all pass.
 
-- `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (lua54, vendored); `[workspace.package]` sets `edition = "2024"`.
+- `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (luau, vendored); `[workspace.package]` sets `edition = "2024"`.
 - `src/main.rs` is the `matchlab` binary (`matchlab run`, `matchlab study`, `matchlab compare`); depends on `matchlab-experiments` and `matchlab-analysis`.
 - All algorithms are Lua scripts under `plugins/`. Rust holds types, traits, and thin `Lua*System` adapters — there are no inherent Rust algorithms.
 - The v0.1 build order (steps 1–12) and v0.2 experimental rigor features are complete.
@@ -207,7 +207,7 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
 ## Conventions
 
 - **Rust edition:** 2024
-- **Shared deps** (workspace): `serde` (with derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (lua54, vendored)
+- **Shared deps** (workspace): `serde` (with derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (luau, vendored)
 - **No comments in code** unless explicitly requested
 - **Unit tests** live in `#[cfg(test)] mod tests` blocks within each source file
 - **Crate naming:** `matchlab-{domain}` (e.g., `matchlab-core`, `matchlab-rating`)
