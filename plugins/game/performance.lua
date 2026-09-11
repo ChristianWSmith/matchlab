@@ -21,7 +21,9 @@ function performance_boost(o, config)
         sum = sum + v
     end
     local mean = sum / #recent
-    return (mean - 0.5) * config.performance_weight * config.beta
+    local pw = config.performance_weight or 0.0
+    local beta = config.beta or 400.0
+    return (mean - 0.5) * pw * beta
 end
 
 function effective_skill(o, config)
@@ -39,7 +41,9 @@ end
 
 function win_probability(team_a, team_b, config, context)
     local diff = team_average(team_a, config) - team_average(team_b, config)
-    return 1.0 / (1.0 + math.exp(-diff / config.beta))
+    local beta = config.beta or 400.0
+    if beta == 0.0 then return diff > 0 and 1.0 or (diff < 0 and 0.0 or 0.5) end
+    return 1.0 / (1.0 + math.exp(-diff / beta))
 end
 
 function simulate(match_id, team_a, team_b, config, context)

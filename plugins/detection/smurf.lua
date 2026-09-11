@@ -36,7 +36,7 @@ function record_player(pid, match_result, observations, context, sigma_threshold
     end
 
     local expected = o.rating / 100.0
-    local actual = perf.impact + perf.kills / 10.0
+    local actual = (perf.impact or 0.0) + (perf.kills or 0.0) / 10.0
 
     local key = tostring(pid)
     local state = context[key]
@@ -87,6 +87,7 @@ function evaluate(player_id, observations, config, context)
     end
 
     local min_games = config.min_anomalous_games or 5
+    if min_games <= 0 then min_games = 1 end
     local flagged = state.consecutive >= min_games
     local prob
     if flagged then

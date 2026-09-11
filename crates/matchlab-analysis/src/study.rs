@@ -13,6 +13,7 @@ use crate::hierarchy::ReplicationScalar;
 use matchlab_experiments::StudyResult;
 use matchlab_experiments::seed::derive;
 use std::collections::BTreeSet;
+use tracing;
 /// Report knobs. `conf` is the CI coverage (default 0.95); `seed` seeds the
 /// bootstrap streams deterministically.
 #[derive(Debug, Clone)]
@@ -86,6 +87,7 @@ fn mean_of(values: &[f64]) -> f64 {
 /// byte-identical for existing fixtures where all metrics are `Summary`/`Scalar`
 /// (regressions hold).
 pub fn compute_study_stats(study: &StudyResult, cfg: &StudyReportConfig) -> StudyStats {
+    tracing::info!(arms = study.arms.len(), "computing study statistics");
     let table = build_replication_table(study);
     let mut metrics = BTreeSet::new();
     for ((_, metric), obs) in &table {
@@ -244,6 +246,7 @@ pub fn write_study_result_json(study: &StudyResult, directory: &str) -> std::io:
             },
         ),
     )?;
+    tracing::info!(directory, "study result written");
     Ok(())
 }
 /// Sectioned research report (ticket, v2): structured Markdown with

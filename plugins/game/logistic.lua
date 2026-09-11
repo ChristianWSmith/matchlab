@@ -24,7 +24,9 @@ end
 
 function win_probability(team_a, team_b, config, context)
     local diff = team_average(team_a) - team_average(team_b)
-    return 1.0 / (1.0 + math.exp(-diff / config.beta))
+    local beta = config.beta or 400.0
+    if beta == 0.0 then return diff > 0 and 1.0 or (diff < 0 and 0.0 or 0.5) end
+    return 1.0 / (1.0 + math.exp(-diff / beta))
 end
 
 -- Draw order matters: it must mirror the reference implementation so results

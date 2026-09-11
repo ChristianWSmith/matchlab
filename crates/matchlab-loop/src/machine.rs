@@ -18,6 +18,7 @@ use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
 use matchlab_utility::satisfaction::{PlayerExperience, SatisfactionModel};
 use std::collections::HashMap;
+use tracing;
 /// Config for a full simulation loop.
 #[derive(Clone)]
 pub struct LoopConfig {
@@ -152,6 +153,7 @@ pub fn handle_player_join(
     match state.population.get(&pid) {
         Some((reality, observation)) => {
             world.add_player(reality.clone(), observation.clone());
+            tracing::debug!(player_id = pid.0, "player joined simulation");
             if let Some(o) = world.observations.get_mut(&pid) {
                 o.queue_joined_at = Some(world.time);
             }
@@ -196,6 +198,7 @@ pub fn handle_skill_change(
     state: &mut MachineState,
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
     let _evt = downcast::<SkillChangeEvent>(event);
+    tracing::trace!(player_count = world.players.len(), "skill change tick");
     let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
     let mut ids: Vec<PlayerId> = world.players.keys().cloned().collect();
     ids.sort_by_key(|pid| pid.0);
@@ -244,6 +247,13 @@ pub fn handle_match_timer(
             now,
             &mut state.matchmaker_rng,
         );
+        let queue_len = state.queue.len();
+        tracing::debug!(
+            queue_len,
+            proposed = proposed.len(),
+            remaining,
+            "matchmaker tick"
+        );
         let mut matched_ids: Vec<PlayerId> = Vec::new();
         for pm in proposed.into_iter().take(remaining) {
             for id in pm.team_a.iter().chain(pm.team_b.iter()) {
@@ -271,7 +281,12 @@ pub fn handle_match_formed(
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
     let formed = downcast::<MatchFormedEvent>(event).expect("MatchFormedEvent");
     let match_id = formed.match_id;
-    tracing::debug!(match_id = match_id.0, "match formed");
+    tracing::debug!(
+        match_id = match_id.0,
+        team_a = ?formed.team_a.iter().map(|p| p.0).collect::<Vec<_>>(),
+        team_b = ?formed.team_b.iter().map(|p| p.0).collect::<Vec<_>>(),
+        "match formed"
+    );
     let team_a: Vec<PlayerObservation> = formed
         .team_a
         .iter()
@@ -312,11 +327,18 @@ pub fn handle_match_end(
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
     let end = downcast::<MatchEndEvent>(event).expect("MatchEndEvent");
     let match_id = end.match_id;
-    tracing::debug!(match_id = match_id.0, "match ended");
     let result = match state.active_matches.remove(&match_id) {
         Some(r) => r,
         None => return Vec::new(),
     };
+    tracing::debug!(
+        match_id = match_id.0,
+        team_a = ?result.team_a.iter().map(|p| p.0).collect::<Vec<_>>(),
+        team_b = ?result.team_b.iter().map(|p| p.0).collect::<Vec<_>>(),
+        winner = ?result.winner,
+        duration_secs = result.duration.as_secs_f64(),
+        "match ended"
+    );
     if let Some(history) = state.history.as_mut() {
         history.record(&result, world);
     }
@@ -334,6 +356,12 @@ pub fn handle_match_end(
         players_updated = updates.len(),
         "rating update applied"
     );
+    let mut rating_changes: Vec<(PlayerId, f64, f64)> = Vec::new();
+    for (pid, rs) in &updates {
+        if let Some(o) = world.observations.get(pid) {
+            rating_changes.push((*pid, o.rating, rs.rating));
+        }
+    }
     for (pid, rs) in updates {
         if let Some(o) = world.observations.get_mut(&pid) {
             o.rating = rs.rating;
@@ -342,17 +370,36 @@ pub fn handle_match_end(
             o.games_played = rs.games_played;
         }
     }
+    for (pid, old_rating, new_rating) in &rating_changes {
+        tracing::debug!(
+            player_id = pid.0,
+            old_rating,
+            new_rating,
+            delta = new_rating - old_rating,
+            "rating updated"
+        );
+    }
     if let Some(detector) = state.detection_system.as_mut() {
         detector.observe(&result, world);
+        tracing::debug!(match_id = match_id.0, "detection system observed match");
     }
     if let Some(ranker) = state.ranker.as_ref() {
         for pid in result.team_a.iter().chain(result.team_b.iter()) {
             if let Some(o) = world.observations.get_mut(pid) {
                 let rank = ranker.rating_to_rank(o.rating);
+                let tier = rank.tier.clone();
+                let division = rank.division;
                 o.visible_rank = matchlab_core::player::VisibleRank {
-                    tier: rank.tier,
-                    division: rank.division,
+                    tier,
+                    division,
                 };
+                tracing::trace!(
+                    player_id = pid.0,
+                    rating = o.rating,
+                    tier = %rank.tier,
+                    division = rank.division,
+                    "rank updated"
+                );
             }
         }
     }
@@ -403,6 +450,15 @@ pub fn handle_match_end(
             (*pid, if retain { 1.0 } else { 0.0 })
         })
         .collect();
+    for (pid, retention) in &quit_probability {
+        if *retention < 0.5 {
+            tracing::debug!(
+                player_id = pid.0,
+                retention_prob = retention,
+                "player will quit (low satisfaction)"
+            );
+        }
+    }
     let requeue: Vec<PlayerId> = quit_probability
         .iter()
         .filter(|(_, r)| *r >= 0.5)
@@ -459,6 +515,13 @@ pub fn handle_detection_check(
     };
     let result = detector.evaluate(pid, world);
     let action = detector.recommend_action(&result);
+    tracing::debug!(
+        player_id = pid.0,
+        probability = result.probability_of_anomaly,
+        confidence = result.confidence,
+        ?action,
+        "detection check completed"
+    );
     let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
     if let Some(o) = world.observations.get_mut(&pid) {
         match action {
@@ -490,6 +553,13 @@ pub fn handle_ranking_update(
     for pid in &update.players {
         if let Some(o) = world.observations.get_mut(pid) {
             let rank = ranker.rating_to_rank(o.rating);
+            tracing::trace!(
+                player_id = pid.0,
+                rating = o.rating,
+                tier = %rank.tier,
+                division = rank.division,
+                "rank updated"
+            );
             o.visible_rank = matchlab_core::player::VisibleRank {
                 tier: rank.tier,
                 division: rank.division,

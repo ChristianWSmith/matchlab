@@ -13,6 +13,7 @@ use matchlab_core::rng::SimRng;
 use matchlab_experiments::ArmResult;
 use matchlab_experiments::seed::derive;
 use matchlab_metrics::MetricResult;
+use tracing;
 /// Resample count for the percentile bootstrap.
 const DEFAULT_N_BOOT: usize = 10_000;
 /// The method used to compute a confidence interval, recorded for provenance
@@ -403,6 +404,12 @@ pub fn ci(
     seed: u64,
     paired: bool,
 ) -> ConfidenceInterval {
+    tracing::trace!(
+        n_control = control.len(),
+        n_treatment = treatment.len(),
+        paired,
+        "computing confidence interval"
+    );
     if paired {
         let deltas: Vec<f64> = control.iter().zip(treatment).map(|(c, t)| t - c).collect();
         paired_bootstrap_ci(&deltas, conf, seed)
@@ -545,6 +552,15 @@ fn effect_sizes_f64(
         None
     };
     let relative_diff = mean_delta / mean_c.abs();
+    tracing::debug!(
+        mean_delta,
+        ci_low = ci.lower,
+        ci_high = ci.upper,
+        cohens_d = cohen_d,
+        n_control = control.len(),
+        n_treatment = treatment.len(),
+        "effect size computed"
+    );
     Ok(EffectSize {
         mean_delta,
         ci_lo: ci.lower,

@@ -13,6 +13,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
+use tracing;
 /// A detection system whose algorithm lives entirely in a Lua script.
 pub struct LuaDetectionSystem {
     vm: LuaVm,
@@ -20,6 +21,7 @@ pub struct LuaDetectionSystem {
 impl LuaDetectionSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["observe", "evaluate", "recommend_action"])?;
+        tracing::info!(script = %vm.script_path(), "detection system loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {
@@ -103,7 +105,14 @@ impl DetectionSystem for LuaDetectionSystem {
             .vm
             .call_with_context("evaluate", &[Value::Integer(player_id.0 as i64), obs_val])
             .expect("detection evaluate failed");
-        result_from_table(&result_tbl, player_id)
+        let result = result_from_table(&result_tbl, player_id);
+        tracing::debug!(
+            player_id = player_id.0,
+            probability = result.probability_of_anomaly,
+            confidence = result.confidence,
+            "detection evaluation"
+        );
+        result
     }
     fn recommend_action(&self, result: &DetectionResult) -> InterventionAction {
         let result_tbl = self
@@ -128,7 +137,14 @@ impl DetectionSystem for LuaDetectionSystem {
             .vm
             .call_with_context("recommend_action", &[result_tbl])
             .expect("detection recommend_action failed");
-        action_from_str(&action).unwrap_or(InterventionAction::None)
+        let intervention = action_from_str(&action).unwrap_or(InterventionAction::None);
+        tracing::debug!(
+            player_id = result.player_id.0,
+            action = %action,
+            probability = result.probability_of_anomaly,
+            "detection action recommended"
+        );
+        intervention
     }
 }
 #[cfg(test)]

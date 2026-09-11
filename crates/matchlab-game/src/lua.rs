@@ -13,6 +13,7 @@ use matchlab_core::time::SimTime;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
+use tracing;
 /// An outcome model whose algorithm lives entirely in a Lua script.
 pub struct LuaOutcomeModel {
     vm: LuaVm,
@@ -20,6 +21,7 @@ pub struct LuaOutcomeModel {
 impl LuaOutcomeModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["win_probability", "simulate"])?;
+        tracing::info!(script = %vm.script_path(), "outcome model loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {
@@ -103,6 +105,11 @@ impl OutcomeModel for LuaOutcomeModel {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
             .expect("build team_b table");
+        tracing::debug!(
+            team_a_size = team_a.len(),
+            team_b_size = team_b.len(),
+            "win probability called"
+        );
         self.vm
             .call_with_context("win_probability", &[a_val, b_val])
             .expect("outcome win_probability failed")
@@ -137,6 +144,12 @@ impl OutcomeModel for LuaOutcomeModel {
         });
         let mut result = parse_result(&result_tbl);
         result.match_id = match_id;
+        tracing::debug!(
+            match_id = match_id.0,
+            winner = ?result.winner,
+            duration_secs = result.duration.as_secs_f64(),
+            "match simulated"
+        );
         result
     }
 }

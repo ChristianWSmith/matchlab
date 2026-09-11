@@ -11,9 +11,9 @@ local RATING_CENTER = 1500.0
 
 function initialize(player_id, config, context)
     return {
-        rating = config.initial_rating,
-        rating_deviation = config.initial_rd,
-        volatility = config.initial_volatility,
+        rating = config.initial_rating or 1500.0,
+        rating_deviation = config.initial_rd or 350.0,
+        volatility = config.initial_volatility or 0.06,
         games_played = 0,
     }, context
 end
@@ -44,6 +44,7 @@ end
 
 -- Newton-Raphson on Glicko-2's f(x) to find the new volatility (steps 5.2-5.6).
 function new_volatility(sigma, delta, phi, v, tau, epsilon)
+    if sigma <= 0.0 then sigma = 1e-10 end
     local a = math.log(sigma * sigma)
     local function big_f(x)
         local ex = math.exp(x)
@@ -59,6 +60,7 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
         local k = 1
         while big_f(a - k * tau) < 0.0 do
             k = k + 1
+            if k > 1000 then break end
         end
         b = a - k * tau
     end
@@ -67,8 +69,12 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
     local fb = big_f(b)
     local a_val = a
     local b_val = b
-    while math.abs(b_val - a_val) > epsilon do
-        local c = a_val + (a_val - b_val) * fa / (fb - fa)
+    local max_iter = 100
+    for _ = 1, max_iter do
+        if math.abs(b_val - a_val) <= epsilon then break end
+        local denom = fb - fa
+        if math.abs(denom) < 1e-15 then break end
+        local c = a_val + (a_val - b_val) * fa / denom
         local fc = big_f(c)
         if fc * fb <= 0.0 then
             a_val = b_val

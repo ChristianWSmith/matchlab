@@ -9,6 +9,7 @@ use crate::config::ExperimentConfig;
 pub use matchlab_core::rng::derive;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use tracing;
 pub struct SeedManager {
     pub experiment_seed: u64,
     pub population_seed: u64,
@@ -20,7 +21,7 @@ pub struct SeedManager {
 }
 impl SeedManager {
     pub fn from_experiment_seed(seed: u64) -> Self {
-        Self {
+        let seeds = Self {
             experiment_seed: seed,
             population_seed: derive(seed, 1),
             game_seed: derive(seed, 2),
@@ -28,7 +29,18 @@ impl SeedManager {
             behavior_seed: derive(seed, 4),
             matchmaker_seed: derive(seed, 5),
             master_seed: derive(seed, 6),
-        }
+        };
+        tracing::debug!(
+            experiment_seed = seed,
+            population_seed = seeds.population_seed,
+            game_seed = seeds.game_seed,
+            arrival_seed = seeds.arrival_seed,
+            behavior_seed = seeds.behavior_seed,
+            matchmaker_seed = seeds.matchmaker_seed,
+            master_seed = seeds.master_seed,
+            "seeds derived"
+        );
+        seeds
     }
 }
 pub fn hash_config(config: &ExperimentConfig) -> String {
@@ -41,7 +53,9 @@ pub fn hash_config(config: &ExperimentConfig) -> String {
         let content = std::fs::read_to_string(&resolved).unwrap_or_default();
         content.hash(&mut h);
     }
-    format!("{:016x}", h.finish())
+    let hash = format!("{:016x}", h.finish());
+    tracing::debug!(hash = %hash, "config hash computed");
+    hash
 }
 /// Collect every Lua script path a config references: `.lua` string values
 /// anywhere in the serialized config, plus the metric names resolved to

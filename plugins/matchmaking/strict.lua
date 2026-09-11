@@ -11,7 +11,7 @@ function find_matches(queue, teams, now_secs, config, context)
     local size_b = teams.b.size
     local role_a = teams.a.role
     local role_b = teams.b.role
-    local max_diff = config.max_skill_diff
+    local max_diff = config.max_skill_diff or math.huge
 
     local function matches_role(entry, role)
         return role == nil or entry.role == role

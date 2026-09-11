@@ -33,6 +33,7 @@ use crate::hierarchy::per_replication;
 use matchlab_experiments::StudyResult;
 use matchlab_metrics::MetricResult;
 use std::collections::BTreeMap;
+use tracing;
 /// One metric's value within one replication, with full provenance
 /// (condition, replication index, metric name) and the aggregation result.
 pub struct ReplicationObservation {
@@ -103,6 +104,7 @@ pub fn replication_scalar(result: &MetricResult) -> Option<f64> {
 /// - Everything else → [`per_replication::from_metric`] (Scalar, Summary,
 ///   TimeSeries; Histogram returns `None`)
 pub fn build_replication_table(study: &StudyResult) -> ReplicationTable {
+    tracing::debug!("building replication table from study results");
     let mut table: ReplicationTable = BTreeMap::new();
     for arm in &study.arms {
         let condition_id = arm.condition_id.clone();

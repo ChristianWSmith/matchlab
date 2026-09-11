@@ -19,6 +19,7 @@ use matchlab_core::player::{
 };
 use matchlab_core::rng::SimRng;
 use std::collections::VecDeque;
+use tracing;
 pub struct PopulationConfig {
     pub size: u64,
     pub archetypes: Vec<ArchetypeConfig>,
@@ -104,6 +105,11 @@ impl PopulationGenerator {
                 });
             }
         }
+        tracing::info!(
+            size = config.size,
+            archetypes = config.archetypes.len(),
+            "population generated"
+        );
         (realities, observations)
     }
 }

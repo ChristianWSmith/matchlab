@@ -11,6 +11,7 @@ use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
 use std::collections::HashMap;
+use tracing;
 /// A rating system whose algorithm lives entirely in a Lua script.
 pub struct LuaRatingSystem {
     vm: LuaVm,
@@ -23,6 +24,7 @@ impl LuaRatingSystem {
             .get_global::<Vec<String>>("information_budget")?
             .map(|names| names.iter().filter_map(|n| observation_type(n)).collect())
             .unwrap_or_else(|| vec![ObservationType::WinLoss]);
+        tracing::info!(script = %vm.script_path(), budget = ?budget, "rating system loaded");
         Ok(Self { vm, budget })
     }
     pub fn script_path(&self) -> &str {
@@ -76,6 +78,7 @@ impl RatingSystem for LuaRatingSystem {
             .vm
             .with_lua(|lua| convert::observations_to_value(lua, team_b, false))
             .expect("build team_b table");
+        tracing::debug!(team_a_size = team_a.len(), team_b_size = team_b.len(), "rating predict called");
         self.vm
             .call_with_context("predict", &[team_a_val, team_b_val])
             .expect("rating predict failed")

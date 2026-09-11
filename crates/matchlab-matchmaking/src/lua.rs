@@ -14,6 +14,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Lua, Table, Value};
+use tracing;
 /// A matchmaker whose algorithm lives entirely in a Lua script.
 pub struct LuaMatchmaker {
     vm: LuaVm,
@@ -21,6 +22,7 @@ pub struct LuaMatchmaker {
 impl LuaMatchmaker {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["find_matches"])?;
+        tracing::info!(script = %vm.script_path(), "matchmaker loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {
@@ -136,6 +138,11 @@ impl Matchmaker for LuaMatchmaker {
                 quality_score: quality,
             });
         }
+        tracing::debug!(
+            queue_len = queue.len(),
+            matches_found = matches.len(),
+            "matchmaker produced matches"
+        );
         matches
     }
 }

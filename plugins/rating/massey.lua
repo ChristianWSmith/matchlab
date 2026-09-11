@@ -35,7 +35,7 @@ function update(match_result, observations, config, context)
     local lr = config.learning_rate or 1.0
     local reg = config.regularization or 1.0
     local team_a_won = match_result.winner == "A"
-    local score_diff = match_result.score_a - match_result.score_b
+    local score_diff = match_result.team_a_score - match_result.team_b_score
     local sign = team_a_won and 1.0 or -1.0
     local abs_diff = math.abs(score_diff)
     if abs_diff < 1.0 then abs_diff = 1.0 end

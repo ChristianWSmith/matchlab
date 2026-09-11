@@ -7,6 +7,7 @@
 use crate::satisfaction::{PlayerExperience, SatisfactionModel};
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
+use tracing;
 /// A satisfaction model whose algorithm lives entirely in a Lua script.
 pub struct LuaSatisfactionModel {
     vm: LuaVm,
@@ -22,6 +23,7 @@ impl LuaSatisfactionModel {
                 "rematch_probability",
             ],
         )?;
+        tracing::info!(script = %vm.script_path(), "satisfaction model loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {

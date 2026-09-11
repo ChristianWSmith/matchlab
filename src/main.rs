@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
+use tracing;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let mut verbose = false;
@@ -37,7 +38,7 @@ fn main() -> ExitCode {
         if verbose {
             "debug".to_string()
         } else {
-            "warn".to_string()
+            "info".to_string()
         }
     });
     let _ =
@@ -59,6 +60,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => {
+            tracing::error!(command = %positional_args[1], "unknown command");
             eprintln!(
                 "usage failed: unknown command '{}' — run 'matchlab --help' for available commands",
                 positional_args[1]
@@ -178,6 +180,7 @@ fn package(args: &[String]) -> ExitCode {
     let config = match matchlab_experiments::inherit::load(manifest_path) {
         Ok(c) => c,
         Err(e) => {
+            tracing::error!(manifest, error = %e, "failed to load config");
             eprintln!("load config failed: {manifest} — {e}");
             return ExitCode::from(1);
         }
@@ -186,6 +189,7 @@ fn package(args: &[String]) -> ExitCode {
         match matchlab_experiments::package::ReproductionPackage::create(&config, manifest_path) {
             Ok(p) => p,
             Err(e) => {
+                tracing::error!(manifest, error = %e, "failed to create reproduction package");
                 eprintln!("create package failed: {manifest} — {e}");
                 return ExitCode::from(1);
             }
@@ -228,12 +232,14 @@ fn run(manifest_args: &[String], threads: usize) -> ExitCode {
     let result = match matchlab_experiments::runner::ExperimentRunner::run(&config) {
         Ok(r) => r,
         Err(e) => {
+            tracing::error!(manifest, error = %e, "experiment run failed");
             eprintln!("run failed: {manifest} — {e}");
             return ExitCode::from(1);
         }
     };
     let dir = &config.experiment.output.directory;
     if let Err(e) = matchlab_analysis::export::write_result_json(&result, dir) {
+        tracing::error!(dir, error = %e, "failed to write metrics JSON");
         eprintln!("write metrics JSON failed: {dir} — {e}");
         return ExitCode::from(1);
     }
@@ -320,6 +326,7 @@ fn study(args: &[String], threads: usize) -> ExitCode {
     let mut config = match matchlab_experiments::study::StudyRunner::load(Path::new(&path)) {
         Ok(c) => c,
         Err(e) => {
+            tracing::error!(path, error = %e, "failed to load study config");
             eprintln!("load study config failed: {path} — {e}");
             return ExitCode::from(1);
         }
@@ -330,6 +337,7 @@ fn study(args: &[String], threads: usize) -> ExitCode {
     let result = match matchlab_experiments::study::StudyRunner::run(&config, threads) {
         Ok(r) => r,
         Err(e) => {
+            tracing::error!(path, error = %e, "study run failed");
             eprintln!("run study failed: {path} — {e}");
             return ExitCode::from(1);
         }
@@ -387,17 +395,19 @@ fn analyze(args: &[String]) -> ExitCode {
     };
     let bytes = match fs::read(&path) {
         Ok(b) => b,
-        Err(e) => {
-            eprintln!("read failed: {path} — {e}");
-            return ExitCode::from(1);
-        }
+            Err(e) => {
+                tracing::error!(path, error = %e, "failed to read result file");
+                eprintln!("read failed: {path} — {e}");
+                return ExitCode::from(1);
+            }
     };
     let study: matchlab_experiments::StudyResult = match serde_json::from_slice(&bytes) {
         Ok(r) => r,
-        Err(e) => {
-            eprintln!("parse failed: {path} — {e}");
-            return ExitCode::from(1);
-        }
+            Err(e) => {
+                tracing::error!(path, error = %e, "failed to parse result file");
+                eprintln!("parse failed: {path} — {e}");
+                return ExitCode::from(1);
+            }
     };
     let cfg = matchlab_analysis::study::StudyReportConfig::default();
     if json_out {

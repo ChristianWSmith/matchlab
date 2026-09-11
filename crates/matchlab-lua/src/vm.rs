@@ -13,6 +13,7 @@ use crate::validate;
 use matchlab_core::rng::SimRng;
 use mlua::{FromLua, Function, Lua, Table, Value};
 use std::sync::Mutex;
+use tracing;
 /// Global under which the persistent context table is stored.
 const CONTEXT_GLOBAL: &str = "_matchlab_context";
 /// A loaded Lua script with its config and deterministic helpers.
@@ -30,6 +31,7 @@ impl LuaVm {
         let resolved = crate::resolve::resolve_script_path(path);
         let resolved_str = resolved.to_string_lossy().to_string();
         validate::validate_script(&resolved_str, required)?;
+        tracing::debug!(script = %resolved_str, functions = ?required, "Lua script loaded and validated");
         let source = std::fs::read_to_string(&resolved_str)
             .map_err(|e| format!("cannot read {}: {}", resolved_str, e))?;
         let lua = Lua::new();
@@ -75,6 +77,7 @@ impl LuaVm {
             .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
         let value: Value = lua.globals().get(name).map_err(|e| e.to_string())?;
         if matches!(value, Value::Nil) {
+            tracing::trace!(name, "Lua global is nil");
             return Ok(None);
         }
         T::from_lua(value, &lua)
@@ -130,6 +133,7 @@ impl LuaVm {
                 .set(CONTEXT_GLOBAL, t)
                 .map_err(|e| e.to_string())?;
         }
+        tracing::trace!(function = name, "Lua function called");
         Ok(value)
     }
     /// Read the current context back as a serializable value (for inspection

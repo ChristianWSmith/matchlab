@@ -13,6 +13,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
+use tracing;
 /// An adversarial agent whose behavior lives entirely in a Lua script.
 pub struct LuaAdversarialAgent {
     vm: LuaVm,
@@ -22,6 +23,7 @@ impl LuaAdversarialAgent {
     pub fn load(path: &str, params: &serde_yaml::Value, player: PlayerId) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["tick", "objective"])?;
         let objective = read_objective(&vm, player)?;
+        tracing::info!(script = %vm.script_path(), player = player.0, ?objective, "adversarial agent loaded");
         Ok(Self { vm, objective })
     }
     pub fn script_path(&self) -> &str {
@@ -126,6 +128,7 @@ impl AdversarialAgent for LuaAdversarialAgent {
             )
             .expect("agent tick failed")
         });
+        tracing::debug!(player_id = player_id.0, "adversarial agent tick");
         write_behavior(world, player_id, &new_behavior).expect("write behavior back");
     }
     fn objective(&self) -> AdversarialObjective {
