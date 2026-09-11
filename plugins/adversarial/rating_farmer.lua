@@ -4,7 +4,8 @@
 -- config: quit_probability, quit_after_minutes
 
 function tick(player_id, behavior, observation, config, context)
-    if matchlab.rng_bool(config.quit_probability) then
+    local prob = config.quit_probability or 0.0
+    if matchlab.rng_bool(prob) then
         behavior.quit_probability = 1.0
         behavior.is_online = false
     end

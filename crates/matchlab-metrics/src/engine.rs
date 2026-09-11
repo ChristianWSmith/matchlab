@@ -2,6 +2,7 @@ use crate::collector::{MetricCollector, MetricResult};
 use matchlab_core::match_::MatchResult;
 use matchlab_core::world::World;
 use std::collections::HashMap;
+use tracing;
 /// Aggregates registered collectors over the course of a run, then folds each
 /// into a named result (spec §11.1).
 #[derive(Default)]
@@ -17,11 +18,16 @@ impl MetricsEngine {
         self.collectors.push(collector);
     }
     pub fn record_match(&mut self, match_result: &MatchResult, world: &World) {
+        tracing::trace!(
+            collectors = self.collectors.len(),
+            "recording match to metrics"
+        );
         for collector in &mut self.collectors {
             collector.record_match(match_result, world);
         }
     }
     pub fn finalize(&mut self) {
+        tracing::info!(count = self.collectors.len(), "finalizing metrics");
         self.results.clear();
         for collector in &self.collectors {
             self.results

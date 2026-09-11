@@ -18,6 +18,7 @@ function find_matches(queue, teams, now_secs, config, context)
     end
 
     local needed = size_a + size_b
+    if needed == 0 then return {}, context end
     local matches = {}
     while #pool >= needed do
         local team_a, team_b = {}, {}

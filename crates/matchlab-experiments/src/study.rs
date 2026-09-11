@@ -79,7 +79,7 @@ impl StudyRunner {
     /// delegate to `ReplicationRunner`.
     ///
     /// `config_hash` semantics (documented): `StudyResult.config_hash` is the
-    /// hash of arm[0]'s resolved full config (base + that arm's overrides +
+    /// hash of arm `0`'s resolved full config (base + that arm's overrides +
     /// study-level `metrics`/`cohorts`).
     pub fn run(study: &StudyConfig, threads: usize) -> Result<StudyResult, String> {
         let mut base_config = inherit::load(Path::new(&study.study.base))?;

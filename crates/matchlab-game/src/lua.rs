@@ -13,6 +13,7 @@ use matchlab_core::time::SimTime;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
+use tracing;
 /// An outcome model whose algorithm lives entirely in a Lua script.
 pub struct LuaOutcomeModel {
     vm: LuaVm,
@@ -20,6 +21,7 @@ pub struct LuaOutcomeModel {
 impl LuaOutcomeModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["win_probability", "simulate"])?;
+        tracing::info!(script = %vm.script_path(), "outcome model loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {
@@ -95,14 +97,19 @@ fn parse_result(t: &Table) -> MatchResult {
 }
 impl OutcomeModel for LuaOutcomeModel {
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let a_val = self
+        let (a_val, b_val) = self
             .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_a, true))
-            .expect("build team_a table");
-        let b_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
-            .expect("build team_b table");
+            .with_lua(|lua| {
+                let a = convert::observations_to_value(lua, team_a, true)?;
+                let b = convert::observations_to_value(lua, team_b, true)?;
+                Ok((a, b))
+            })
+            .expect("build team tables");
+        tracing::debug!(
+            team_a_size = team_a.len(),
+            team_b_size = team_b.len(),
+            "win probability called"
+        );
         self.vm
             .call_with_context("win_probability", &[a_val, b_val])
             .expect("outcome win_probability failed")
@@ -120,23 +127,33 @@ impl OutcomeModel for LuaOutcomeModel {
             team_b_size = team_b.len(),
             "match simulation started"
         );
-        let a_val = self
+        let (a_val, b_val) = self
             .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_a, true))
-            .expect("build team_a table");
-        let b_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_value(lua, team_b, true))
-            .expect("build team_b table");
+            .with_lua(|lua| {
+                let a = convert::observations_to_value(lua, team_a, true)?;
+                let b = convert::observations_to_value(lua, team_b, true)?;
+                Ok((a, b))
+            })
+            .expect("build team tables");
         let result_tbl: Table = self.vm.with_rng(rng, |vm| {
             vm.call_with_context(
                 "simulate",
-                &[mlua::Value::Integer(match_id.0 as i64), a_val, b_val],
+                &[
+                    mlua::Value::Integer(match_id.0 as mlua::Integer),
+                    a_val,
+                    b_val,
+                ],
             )
             .expect("outcome simulate failed")
         });
         let mut result = parse_result(&result_tbl);
         result.match_id = match_id;
+        tracing::debug!(
+            match_id = match_id.0,
+            winner = ?result.winner,
+            duration_secs = result.duration.as_secs_f64(),
+            "match simulated"
+        );
         result
     }
 }

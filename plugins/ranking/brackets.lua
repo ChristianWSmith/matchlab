@@ -5,6 +5,9 @@
 
 function rating_to_rank(rating, config, context)
     local brackets = config.brackets
+    if not brackets then
+        return { tier = "unranked", division = 1 }
+    end
     local last = nil
     for _, b in ipairs(brackets) do
         last = b
@@ -20,6 +23,9 @@ end
 
 function rank_to_rating_range(rank, config, context)
     local brackets = config.brackets
+    if not brackets then
+        return { min = 0.0, max = 0.0 }
+    end
     for _, b in ipairs(brackets) do
         if b.tier == rank.tier and b.division == rank.division then
             return { min = b.min, max = b.max }

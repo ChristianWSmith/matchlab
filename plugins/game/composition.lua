@@ -23,15 +23,18 @@ end
 
 function team_effective(team, config)
     local sum = 0.0
+    local synergy = config.synergy_bonus or 0.0
     for _, o in ipairs(team) do
         sum = sum + effective_skill(o, config)
     end
-    return sum + config.synergy_bonus * #team
+    return sum + synergy * #team
 end
 
 function win_probability(team_a, team_b, config, context)
     local diff = team_effective(team_a, config) - team_effective(team_b, config)
-    return 1.0 / (1.0 + math.exp(-diff / config.beta))
+    local beta = config.beta or 400.0
+    if beta == 0.0 then return diff > 0 and 1.0 or (diff < 0 and 0.0 or 0.5) end
+    return 1.0 / (1.0 + math.exp(-diff / beta))
 end
 
 function simulate(match_id, team_a, team_b, config, context)

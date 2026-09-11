@@ -7,6 +7,7 @@
 use matchlab_core::rng::SimRng;
 use mlua::{Lua, Table};
 use std::cell::RefCell;
+use tracing;
 thread_local! {
     static ACTIVE: RefCell<Option<*mut SimRng>> = const { RefCell::new(None) };
 }
@@ -36,7 +37,10 @@ fn with_rng_mut<R>(f: impl FnOnce(&mut SimRng) -> R) -> Result<R, String> {
                 let rng = unsafe { &mut *ptr };
                 Ok(f(rng))
             }
-            None => Err("matchlab.rng_* called outside a guarded region (with_rng)".to_string()),
+            None => {
+                tracing::error!("matchlab.rng_* called outside a guarded region");
+                Err("matchlab.rng_* called outside a guarded region (with_rng)".to_string())
+            }
         }
     })
 }

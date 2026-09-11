@@ -1,6 +1,6 @@
 # Plugin API Reference
 
-MatchLab's algorithms are implemented as Lua 5.4 plugins. This document specifies the contracts that plugins must satisfy.
+MatchLab's algorithms are implemented as Lua plugins (Luau runtime). This document specifies the contracts that plugins must satisfy.
 
 ## Quick Start
 
@@ -336,6 +336,19 @@ end
 | `tick` | `u64` | Current tick |
 | `time_secs` | `f64` | Current time in seconds |
 | `players` | `{row, ...}` | Per-participant rows with all observation fields plus `true_skill`, `skill_overall`, `skill_vector`, `improvement_rate`, `reality_games_played`, `archetype` |
+| `population` | columnar table | Only present when `needs_population = true`. See below. |
+
+### Population Snapshot (columnar)
+
+When `needs_population = true`, `snapshot.population` contains flat arrays indexed by player position:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rating` | `{f64, ...}` | Player ratings |
+| `skill_overall` | `{f64, ...}` | Overall skill from skill vectors |
+| `true_skill` | `{f64, ...}` | Ground-truth skill from `PlayerReality` |
+
+Access pattern: `for i = 1, #snapshot.population.rating do ... end`
 
 ### Compute Return Table
 

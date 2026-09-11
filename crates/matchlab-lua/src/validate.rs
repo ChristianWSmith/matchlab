@@ -1,6 +1,7 @@
 //! Script validation: parse, check required functions, and enforce the
 //! `math.random` ban.
 use mlua::Lua;
+use tracing;
 /// What a validation run found.
 #[derive(Debug)]
 pub struct ValidationReport {
@@ -17,6 +18,7 @@ pub fn validate_script(path: &str, required: &[&str]) -> Result<ValidationReport
     let source =
         std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
     if source.contains("math.random") {
+        tracing::error!(script = path, "script contains banned math.random");
         return Err(format!(
             "script {} uses banned math.random; use matchlab.rng_* instead",
             path
@@ -32,6 +34,7 @@ pub fn validate_script(path: &str, required: &[&str]) -> Result<ValidationReport
         if globals.get::<mlua::Function>(*name).is_ok() {
             defined.push(name.to_string());
         } else {
+            tracing::warn!(script = path, function = name, "missing required function");
             return Err(format!(
                 "script {} is missing required function {}",
                 path, name

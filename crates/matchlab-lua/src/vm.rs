@@ -12,7 +12,9 @@ use crate::rng;
 use crate::validate;
 use matchlab_core::rng::SimRng;
 use mlua::{FromLua, Function, Lua, Table, Value};
+use smallvec::SmallVec;
 use std::sync::Mutex;
+use tracing;
 /// Global under which the persistent context table is stored.
 const CONTEXT_GLOBAL: &str = "_matchlab_context";
 /// A loaded Lua script with its config and deterministic helpers.
@@ -20,6 +22,7 @@ pub struct LuaVm {
     lua: Mutex<Lua>,
     script_path: String,
     config: serde_yaml::Value,
+    config_lua: Value,
 }
 impl LuaVm {
     /// Load and execute a script, storing `params` as its `config`.
@@ -30,6 +33,7 @@ impl LuaVm {
         let resolved = crate::resolve::resolve_script_path(path);
         let resolved_str = resolved.to_string_lossy().to_string();
         validate::validate_script(&resolved_str, required)?;
+        tracing::debug!(script = %resolved_str, functions = ?required, "Lua script loaded and validated");
         let source = std::fs::read_to_string(&resolved_str)
             .map_err(|e| format!("cannot read {}: {}", resolved_str, e))?;
         let lua = Lua::new();
@@ -37,14 +41,18 @@ impl LuaVm {
             .exec()
             .map_err(|e| format!("lua error in {}: {}", resolved_str, e))?;
         rng::register(&lua)?;
+        let config = if params.is_null() {
+            context::empty()
+        } else {
+            params.clone()
+        };
+        let config_lua = context::yaml_to_lua(&lua, &config)
+            .map_err(|e| format!("config conversion failed: {}", e))?;
         Ok(Self {
             lua: Mutex::new(lua),
             script_path: resolved_str,
-            config: if params.is_null() {
-                context::empty()
-            } else {
-                params.clone()
-            },
+            config,
+            config_lua,
         })
     }
     pub fn script_path(&self) -> &str {
@@ -75,6 +83,7 @@ impl LuaVm {
             .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
         let value: Value = lua.globals().get(name).map_err(|e| e.to_string())?;
         if matches!(value, Value::Nil) {
+            tracing::trace!(name, "Lua global is nil");
             return Ok(None);
         }
         T::from_lua(value, &lua)
@@ -112,12 +121,12 @@ impl LuaVm {
                 t
             }
         };
-        let config_value = context::yaml_to_lua(&lua, &self.config)?;
-        let mut call_args = args.to_vec();
+        let config_value = self.config_lua.clone();
+        let mut call_args: SmallVec<[Value; 8]> = args.iter().cloned().collect();
         call_args.push(config_value);
         call_args.push(Value::Table(ctx_table.clone()));
         let results = func
-            .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args))
+            .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args.into_vec()))
             .map_err(|e| format!("{name} failed in {}: {}", self.script_path, e))?;
         let mut iter = results.into_vec().into_iter();
         let first = iter
@@ -130,6 +139,7 @@ impl LuaVm {
                 .set(CONTEXT_GLOBAL, t)
                 .map_err(|e| e.to_string())?;
         }
+        tracing::trace!(function = name, "Lua function called");
         Ok(value)
     }
     /// Read the current context back as a serializable value (for inspection

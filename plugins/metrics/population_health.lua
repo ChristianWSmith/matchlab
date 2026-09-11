@@ -1,6 +1,7 @@
 -- plugins/metrics/population_health.lua
 -- Rating inflation/deflation and compression across the run. Population-level
 -- metric; only the first and latest rating snapshots are kept.
+-- Population is columnar: snapshot.population = { rating = {...}, ... }
 
 name = "population_health"
 needs_population = true
@@ -13,8 +14,9 @@ function on_record(match_result, snapshot, config, context)
         context.snapshots = {}
     end
     local ratings = {}
-    for _, p in ipairs(snapshot.population) do
-        table.insert(ratings, p.rating)
+    local pop = snapshot.population
+    for i = 1, #pop.rating do
+        table.insert(ratings, pop.rating[i])
     end
     if #context.snapshots == 0 then
         table.insert(context.snapshots, ratings)

@@ -63,8 +63,8 @@ end
 
 function initialize(player_id, config, context)
     return {
-        rating = config.initial_mean or config.initial_rating,
-        rating_deviation = math.sqrt(config.initial_variance),
+        rating = config.initial_mean or config.initial_rating or 1500.0,
+        rating_deviation = math.sqrt(config.initial_variance or 62500.0),
         volatility = 0.0,
         games_played = 0,
     }, context
@@ -73,7 +73,9 @@ end
 function predict(team_a, team_b, config, context)
     local avg_a = team_average(team_a)
     local avg_b = team_average(team_b)
-    return 1.0 / (1.0 + math.exp(-(avg_a - avg_b) / config.beta))
+    local beta = config.beta or 400.0
+    if beta == 0.0 then return 0.5 end
+    return 1.0 / (1.0 + math.exp(-(avg_a - avg_b) / beta))
 end
 
 function team_average(team)
@@ -88,7 +90,7 @@ end
 function update(match_result, observations, config, context)
     local team_a_won = match_result.winner == "A"
     local dynamics = config.dynamics or 0.0
-    local beta = config.beta
+    local beta = config.beta or 400.0
     local draw_probability = config.draw_probability or 0.0
 
     local u = 0.0

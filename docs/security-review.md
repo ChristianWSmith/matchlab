@@ -27,7 +27,7 @@ matchlab is a **single-user research tool**, not a multi-tenant service. The use
 
 **Risk level: HIGH (by design)**
 
-Lua scripts under `plugins/` are executed by the `mlua` crate (Lua 5.4, vendored). Scripts have **full Lua language access** — including file I/O, string manipulation, table operations, and math. There is **no sandbox**.
+Lua scripts under `plugins/` are executed by the `mlua` crate (Luau, vendored). Scripts have **full Lua language access** — including file I/O, string manipulation, table operations, and math. There is **no sandbox**.
 
 ```
 plugins/
@@ -44,7 +44,7 @@ plugins/
 **Capabilities of a Lua script:**
 - Read and write files on the local filesystem.
 - Execute OS commands via `os.execute` and `io.popen`.
-- Access network sockets (if the Lua build includes them; mlua's vendored Lua 5.4 does not include `socket` by default, but `os.execute` can shell out).
+- Access network sockets (if the Lua build includes them; mlua's vendored Luau does not include `socket` by default, but `os.execute` can shell out).
 - Read all data passed to it: player observations, match results, population snapshots.
 
 **Mitigations:**
@@ -128,7 +128,7 @@ Lua scripts are loaded from the `plugins/` directory via `resolve_script_path`, 
 
 **Risk level: N/A (not a concern)**
 
-The vendored Lua 5.4 build does not include networking libraries. Lua scripts cannot make HTTP requests, open sockets, or communicate with external services. The only way to exfiltrate data would be via `os.execute` (shelling out), which requires the Lua build to support it.
+The vendored Luau build does not include networking libraries. Lua scripts cannot make HTTP requests, open sockets, or communicate with external services. The only way to exfiltrate data would be via `os.execute` (shelling out), which requires the Lua build to support it.
 
 **Recommendation:** If deploying in a sensitive environment, verify that `os.execute` is unavailable in the Lua build. The vendored mlua build does not expose it by default.
 
@@ -136,7 +136,7 @@ The vendored Lua 5.4 build does not include networking libraries. Lua scripts ca
 
 **Risk level: N/A (not a concern by default)**
 
-The vendored Lua 5.4 does not include `os.execute` or `io.popen` in the standard library exposed by mlua. Scripts cannot spawn child processes.
+The vendored Luau does not include `os.execute` or `io.popen` in the standard library exposed by mlua. Scripts cannot spawn child processes.
 
 **Recommendation:** Verify this assumption by checking the mlua feature flags. If `os.execute` is exposed, consider sandboxing or disabling it.
 

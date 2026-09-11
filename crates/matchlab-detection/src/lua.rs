@@ -13,6 +13,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
+use tracing;
 /// A detection system whose algorithm lives entirely in a Lua script.
 pub struct LuaDetectionSystem {
     vm: LuaVm,
@@ -20,6 +21,7 @@ pub struct LuaDetectionSystem {
 impl LuaDetectionSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
         let vm = LuaVm::load(path, params, &["observe", "evaluate", "recommend_action"])?;
+        tracing::info!(script = %vm.script_path(), "detection system loaded");
         Ok(Self { vm })
     }
     pub fn script_path(&self) -> &str {
@@ -70,17 +72,16 @@ fn participant_observations(
 }
 impl DetectionSystem for LuaDetectionSystem {
     fn observe(&mut self, match_result: &MatchResult, world: &World) {
-        let mr_val = self
+        let (mr_val, obs_val) = self
             .vm
             .with_lua(|lua| {
-                convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)
+                let mr =
+                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
+                let obs = participant_observations(world, match_result);
+                let obs = convert::observations_to_map(lua, &obs, false)?;
+                Ok((mr, obs))
             })
-            .expect("build match result table");
-        let obs = participant_observations(world, match_result);
-        let obs_val = self
-            .vm
-            .with_lua(|lua| convert::observations_to_map(lua, &obs, false))
-            .expect("build observations table");
+            .expect("build match result and observations tables");
         let _: Value = self
             .vm
             .call_with_context("observe", &[mr_val, obs_val])
@@ -101,9 +102,19 @@ impl DetectionSystem for LuaDetectionSystem {
             .expect("build observation table");
         let result_tbl: Table = self
             .vm
-            .call_with_context("evaluate", &[Value::Integer(player_id.0 as i64), obs_val])
+            .call_with_context(
+                "evaluate",
+                &[Value::Integer(player_id.0 as mlua::Integer), obs_val],
+            )
             .expect("detection evaluate failed");
-        result_from_table(&result_tbl, player_id)
+        let result = result_from_table(&result_tbl, player_id);
+        tracing::debug!(
+            player_id = player_id.0,
+            probability = result.probability_of_anomaly,
+            confidence = result.confidence,
+            "detection evaluation"
+        );
+        result
     }
     fn recommend_action(&self, result: &DetectionResult) -> InterventionAction {
         let result_tbl = self
@@ -128,7 +139,14 @@ impl DetectionSystem for LuaDetectionSystem {
             .vm
             .call_with_context("recommend_action", &[result_tbl])
             .expect("detection recommend_action failed");
-        action_from_str(&action).unwrap_or(InterventionAction::None)
+        let intervention = action_from_str(&action).unwrap_or(InterventionAction::None);
+        tracing::debug!(
+            player_id = result.player_id.0,
+            action = %action,
+            probability = result.probability_of_anomaly,
+            "detection action recommended"
+        );
+        intervention
     }
 }
 #[cfg(test)]

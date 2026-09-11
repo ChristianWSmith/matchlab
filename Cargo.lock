@@ -196,6 +196,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
 name = "libsqlite3-sys"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -247,6 +257,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "luau0-src"
+version = "0.12.3+luau663"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ae337c644bbf86a8d8e9ce3ee023311833d41741baf5e51acc31b37843aba1"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -257,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-analysis",
  "matchlab-core",
@@ -268,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-adversarial"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -280,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-analysis"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-experiments",
@@ -293,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "rand",
  "serde",
@@ -303,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-detection"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -315,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-experiments"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-core",
@@ -341,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-game"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -352,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-loop"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-core",
@@ -370,17 +389,18 @@ dependencies = [
 
 [[package]]
 name = "matchlab-lua"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "mlua",
  "serde_yaml",
+ "smallvec",
  "tracing",
 ]
 
 [[package]]
 name = "matchlab-matchmaking"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -391,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-metrics"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -403,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-objective"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-metrics",
@@ -413,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-players"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "serde",
@@ -423,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-ranking"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -435,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-rating"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -446,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-utility"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -458,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-validation"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-analysis",
@@ -491,6 +511,7 @@ checksum = "c1f5f8fbebc7db5f671671134b9321c4b9aa9adeafccfd9a8c020ae45c6a35d0"
 dependencies = [
  "bstr",
  "either",
+ "libloading",
  "mlua-sys",
  "num-traits",
  "parking_lot",
@@ -508,6 +529,7 @@ dependencies = [
  "cfg-if",
  "lua-src",
  "luajit-src",
+ "luau0-src",
  "pkg-config",
 ]
 

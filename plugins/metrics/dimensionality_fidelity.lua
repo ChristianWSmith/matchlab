@@ -1,6 +1,7 @@
 -- plugins/metrics/dimensionality_fidelity.lua
 -- Correlation of 1D ratings and skill-vector predictions vs true overall skill;
 -- fidelity = how much multiD improves over 1D. Population-level metric.
+-- Population is columnar: snapshot.population = { rating = {...}, ... }
 
 name = "dimensionality_fidelity"
 needs_population = true
@@ -10,9 +11,11 @@ function on_record(match_result, snapshot, config, context)
     if snapshot.population == nil then
         return context
     end
-    for _, p in ipairs(snapshot.population) do
-        if p.true_skill ~= nil then
-            table.insert(context.samples, { p.rating, p.skill_overall, p.true_skill })
+    local pop = snapshot.population
+    for i = 1, #pop.rating do
+        local ts = pop.true_skill[i]
+        if ts ~= nil then
+            table.insert(context.samples, { pop.rating[i], pop.skill_overall[i], ts })
         end
     end
     return context
@@ -32,7 +35,9 @@ function compute(config, context)
     local oned_corr = pearson(oned)
     local multid_corr = pearson(multid)
     local fidelity = 0.0
-    if oned_corr > 0.0 then
+    if oned_corr >= 1.0 then
+        fidelity = multid_corr >= 1.0 and 1.0 or 0.0
+    elseif oned_corr > 0.0 then
         fidelity = math.max(0.0, math.min(1.0, (multid_corr - oned_corr) / (1.0 - oned_corr)))
     end
     return {
@@ -59,7 +64,9 @@ function pearson(pairs)
         sum_y2 = sum_y2 + pair[2] * pair[2]
     end
     local num = n * sum_xy - sum_x * sum_y
-    local den = math.sqrt((n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y))
+    local product = (n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y)
+    if product <= 0.0 then return 0.0 end
+    local den = math.sqrt(product)
     if den == 0.0 then return 0.0 end
     return num / den
 end

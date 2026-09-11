@@ -31,11 +31,13 @@ end
 
 function update(match_result, observations, config, context)
     local team_a_won = match_result.winner == "A"
+    local win_pts = config.win_points or 10.0
+    local loss_pts = config.loss_points or 10.0
     local updates = {}
     for _, id in ipairs(match_result.team_a) do
         local o = observations[id]
         if o then
-            local delta = team_a_won and config.win_points or -config.loss_points
+            local delta = team_a_won and win_pts or -loss_pts
             table.insert(updates, {
                 player_id = id,
                 rating = o.rating + delta,
@@ -48,7 +50,7 @@ function update(match_result, observations, config, context)
     for _, id in ipairs(match_result.team_b) do
         local o = observations[id]
         if o then
-            local delta = team_a_won and -config.loss_points or config.win_points
+            local delta = team_a_won and -loss_pts or win_pts
             table.insert(updates, {
                 player_id = id,
                 rating = o.rating + delta,

@@ -9,4 +9,5 @@ license.workspace = true
 matchlab-core = { path = "../matchlab-core" }
 serde_yaml.workspace = true
 mlua = { workspace = true, features = ["send"] }
+smallvec.workspace = true
 tracing.workspace = true

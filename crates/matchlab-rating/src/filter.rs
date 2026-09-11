@@ -9,6 +9,7 @@ use crate::system::ObservationType;
 use matchlab_core::match_::{MatchId, MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::PlayerId;
 use matchlab_core::time::SimTime;
+use tracing;
 /// A `MatchResult` reduced to only the observable fields a rating system may
 /// consume. `Some` means the system declared that data in its budget.
 #[derive(Debug, Clone)]
@@ -57,6 +58,19 @@ impl FilteredMatchResult {
 }
 pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> FilteredMatchResult {
     let has = |o: ObservationType| budget.contains(&o);
+    let stripped: Vec<&str> = [
+        (!has(ObservationType::Score)).then_some("score"),
+        (!has(ObservationType::PerformanceData)).then_some("performances"),
+        (!has(ObservationType::Duration)).then_some("duration"),
+        (!has(ObservationType::Disconnects)).then_some("disconnects"),
+        (!has(ObservationType::SessionHistory)).then_some("session_history"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !stripped.is_empty() {
+        tracing::trace!(fields_stripped = ?stripped, "information budget filtering applied");
+    }
     FilteredMatchResult {
         winner: mr.winner,
         team_a: mr.team_a.clone(),

@@ -1,11 +1,24 @@
 -- plugins/metrics/custom_metric.lua
 -- Custom metric hook: records balance as absolute difference from 0.5 win prob.
+-- This is a template; modify on_record/compute for your custom metric.
 
-function on_record(winner, team_a_avg, team_b_avg)
-    local diff = math.abs(team_a_avg - team_b_avg)
-    return diff / 400.0
+name = "custom_metric"
+
+function on_record(match_result, snapshot, config, context)
+    context.values = context.values or {}
+    local diff = math.abs(match_result.team_a_score - match_result.team_b_score)
+    table.insert(context.values, diff)
+    return context
 end
 
-function on_bucket_config()
-    return {0.0, 1000.0, 2000.0, 3000.0, 4000.0, 5000.0}
+function compute(config, context)
+    local values = context.values or {}
+    if #values == 0 then
+        return { kind = "scalar", value = 0.0 }
+    end
+    local sum = 0.0
+    for _, v in ipairs(values) do
+        sum = sum + v
+    end
+    return { kind = "scalar", value = sum / #values }
 end

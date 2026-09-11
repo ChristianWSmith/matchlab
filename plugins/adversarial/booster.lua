@@ -3,9 +3,12 @@
 -- config: boost_target, boostee
 
 function tick(player_id, behavior, observation, config, context)
-    local party = config.boost_target ~ config.boostee
+    local target = config.boost_target
+    local boostee = config.boostee
+    if not target or not boostee then return behavior, context end
+    local party = (math.floor(target) * 65537 + math.floor(boostee)) % 2147483647
     behavior.party_id = party
-    if player_id == config.boostee then
+    if player_id == boostee then
         behavior.win_rate = 1.0
     end
     return behavior, context

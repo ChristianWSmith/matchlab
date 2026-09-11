@@ -4,6 +4,7 @@
 //! name, config hash, git commit, and a metrics table so an experiment can be
 //! reproduced and audited from the report alone.
 use matchlab_experiments::ExperimentResult;
+use tracing;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReportConfig {
     pub include_plots: bool,
@@ -17,10 +18,12 @@ pub enum ReportFormat {
 }
 /// Markdown report for a single experiment.
 pub fn generate_report(result: &ExperimentResult) -> String {
+    tracing::debug!(experiment = %result.name, "generating experiment report");
     generate_markdown(std::slice::from_ref(result))
 }
 /// Generate a report for one or more experiments (spec §14.4).
 pub fn generate_comparison_report(results: &[ExperimentResult], config: &ReportConfig) -> String {
+    tracing::debug!(count = results.len(), "generating comparison report");
     match config.format {
         ReportFormat::Markdown => generate_markdown(results),
         ReportFormat::Json => serde_json::to_string_pretty(results).unwrap_or_default(),

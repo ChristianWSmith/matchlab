@@ -27,7 +27,9 @@ function predict(team_a, team_b, config, context)
 end
 
 function expected_score(rating_a, rating_b, beta)
+    local beta = beta or 400.0
     local divisor = beta * math.log(10.0)
+    if divisor == 0.0 then return 0.5 end
     return 1.0 / (1.0 + 10.0 ^ ((rating_b - rating_a) / divisor))
 end
 

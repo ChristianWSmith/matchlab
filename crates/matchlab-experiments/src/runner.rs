@@ -23,6 +23,7 @@ use matchlab_players::population::{PopulationConfig, PopulationGenerator};
 use matchlab_rating::registry;
 use matchlab_rating::system::RatingSystem;
 use std::collections::BTreeMap;
+use tracing;
 pub struct ExperimentRunner;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExperimentResult {
@@ -167,6 +168,11 @@ fn generate_population(
     };
     let mut rng = SimRng::from_seed(seed);
     let (realities, observations) = PopulationGenerator::generate(&config, &mut rng);
+    tracing::info!(
+        size = config.size,
+        archetypes = config.archetypes.len(),
+        "population generated"
+    );
     realities.into_iter().zip(observations).collect()
 }
 fn to_players_archetype(spec: &ArchetypeSpec) -> ArchetypeConfig {
@@ -267,6 +273,7 @@ fn build_detection_system(
     }
     let params = flatten_params(&spec.params);
     let detector = matchlab_detection::lua::LuaDetectionSystem::load(&spec.script, &params)?;
+    tracing::info!(script = %spec.script, "detection system enabled");
     Ok(Some(Box::new(detector)))
 }
 fn build_ranker(
@@ -277,6 +284,7 @@ fn build_ranker(
     };
     let params = flatten_params(&spec.params);
     let mapper = matchlab_ranking::lua::LuaRankMapper::load(&spec.script, &params)?;
+    tracing::info!(script = %spec.script, "rank mapper loaded");
     Ok(Some(Box::new(mapper)))
 }
 fn build_adversarial_agents(
@@ -298,6 +306,9 @@ fn build_adversarial_agents(
             matchlab_adversarial::lua::LuaAdversarialAgent::load(&agent_spec.script, &params, pid)?;
         agents.insert(pid, Box::new(agent));
     }
+    if !agents.is_empty() {
+        tracing::info!(count = agents.len(), "adversarial agents loaded");
+    }
     Ok(agents)
 }
 fn build_satisfaction_model(
@@ -311,6 +322,7 @@ fn build_satisfaction_model(
     }
     let params = flatten_params(&spec.params);
     let model = matchlab_utility::lua::LuaSatisfactionModel::load(&spec.script, &params)?;
+    tracing::info!(script = %spec.script, "satisfaction model enabled");
     Ok(Some(Box::new(model)))
 }
 /// ISO-8601 UTC timestamp without external dependencies.

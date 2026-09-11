@@ -5,7 +5,8 @@
 
 function tick(player_id, behavior, observation, config, context)
     local partner = config.partner
-    local party = player_id ~ partner
+    if not partner then return behavior, context end
+    local party = (player_id * 65537 + math.floor(partner)) % 2147483647
     behavior.party_id = party
     return behavior, context
 end

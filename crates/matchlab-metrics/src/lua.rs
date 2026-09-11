@@ -12,6 +12,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Function, Table, Value};
+use tracing;
 /// A metric collector whose algorithm lives entirely in a Lua script.
 pub struct LuaMetricCollector {
     vm: LuaVm,
@@ -35,6 +36,7 @@ impl LuaMetricCollector {
             .and_then(|v| v.as_u64())
             .unwrap_or(50)
             .max(1);
+        tracing::info!(name = %metric_name, script = %vm.script_path(), needs_population, "metric collector loaded");
         Ok(Self {
             vm,
             metric_name,
@@ -89,7 +91,8 @@ impl MetricCollector for LuaMetricCollector {
             .with_lua(|lua| {
                 let mr_val =
                     convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
-                let snap = convert::metric_snapshot(lua, match_result, world)?;
+                let snap =
+                    convert::metric_snapshot_with_table(lua, mr_val.clone(), match_result, world)?;
                 if sample_population {
                     let population = convert::population_snapshot(lua, world)?;
                     snap.as_table()

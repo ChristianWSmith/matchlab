@@ -22,9 +22,9 @@ pub fn yaml_to_lua(lua: &Lua, value: &YamlValue) -> Result<Value, String> {
         YamlValue::Bool(b) => Ok(Value::Boolean(*b)),
         YamlValue::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(Value::Integer(i))
+                Ok(Value::Integer(i as mlua::Integer))
             } else if let Some(u) = n.as_u64() {
-                Ok(Value::Integer(u as i64))
+                Ok(Value::Integer(u as mlua::Integer))
             } else {
                 Ok(Value::Number(n.as_f64().unwrap_or(0.0)))
             }
@@ -72,7 +72,7 @@ pub fn lua_to_yaml(value: &Value) -> Result<YamlValue, String> {
                 && entries
                     .iter()
                     .enumerate()
-                    .all(|(i, (k, _))| matches!(k, Value::Integer(idx) if *idx == i as i64 + 1));
+                    .all(|(i, (k, _))| matches!(k, Value::Integer(idx) if *idx == i as mlua::Integer + 1));
             if is_sequence {
                 let mut seq = Vec::with_capacity(n);
                 for (_, v) in entries {
@@ -93,6 +93,7 @@ pub fn lua_to_yaml(value: &Value) -> Result<YamlValue, String> {
         | Value::Thread(_)
         | Value::LightUserData(_)
         | Value::Other(_) => Err("unsupported Lua value in context".to_string()),
+        _ => Err("unsupported Lua value in context".to_string()),
     }
 }
 /// Convert a context into a Lua value for passing into a call.

@@ -3,7 +3,8 @@
 -- config: go_afk_probability
 
 function tick(player_id, behavior, observation, config, context)
-    if matchlab.rng_bool(config.go_afk_probability) then
+    local prob = config.go_afk_probability or 0.0
+    if matchlab.rng_bool(prob) then
         behavior.quit_probability = 1.0
     end
     return behavior, context
