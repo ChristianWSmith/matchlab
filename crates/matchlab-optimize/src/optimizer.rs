@@ -646,4 +646,60 @@ bo:
             assert!(trial.trial_index < 3);
         }
     }
+
+    #[test]
+    fn smoke_kernel_acquisition_matrix() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../experiments/base/quick.yaml");
+        let kernels = ["matern52", "matern32", "rbf", "rq"];
+        let acquisitions = ["ei", "ucb", "pi"];
+
+        for kernel in &kernels {
+            for acquisition in &acquisitions {
+                let name = format!("smoke_{kernel}_{acquisition}");
+                let yaml = format!(
+                    r#"
+name: {name}
+base: {}
+seed: 42
+budget: 2
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 50.0]
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  initial_points: 1
+  kernel: {kernel}
+  acquisition: {acquisition}
+"#,
+                    base.display()
+                );
+                let config: OptConfig = serde_yaml::from_str(&yaml).unwrap();
+                let result = optimize(&config).unwrap();
+                assert!(
+                    !result.trials.is_empty(),
+                    "{kernel}/{acquisition}: no trials completed"
+                );
+                assert!(
+                    result.best_index < result.trials.len(),
+                    "{kernel}/{acquisition}: best_index out of bounds"
+                );
+                assert!(
+                    !result.pareto_indices.is_empty(),
+                    "{kernel}/{acquisition}: empty pareto front"
+                );
+                for trial in &result.trials {
+                    assert!(
+                        trial.objectives.iter().all(|v| v.is_finite()),
+                        "{kernel}/{acquisition}: non-finite objective in trial {}",
+                        trial.trial_index
+                    );
+                }
+            }
+        }
+    }
 }

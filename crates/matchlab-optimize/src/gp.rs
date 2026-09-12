@@ -399,6 +399,18 @@ mod tests {
     }
 
     #[test]
+    fn gp_fit_rq() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let mut params = KernelParams::new(1, vec![], vec![]);
+        params.kernel_kind = KernelKind::RationalQuadratic;
+        let gp = GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
+        assert!(mean[0].abs() < 2.0);
+        assert!(std[0] > 0.0);
+    }
+
+    #[test]
     fn optimize_hyperparameters_identical_points() {
         let x = Array2::from_shape_vec((2, 1), vec![1.0, 1.0]).unwrap();
         let y = Array1::from_vec(vec![1.0, 1.0]);

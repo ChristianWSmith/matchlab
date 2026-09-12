@@ -262,4 +262,22 @@ mod tests {
     fn hamming_different() {
         assert!((hamming_match(3.0, 5.0) - 0.0).abs() < 1e-10);
     }
+
+    #[test]
+    fn apply_continuous_kernel_dispatch() {
+        let r = 0.5;
+        assert!(
+            (apply_continuous_kernel(KernelKind::Matern52, r, 1.0) - matern52(r)).abs() < 1e-15
+        );
+        assert!(
+            (apply_continuous_kernel(KernelKind::Matern32, r, 1.0) - matern32(r)).abs() < 1e-15
+        );
+        assert!((apply_continuous_kernel(KernelKind::RBF, r, 1.0) - rbf(r)).abs() < 1e-15);
+        assert!(
+            (apply_continuous_kernel(KernelKind::RationalQuadratic, r, 2.0)
+                - rational_quadratic(r, 2.0))
+            .abs()
+                < 1e-15
+        );
+    }
 }

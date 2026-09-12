@@ -289,4 +289,35 @@ mod tests {
             assert!(*v >= 0.0 && *v <= 1.0, "PI should be in [0,1], got {v}");
         }
     }
+
+    #[test]
+    fn evaluate_acquisition_dispatch() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let params = crate::kernel::KernelParams::new(1, vec![], vec![]);
+        let gp = crate::gp::GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let x_cand = Array2::from_shape_vec((3, 1), vec![0.25, 0.5, 0.75]).unwrap();
+        let best_y = 1.0;
+        let xi = 0.01;
+        let beta = 2.0;
+
+        let ei = evaluate_acquisition(AcquisitionKind::EI, &gp, &x_cand, best_y, xi, beta);
+        let ucb = evaluate_acquisition(AcquisitionKind::UCB, &gp, &x_cand, best_y, xi, beta);
+        let pi = evaluate_acquisition(AcquisitionKind::PI, &gp, &x_cand, best_y, xi, beta);
+
+        assert_eq!(ei.len(), 3);
+        assert_eq!(ucb.len(), 3);
+        assert_eq!(pi.len(), 3);
+
+        for v in ei.iter() {
+            assert!(*v >= 0.0, "EI should be non-negative, got {v}");
+        }
+        for v in pi.iter() {
+            assert!(*v >= 0.0 && *v <= 1.0, "PI should be in [0,1], got {v}");
+        }
+        let (mean, _) = gp.predict(&x_cand);
+        for i in 0..3 {
+            assert!(ucb[i] >= mean[i], "UCB should be >= mean");
+        }
+    }
 }
