@@ -9,7 +9,6 @@ fn main() -> ExitCode {
     let mut log_file: Option<String> = None;
     let mut json_logs = false;
     let mut threads: Option<usize> = None;
-    let mut batch_size: Option<usize> = None;
     let mut positional_args: Vec<String> = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -28,17 +27,12 @@ fn main() -> ExitCode {
                 i += 1;
                 threads = args.get(i).and_then(|s| s.parse().ok());
             }
-            "--batch-size" => {
-                i += 1;
-                batch_size = args.get(i).and_then(|s| s.parse().ok());
-            }
             other => positional_args.push(other.to_string()),
         }
         i += 1;
     }
     let threads =
         threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
-    let batch_size = batch_size.unwrap_or(threads);
     let level = log_level.unwrap_or_else(|| {
         if verbose {
             "debug".to_string()
@@ -56,7 +50,7 @@ fn main() -> ExitCode {
         Some("analyze") => analyze(&positional_args[2..]),
         Some("compare-stats") => compare_stats(&positional_args[2..]),
         Some("power") => power_cmd(&positional_args[2..]),
-        Some("optimize") => optimize_cmd(&positional_args[2..], threads, batch_size),
+        Some("optimize") => optimize_cmd(&positional_args[2..], threads),
         Some("--version") | Some("-V") => {
             println!("matchlab {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -102,7 +96,7 @@ fn print_help() {
     eprintln!("    --json        Print command output as structured JSON");
     eprintln!("    --threads <N> Number of threads for parallel execution (default: num_cpus)");
     eprintln!(
-        "    --batch-size <N> Number of concurrent experiments for optimize (default: threads)"
+        "    --gp-threads <N> GP hyperparameter threads for optimize (default: same as --threads)"
     );
     eprintln!();
     eprintln!("EXAMPLES:");
@@ -564,18 +558,32 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     }
     parts.join(", ")
 }
-fn optimize_cmd(args: &[String], threads: usize, batch_size: usize) -> ExitCode {
+fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
     let mut json_out = false;
     let mut path: Option<String> = None;
+    let mut gp_threads: Option<usize> = None;
     for arg in args {
         match arg.as_str() {
             "--json" => json_out = true,
+            "--gp-threads" => {
+                // Handled via positional scan below
+            }
             p if !p.starts_with('-') => path = Some(p.to_string()),
             _ => {}
         }
     }
+    // Parse --gp-threads from args
+    let mut j = 0;
+    while j < args.len() {
+        if args[j] == "--gp-threads" {
+            if let Some(val) = args.get(j + 1) {
+                gp_threads = val.parse().ok();
+            }
+        }
+        j += 1;
+    }
     let Some(path) = path else {
-        eprintln!("usage: matchlab optimize <optimize.yaml> [--json]");
+        eprintln!("usage: matchlab optimize <optimize.yaml> [--json] [--gp-threads N]");
         return ExitCode::from(2);
     };
     let _span = tracing::info_span!("optimize_run", path = %path).entered();
@@ -587,8 +595,8 @@ fn optimize_cmd(args: &[String], threads: usize, batch_size: usize) -> ExitCode 
             return ExitCode::from(1);
         }
     };
-    config.bo.batch_size = Some(batch_size);
-    config.bo.gp_threads = Some(threads);
+    config.bo.threads = Some(threads);
+    config.bo.gp_threads = gp_threads.or(Some(threads));
     let result = match matchlab_optimize::optimize(&config) {
         Ok(r) => r,
         Err(e) => {

@@ -182,7 +182,7 @@ Use this checklist for every reproduction study:
 | Float re-parses 1 ULP off | JSON round-trip | Accept if within machine epsilon |
 | `study_stats.json` differs structurally | Timestamp only | Accept if metrics agree |
 | Different number of matches formed | Race condition | Investigate — should be deterministic |
-| Optimization trial order differs (batch_size > 1) | Parallel evaluation ordering | Expected — trajectory is non-deterministic in batch mode; compare Pareto sets, not trajectories |
+| Optimization trial order differs (threads > 1) | Parallel evaluation ordering | Expected — trajectory is non-deterministic in batch mode; compare Pareto sets, not trajectories |
 
 ### Unexpected variations (bugs)
 
@@ -192,7 +192,7 @@ Use this checklist for every reproduction study:
 | Different number of replicates completed | Crash or early termination | Check error logs |
 | Effect size CI excludes original value | Different random stream | Verify seed derivation |
 | `config_hash` mismatch | Code or script change | Check out correct commit |
-| Scalar metrics differ for `batch_size = 1` optimization trial | Non-determinism | Investigate — sequential mode should be deterministic; check for code or seed changes |
+| Scalar metrics differ for `threads = 1` optimization trial | Non-determinism | Investigate — sequential mode should be deterministic; check for code or seed changes |
 
 ### Discrepancy resolution workflow
 
@@ -200,7 +200,7 @@ Use this checklist for every reproduction study:
 2. **Check the seed** — confirm the seed was passed correctly.
 3. **Compare environments** — OS-level differences (e.g. allocator) can cause
    floating-point divergence on edge cases, but never > 1 ULP for well-conditioned
-   math. For optimization runs with `batch_size > 1` (the CLI default), also check whether the
+   math. For optimization runs with `threads > 1` (the CLI default), also check whether the
    trial ordering differs — this is expected non-determinism, not a bug.
 4. **Check for script changes** — the config hash includes Lua script contents;
    if the hash matches, the scripts are identical.

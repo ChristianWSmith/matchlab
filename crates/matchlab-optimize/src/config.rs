@@ -34,7 +34,7 @@ pub struct BoConfig {
     #[serde(default = "default_max_consecutive_failures")]
     pub max_consecutive_failures: Option<u64>,
     #[serde(default)]
-    pub batch_size: Option<usize>,
+    pub threads: Option<usize>,
     #[serde(default)]
     pub k_dpp_candidates: Option<usize>,
     #[serde(default)]
@@ -68,7 +68,7 @@ impl Default for BoConfig {
             eta: None,
             ucb_beta: None,
             max_consecutive_failures: default_max_consecutive_failures(),
-            batch_size: None,
+            threads: None,
             k_dpp_candidates: None,
             gp_phase1_restarts: None,
             gp_phase1_inner_iters: None,
@@ -122,6 +122,13 @@ impl BoConfig {
     }
     pub fn early_warning_failures(&self) -> u64 {
         self.early_warning_failures.unwrap_or(5)
+    }
+    pub fn threads(&self) -> usize {
+        self.threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+        })
     }
     pub fn gp_threads(&self) -> Option<usize> {
         self.gp_threads
@@ -474,7 +481,7 @@ objectives:
   - metric: match_quality
     direction: maximize
 bo:
-  batch_size: 8
+  threads: 8
   k_dpp_candidates: 500
   gp_phase1_restarts: 20
   gp_phase1_inner_iters: 5
@@ -486,7 +493,7 @@ bo:
   early_warning_failures: 3
 "#;
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.bo.batch_size, Some(8));
+        assert_eq!(config.bo.threads, Some(8));
         assert_eq!(config.bo.k_dpp_candidates, Some(500));
         assert_eq!(config.bo.gp_phase1_restarts, Some(20));
         assert_eq!(config.bo.gp_phase1_inner_iters, Some(5));

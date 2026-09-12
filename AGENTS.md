@@ -108,7 +108,7 @@ Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
 
-Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction. Note: the CLI `--batch-size` flag defaults to `num_cpus`, so `matchlab optimize` runs in non-deterministic batch mode by default. Pass `--batch-size 1` to preserve full trajectory determinism. The underlying individual experiments remain deterministic given the same seed.
+Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction. Note: the CLI `--threads` flag defaults to `num_cpus`, so `matchlab optimize` runs in non-deterministic batch mode by default. Pass `--threads 1` to preserve full trajectory determinism. The underlying individual experiments remain deterministic given the same seed.
 
 ### 4. Multi-Scale Time
 
@@ -163,14 +163,14 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | `matchlab-experiments` | YAML config, inheritance, factorial design, replication, counterfactual replay, study manifests |
 | `matchlab-analysis` | Statistics (CIs, effect sizes, power), Pareto, cohorts, reporting, provenance |
 | `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget) |
-| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate (rayon-parallelized), 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, k-DPP batch selection, NDJSON checkpointing; async/batch mode when batch_size > 1 |
+| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate (rayon-parallelized), 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, k-DPP batch selection, NDJSON checkpointing; async/batch mode when threads > 1 |
 
 ### CLI commands
 
 - `matchlab run <manifest.yaml>` — run a single experiment
 - `matchlab study <study.yaml> [--replicates N] [--json]` — run a multi-arm replicated study
 - `matchlab compare <result.json>... [--json]` — compare exported results
-- `matchlab optimize <optimize.yaml> [--threads N]` — Bayesian hyperparameter optimization
+- `matchlab optimize <optimize.yaml> [--threads N] [--gp-threads N]` — Bayesian hyperparameter optimization
 
 ---
 

@@ -67,11 +67,11 @@ Every experiment is fully reproducible given its config and seed:
   deterministic; two runs with the same seed produce identical results except
   for the wall-clock timestamp.
 
-**Note:** Bayesian optimization runs with `batch_size > 1` are not fully
+**Note:** Bayesian optimization runs with `threads > 1` are not fully
 deterministic — parallel experiment evaluation means the optimization trajectory
 (which experiments are evaluated in which order) may vary across runs, though
 each individual experiment within the trajectory is still deterministic given
-the same seed. Pass `--batch-size 1` to preserve trajectory determinism.
+the same seed. Pass `--threads 1` to preserve trajectory determinism.
 
 ---
 
@@ -133,7 +133,7 @@ matchlab package <manifest.yaml>       # Create a reproduction package
 matchlab analyze <result.json>         # Analyze a stored result
 matchlab compare-stats <study.json>... # Compare study results statistically
 matchlab power                         # Compute power analysis
-matchlab optimize <optimize.yaml> [--threads N] [--batch-size N]  # Bayesian hyperparameter optimization
+matchlab optimize <optimize.yaml> [--threads N] [--gp-threads N]  # Bayesian hyperparameter optimization
 ```
 
 CLI flags for controlling output:
@@ -145,8 +145,8 @@ CLI flags for controlling output:
 | `--log-file <PATH>` | Write logs to a file in addition to stdout |
 | `--json-logs` | Output logs as JSON Lines (for tooling) |
 | `--json` | Print output as structured JSON (tracing remains on stderr) |
-| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); used by `study` and `optimize` (GP hyperparameter optimization) |
-| `--batch-size <N>` | Number of concurrent experiments for `optimize` (default: same as `--threads`); setting to 1 preserves trajectory determinism |
+| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); controls concurrent experiments in `study` and `optimize` |
+| `--gp-threads <N>` | GP hyperparameter threads for `optimize` (default: same as `--threads`) |
 
 ---
 
@@ -624,7 +624,7 @@ experiment exactly:
 3. Verify the `config_hash` in the new JSON matches the recorded one.
 
 The only fields that legitimately differ between identical runs are the
-`timestamp`, and for optimization runs with `batch_size > 1`, the trial
+`timestamp`, and for optimization runs with `threads > 1`, the trial
 ordering (since concurrent evaluation is non-deterministic).
 
 You can also create a **reproduction package** that bundles the manifest,
@@ -679,11 +679,11 @@ matchlab optimize experiments/optimize/elo_kfactor.yaml --json
    batch of parameter combinations.
 2. **Surrogate model.** A Gaussian Process fits the observed objective values (hyperparameters are optimized in parallel via rayon).
 3. **Acquisition function.** The next point(s) to evaluate are chosen by maximizing
-   an acquisition function (Expected Improvement, UCB, or PI). When `batch_size > 1`,
+   an acquisition function (Expected Improvement, UCB, or PI). When `threads > 1`,
    a k-DPP sampler selects a diverse batch of candidates from the top acquisition
    scores.
 4. **Evaluation.** Each candidate is evaluated by running a full experiment. When
-   `batch_size > 1`, evaluations run concurrently via rayon, breaking full trajectory
+   `threads > 1`, evaluations run concurrently via rayon, breaking full trajectory
    determinism.
 5. **Repeat** steps 2–4 until the budget is exhausted.
 
@@ -732,9 +732,9 @@ bo:
   acquisition: ei
   xi: 0.01
   eta: 0.05
-  batch_size: 4            # optional, async batch evaluation (default: 1 = sequential)
+  threads: 4            # optional, concurrent experiment evaluations (default: num_cpus)
   k_dpp_candidates: 1000   # optional, DPP candidate pool size
-  gp_threads: 4            # optional, threads for GP hyperparameter optimization (default: num_cpus)
+  gp_threads: 4            # optional, threads for GP hyperparameter optimization (default: same as threads)
 
 output:
   directory: results/optimization/

@@ -31,21 +31,13 @@ struct WorkerMessage {
 }
 
 pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
-    let batch_size = resolve_batch_size(config);
+    let threads = config.bo.threads();
 
-    if batch_size <= 1 {
+    if threads <= 1 {
         optimize_sequential(config)
     } else {
-        optimize_async(config, batch_size)
+        optimize_async(config, threads)
     }
-}
-
-fn resolve_batch_size(config: &OptConfig) -> usize {
-    config.bo.batch_size.unwrap_or_else(|| {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1)
-    })
 }
 
 fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String> {
@@ -247,7 +239,7 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
     })
 }
 
-fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationResult, String> {
+fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResult, String> {
     let base_path = Path::new(&config.base);
     let base_config =
         inherit::load(base_path).map_err(|e| format!("load base config {}: {e}", config.base))?;
@@ -268,7 +260,7 @@ fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationR
     tracing::info!(
         budget = config.budget,
         initial = initial_n,
-        batch_size,
+        threads,
         "starting async Bayesian optimization"
     );
 
@@ -328,7 +320,7 @@ fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationR
 
     let (tx, rx) = mpsc::channel::<WorkerMessage>();
 
-    let workers_to_dispatch = batch_size.min((config.budget - initial_n) as usize);
+    let workers_to_dispatch = threads.min((config.budget - initial_n) as usize);
     if all_params.len() >= config.bo.min_gp_training_points() && workers_to_dispatch > 1 {
         let batch_points = suggest_batch(
             &all_params,
@@ -762,7 +754,7 @@ fn suggest_batch(
     indices: &ParamIndices,
     objectives: &[ObjectiveSpec],
     bo: &BoConfig,
-    batch_size: usize,
+    n_select: usize,
     seed: u64,
 ) -> Result<Vec<BTreeMap<String, f64>>, String> {
     let param_order: Vec<String> = space.parameters.keys().cloned().collect();
@@ -821,7 +813,7 @@ fn suggest_batch(
         &candidates,
         scores.as_slice().unwrap(),
         &param_order,
-        batch_size,
+        n_select,
         seed,
     );
 
@@ -1216,7 +1208,7 @@ objectives:
     direction: maximize
 bo:
   initial_points: 2
-  batch_size: 2
+  threads: 2
 "#,
             base.display()
         );
