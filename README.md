@@ -71,9 +71,7 @@ Every experiment is fully reproducible given its config and seed:
 deterministic — parallel experiment evaluation means the optimization trajectory
 (which experiments are evaluated in which order) may vary across runs, though
 each individual experiment within the trajectory is still deterministic given
-the same seed. The CLI `--threads` flag sets `batch_size` to `num_cpus` by
-default, so `matchlab optimize` runs in batch mode unless `--threads 1` is
-passed.
+the same seed. Pass `--batch-size 1` to preserve trajectory determinism.
 
 ---
 
@@ -135,7 +133,7 @@ matchlab package <manifest.yaml>       # Create a reproduction package
 matchlab analyze <result.json>         # Analyze a stored result
 matchlab compare-stats <study.json>... # Compare study results statistically
 matchlab power                         # Compute power analysis
-matchlab optimize <optimize.yaml> [--threads N]  # Bayesian hyperparameter optimization
+matchlab optimize <optimize.yaml> [--threads N] [--batch-size N]  # Bayesian hyperparameter optimization
 ```
 
 CLI flags for controlling output:
@@ -147,7 +145,8 @@ CLI flags for controlling output:
 | `--log-file <PATH>` | Write logs to a file in addition to stdout |
 | `--json-logs` | Output logs as JSON Lines (for tooling) |
 | `--json` | Print output as structured JSON (tracing remains on stderr) |
-| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); sets both `batch_size` and `gp_threads` for `optimize`, controls batch size for `study` |
+| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); used by `study` and `optimize` (GP hyperparameter optimization) |
+| `--batch-size <N>` | Number of concurrent experiments for `optimize` (default: same as `--threads`); setting to 1 preserves trajectory determinism |
 
 ---
 
