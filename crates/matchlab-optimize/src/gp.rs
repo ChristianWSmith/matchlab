@@ -1,4 +1,4 @@
-use crate::kernel::{KernelParams, kernel_matrix, kernel_matrix_with_noise};
+use crate::kernel::{KernelKind, KernelParams, kernel_matrix, kernel_matrix_with_noise};
 use ndarray::{Array1, Array2};
 use rand::Rng;
 use rand::SeedableRng;
@@ -75,11 +75,13 @@ impl GaussianProcess {
         cont_indices: &[usize],
         cat_indices: &[usize],
         cat_n_levels: &[usize],
+        kernel_kind: KernelKind,
         seed: u64,
     ) -> KernelParams {
         let n_cont = cont_indices.len();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
         let mut params = KernelParams::new(n_cont, cat_indices.to_vec(), cat_n_levels.to_vec());
+        params.kernel_kind = kernel_kind;
 
         for _ in 0..50 {
             let log_ls: Vec<f64> = params
@@ -235,6 +237,30 @@ mod tests {
         let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
         let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
         let params = KernelParams::new(1, vec![], vec![]);
+        let gp = GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
+        assert!(mean[0].abs() < 2.0);
+        assert!(std[0] > 0.0);
+    }
+
+    #[test]
+    fn gp_fit_rbf() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let mut params = KernelParams::new(1, vec![], vec![]);
+        params.kernel_kind = KernelKind::RBF;
+        let gp = GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
+        assert!(mean[0].abs() < 2.0);
+        assert!(std[0] > 0.0);
+    }
+
+    #[test]
+    fn gp_fit_matern32() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let mut params = KernelParams::new(1, vec![], vec![]);
+        params.kernel_kind = KernelKind::Matern32;
         let gp = GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
         let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
         assert!(mean[0].abs() < 2.0);

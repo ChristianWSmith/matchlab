@@ -25,10 +25,12 @@ pub struct BoConfig {
     pub kernel: String,
     #[serde(default = "default_acquisition")]
     pub acquisition: String,
-    #[serde(default = "default_noise")]
-    pub noise: String,
     #[serde(default)]
     pub xi: Option<f64>,
+    #[serde(default)]
+    pub eta: Option<f64>,
+    #[serde(default)]
+    pub ucb_beta: Option<f64>,
 }
 
 impl Default for BoConfig {
@@ -38,8 +40,9 @@ impl Default for BoConfig {
             initial_points: default_initial_points(),
             kernel: default_kernel(),
             acquisition: default_acquisition(),
-            noise: default_noise(),
             xi: None,
+            eta: None,
+            ucb_beta: None,
         }
     }
 }
@@ -54,10 +57,7 @@ fn default_kernel() -> String {
     "matern52".to_string()
 }
 fn default_acquisition() -> String {
-    "ehvi".to_string()
-}
-fn default_noise() -> String {
-    "inferred".to_string()
+    "ei".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -66,6 +66,9 @@ pub struct OptOutputSpec {
     pub directory: String,
     #[serde(default)]
     pub report: bool,
+    #[serde(default)]
+    pub checkpoint: bool,
+    pub checkpoint_interval: Option<u64>,
 }
 
 fn default_opt_directory() -> String {
@@ -212,7 +215,57 @@ objectives:
         assert_eq!(config.bo.initial_design, "latin_hypercube");
         assert_eq!(config.bo.initial_points, 10);
         assert_eq!(config.bo.kernel, "matern52");
-        assert_eq!(config.bo.acquisition, "ehvi");
-        assert_eq!(config.bo.noise, "inferred");
+        assert_eq!(config.bo.acquisition, "ei");
+        assert!(config.bo.xi.is_none());
+        assert!(config.bo.eta.is_none());
+        assert!(config.bo.ucb_beta.is_none());
+    }
+
+    #[test]
+    fn bo_config_custom() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters: {}
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  kernel: rbf
+  acquisition: ucb
+  xi: 0.05
+  eta: 0.1
+  ucb_beta: 4.0
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.bo.kernel, "rbf");
+        assert_eq!(config.bo.acquisition, "ucb");
+        assert_eq!(config.bo.xi, Some(0.05));
+        assert_eq!(config.bo.eta, Some(0.1));
+        assert_eq!(config.bo.ucb_beta, Some(4.0));
+    }
+
+    #[test]
+    fn output_config_checkpoint() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters: {}
+objectives:
+  - metric: match_quality
+    direction: maximize
+output:
+  checkpoint: true
+  checkpoint_interval: 5
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.output.checkpoint);
+        assert_eq!(config.output.checkpoint_interval, Some(5));
     }
 }

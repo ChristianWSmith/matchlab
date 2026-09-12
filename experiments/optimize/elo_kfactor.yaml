@@ -22,7 +22,7 @@ bo:
   initial_design: latin_hypercube
   initial_points: 10
   kernel: matern52
-  acquisition: ehvi
+  acquisition: ei
 
 output:
   directory: results/optimization/

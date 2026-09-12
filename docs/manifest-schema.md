@@ -401,14 +401,17 @@ optimize:
   bo:                           # optional, Bayesian optimization settings
     initial_design: latin_hypercube  # or "random"
     initial_points: <u64>       #   optional, default 10
-    kernel: matern52            #   optional, default "matern52"
-    acquisition: ehvi           #   optional, default "ehvi"
-    noise: inferred             #   optional, default "inferred"
-    xi: <f64>                   #   optional, EI exploration-exploitation tradeoff
+    kernel: matern52            #   optional: matern52, matern32, rbf, rq (default: matern52)
+    acquisition: ei             #   optional: ei, ucb, pi (default: ei)
+    xi: <f64>                   #   optional, EI/PI exploration parameter (default: 0.01)
+    eta: <f64>                  #   optional, ParEGO scalarization (default: 0.05)
+    ucb_beta: <f64>             #   optional, UCB exploration parameter (default: 2.0)
 
   output:                       # optional
     directory: <string>         #   default "results/optimization/"
     report: <bool>              #   default false
+    checkpoint: <bool>          #   write NDJSON checkpoint after each trial (default: false)
+    checkpoint_interval: <u64>  #   write checkpoint every N trials (default: every trial)
 ```
 
 ### Search Space Parameters
@@ -459,5 +462,5 @@ optimize:
 
   bo:
     initial_points: 10
-    acquisition: ehvi
+    acquisition: ei
 ```

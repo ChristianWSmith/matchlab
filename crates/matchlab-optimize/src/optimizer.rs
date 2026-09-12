@@ -1,8 +1,9 @@
-use crate::acquisition::{expected_improvement, parego_scalarize, parego_weights};
+use crate::acquisition::{AcquisitionKind, evaluate_acquisition, parego_scalarize, parego_weights};
 use crate::config::{
     BoConfig, Direction, ObjectiveSpec, OptConfig, OptimizationResult, ParameterSpec, TrialResult,
 };
 use crate::gp::GaussianProcess;
+use crate::kernel::KernelKind;
 use crate::multiobj::ParetoFront;
 use crate::sampler::{latin_hypercube_sample, random_sample};
 use matchlab_experiments::config::ExperimentConfig;
@@ -11,7 +12,9 @@ use matchlab_experiments::runner::ExperimentRunner;
 use ndarray::{Array1, Array2};
 use rand::Rng;
 use rand::SeedableRng;
+use rayon::prelude::*;
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::Path;
 use tracing;
 
@@ -20,7 +23,6 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
     let base_config =
         inherit::load(base_path).map_err(|e| format!("load base config {}: {e}", config.base))?;
 
-    let param_order: Vec<String> = config.search_space.parameters.keys().cloned().collect();
     let param_indices = classify_parameters(&config.search_space);
 
     let initial_n = config.bo.initial_points.min(config.budget);
@@ -45,16 +47,24 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
         "starting Bayesian optimization"
     );
 
-    for (i, point) in initial_points.iter().enumerate() {
+    let initial_results: Vec<_> = initial_points
+        .par_iter()
+        .enumerate()
+        .map(|(i, point)| {
+            let trial_idx = i as u64;
+            let result = evaluate_point(
+                &base_config,
+                point,
+                &config.objectives,
+                config.seed + trial_idx,
+            );
+            (i, point, result)
+        })
+        .collect();
+
+    for (i, point, result) in initial_results {
         let trial_idx = i as u64;
-        tracing::info!(trial = trial_idx + 1, "evaluating initial point");
-        match evaluate_point(
-            &base_config,
-            point,
-            &param_order,
-            &config.objectives,
-            config.seed + trial_idx,
-        ) {
+        match result {
             Ok((obj_vals, trial_result)) => {
                 all_objectives.push(obj_vals);
                 all_params.push(point.clone());
@@ -62,7 +72,12 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                 pareto.update(&all_objectives, &directions);
                 tracing::info!(
                     trial = trial_idx + 1,
-                    best = best_objective_value(&all_objectives, &config.objectives),
+                    best = best_objective_value(
+                        &all_objectives,
+                        &config.objectives,
+                        config.bo.eta.unwrap_or(0.05),
+                        config.seed
+                    ),
                     "initial point evaluated"
                 );
             }
@@ -71,6 +86,12 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
             }
         }
     }
+    maybe_write_checkpoint(
+        &config.output,
+        &config.name,
+        &all_trial_results,
+        initial_n - 1,
+    );
 
     for t in initial_n..config.budget {
         let trial_idx = t;
@@ -98,7 +119,6 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
         match evaluate_point(
             &base_config,
             &next_point,
-            &param_order,
             &config.objectives,
             config.seed + trial_idx,
         ) {
@@ -107,9 +127,15 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                 all_params.push(next_point);
                 all_trial_results.push(trial_result);
                 pareto.update(&all_objectives, &directions);
+                maybe_write_checkpoint(&config.output, &config.name, &all_trial_results, trial_idx);
                 tracing::info!(
                     trial = trial_idx + 1,
-                    best = best_objective_value(&all_objectives, &config.objectives),
+                    best = best_objective_value(
+                        &all_objectives,
+                        &config.objectives,
+                        config.bo.eta.unwrap_or(0.05),
+                        config.seed
+                    ),
                     "trial completed"
                 );
             }
@@ -121,7 +147,6 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                     if let Ok((obj_vals, trial_result)) = evaluate_point(
                         &base_config,
                         &rand_point,
-                        &param_order,
                         &config.objectives,
                         config.seed + trial_idx + 50000,
                     ) {
@@ -129,16 +154,27 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                         all_params.push(rand_point);
                         all_trial_results.push(trial_result);
                         pareto.update(&all_objectives, &directions);
+                        maybe_write_checkpoint(
+                            &config.output,
+                            &config.name,
+                            &all_trial_results,
+                            trial_idx,
+                        );
                     }
                 }
             }
         }
     }
 
-    let best_idx = find_best_trial_index(&all_objectives, &config.objectives);
+    let best_idx = find_best_trial_index(
+        &all_objectives,
+        &config.objectives,
+        config.bo.eta.unwrap_or(0.05),
+        config.seed,
+    );
     let config_hash = matchlab_experiments::seed::hash_config(&base_config);
     let git_commit = matchlab_experiments::seed::git_commit_hash();
-    let timestamp = iso8601_utc();
+    let timestamp = chrono::Utc::now().to_rfc3339();
 
     Ok(OptimizationResult {
         name: config.name.clone(),
@@ -153,36 +189,6 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
         git_commit,
         timestamp,
     })
-}
-
-fn iso8601_utc() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    let (year, month, day) = civil_from_days(days);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
-}
-
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 153 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (if m <= 2 { y + 1 } else { y }, m as u32, d as u32)
 }
 
 fn classify_parameters(space: &crate::config::SearchSpace) -> ParamIndices {
@@ -223,8 +229,11 @@ fn suggest_next_point(
 ) -> Result<BTreeMap<String, f64>, String> {
     let param_order: Vec<String> = space.parameters.keys().cloned().collect();
     let n_obj = objectives.len();
+    let kernel_kind = KernelKind::parse(&bo.kernel).map_err(|e| format!("invalid kernel: {e}"))?;
+    let acq_kind =
+        AcquisitionKind::parse(&bo.acquisition).map_err(|e| format!("invalid acquisition: {e}"))?;
 
-    let x_train = build_training_matrix(all_params, &param_order, &indices.cont, &indices.cat);
+    let x_train = build_training_matrix(all_params, &param_order);
     let directions: Vec<bool> = objectives
         .iter()
         .map(|o| o.direction == Direction::Maximize)
@@ -238,16 +247,18 @@ fn suggest_next_point(
             &indices.cont,
             &indices.cat,
             &indices.cat_n_levels,
+            kernel_kind,
             seed,
         );
         let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
         let best_y = y_train.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let xi = bo.xi.unwrap_or(0.01);
+        let beta = bo.ucb_beta.unwrap_or(2.0);
 
         let candidates = random_candidates(space, 1000, seed);
-        let x_cand = build_training_matrix(&candidates, &param_order, &indices.cont, &indices.cat);
-        let ei = expected_improvement(&gp, &x_cand, best_y, xi);
-        let best_cand = ei
+        let x_cand = build_training_matrix(&candidates, &param_order);
+        let scores = evaluate_acquisition(acq_kind, &gp, &x_cand, best_y, xi, beta);
+        let best_cand = scores
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
@@ -257,31 +268,34 @@ fn suggest_next_point(
         Ok(candidates[best_cand].clone())
     } else {
         let weights = parego_weights(n_obj, seed);
+        let eta = bo.eta.unwrap_or(0.05);
 
         let mut best_scalarized = f64::NEG_INFINITY;
         for obj in all_objectives {
-            let s = parego_scalarize(obj, &weights, &directions);
+            let s = parego_scalarize(obj, &weights, &directions, eta);
             if s > best_scalarized {
                 best_scalarized = s;
             }
         }
 
-        let y_train = build_scalarized_objective(all_objectives, &weights, &directions);
+        let y_train = build_scalarized_objective(all_objectives, &weights, &directions, eta);
         let params_gp = GaussianProcess::optimize_hyperparameters(
             &x_train,
             &y_train,
             &indices.cont,
             &indices.cat,
             &indices.cat_n_levels,
+            kernel_kind,
             seed,
         );
         let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
         let xi = bo.xi.unwrap_or(0.01);
+        let beta = bo.ucb_beta.unwrap_or(2.0);
 
         let candidates = random_candidates(space, 1000, seed);
-        let x_cand = build_training_matrix(&candidates, &param_order, &indices.cont, &indices.cat);
-        let ei = expected_improvement(&gp, &x_cand, best_scalarized, xi);
-        let best_cand = ei
+        let x_cand = build_training_matrix(&candidates, &param_order);
+        let scores = evaluate_acquisition(acq_kind, &gp, &x_cand, best_scalarized, xi, beta);
+        let best_cand = scores
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
@@ -292,12 +306,7 @@ fn suggest_next_point(
     }
 }
 
-fn build_training_matrix(
-    points: &[BTreeMap<String, f64>],
-    param_order: &[String],
-    _cont_indices: &[usize],
-    _cat_indices: &[usize],
-) -> Array2<f64> {
+fn build_training_matrix(points: &[BTreeMap<String, f64>], param_order: &[String]) -> Array2<f64> {
     let n = points.len();
     let d = param_order.len();
     let mut x = Array2::<f64>::zeros((n, d));
@@ -322,10 +331,11 @@ fn build_scalarized_objective(
     all_objectives: &[Vec<f64>],
     weights: &[f64],
     directions: &[bool],
+    eta: f64,
 ) -> Array1<f64> {
     let vals: Vec<f64> = all_objectives
         .iter()
-        .map(|obj| parego_scalarize(obj, weights, directions))
+        .map(|obj| parego_scalarize(obj, weights, directions, eta))
         .collect();
     Array1::from_vec(vals)
 }
@@ -360,7 +370,6 @@ fn random_candidates(
 fn evaluate_point(
     base_config: &ExperimentConfig,
     point: &BTreeMap<String, f64>,
-    _param_order: &[String],
     objectives: &[ObjectiveSpec],
     seed: u64,
 ) -> Result<(Vec<f64>, TrialResult), String> {
@@ -424,7 +433,12 @@ fn extract_metric_value(
     }
 }
 
-fn find_best_trial_index(all_objectives: &[Vec<f64>], objectives: &[ObjectiveSpec]) -> usize {
+fn find_best_trial_index(
+    all_objectives: &[Vec<f64>],
+    objectives: &[ObjectiveSpec],
+    eta: f64,
+    seed: u64,
+) -> usize {
     let directions: Vec<bool> = objectives
         .iter()
         .map(|o| o.direction == Direction::Maximize)
@@ -444,11 +458,11 @@ fn find_best_trial_index(all_objectives: &[Vec<f64>], objectives: &[ObjectiveSpe
             .map(|(i, _)| i)
             .unwrap_or(0)
     } else {
-        let weights = parego_weights(objectives.len(), 12345);
+        let weights = parego_weights(objectives.len(), seed);
         let mut best_idx = 0;
         let mut best_val = f64::NEG_INFINITY;
         for (i, obj) in all_objectives.iter().enumerate() {
-            let s = parego_scalarize(obj, &weights, &directions);
+            let s = parego_scalarize(obj, &weights, &directions, eta);
             if s > best_val {
                 best_val = s;
                 best_idx = i;
@@ -458,13 +472,57 @@ fn find_best_trial_index(all_objectives: &[Vec<f64>], objectives: &[ObjectiveSpe
     }
 }
 
-fn best_objective_value(all_objectives: &[Vec<f64>], objectives: &[ObjectiveSpec]) -> f64 {
-    let best_idx = find_best_trial_index(all_objectives, objectives);
+fn best_objective_value(
+    all_objectives: &[Vec<f64>],
+    objectives: &[ObjectiveSpec],
+    eta: f64,
+    seed: u64,
+) -> f64 {
+    let best_idx = find_best_trial_index(all_objectives, objectives, eta, seed);
     if let Some(obj) = all_objectives.get(best_idx) {
         obj.first().copied().unwrap_or(0.0)
     } else {
         0.0
     }
+}
+
+fn maybe_write_checkpoint(
+    output: &crate::config::OptOutputSpec,
+    name: &str,
+    trials: &[TrialResult],
+    trial_idx: u64,
+) {
+    if !output.checkpoint {
+        return;
+    }
+    if let Some(interval) = output.checkpoint_interval {
+        if trial_idx % interval != 0 && trial_idx != 0 {
+            return;
+        }
+    }
+    if let Err(e) = write_checkpoint_ndjson(&output.directory, name, trials) {
+        tracing::warn!(error = %e, "failed to write checkpoint");
+    }
+}
+
+fn write_checkpoint_ndjson(
+    directory: &str,
+    name: &str,
+    trials: &[TrialResult],
+) -> Result<(), String> {
+    let dir = std::path::Path::new(directory);
+    std::fs::create_dir_all(dir).map_err(|e| format!("create checkpoint dir: {e}"))?;
+    let path = dir.join(format!("{name}_checkpoint.ndjson"));
+    let tmp = path.with_extension("ndjson.tmp");
+    let mut file =
+        std::fs::File::create(&tmp).map_err(|e| format!("create checkpoint file: {e}"))?;
+    for trial in trials {
+        let line = serde_json::to_string(trial).map_err(|e| format!("serialize trial: {e}"))?;
+        writeln!(file, "{line}").map_err(|e| format!("write checkpoint: {e}"))?;
+    }
+    file.flush().map_err(|e| format!("flush checkpoint: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("rename checkpoint: {e}"))?;
+    Ok(())
 }
 
 #[cfg(test)]

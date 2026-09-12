@@ -556,14 +556,17 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     parts.join(", ")
 }
 fn optimize_cmd(args: &[String]) -> ExitCode {
+    let mut json_out = false;
     let mut path: Option<String> = None;
     for arg in args {
-        if !arg.starts_with('-') {
-            path = Some(arg.to_string());
+        match arg.as_str() {
+            "--json" => json_out = true,
+            p if !p.starts_with('-') => path = Some(p.to_string()),
+            _ => {}
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: matchlab optimize <optimize.yaml>");
+        eprintln!("usage: matchlab optimize <optimize.yaml> [--json]");
         return ExitCode::from(2);
     };
     let _span = tracing::info_span!("optimize_run", path = %path).entered();
@@ -596,17 +599,22 @@ fn optimize_cmd(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    if let Err(e) = fs::write(&json_path, json) {
+    if let Err(e) = fs::write(&json_path, &json) {
         eprintln!("write result failed: {} — {e}", json_path.display());
         return ExitCode::from(1);
     }
-    let best = &result.trials[result.best_index];
-    println!("optimization complete: {} trials", result.trials.len());
-    println!(
-        "best trial #{}: objectives = {:?}",
-        result.best_index, best.objectives
-    );
-    println!("pareto front: {} points", result.pareto_indices.len());
-    println!("results → {}", json_path.display());
+    if json_out {
+        println!("{json}");
+        eprintln!("results → {}", json_path.display());
+    } else {
+        let best = &result.trials[result.best_index];
+        println!("optimization complete: {} trials", result.trials.len());
+        println!(
+            "best trial #{}: objectives = {:?}",
+            result.best_index, best.objectives
+        );
+        println!("pareto front: {} points", result.pareto_indices.len());
+        println!("results → {}", json_path.display());
+    }
     ExitCode::SUCCESS
 }

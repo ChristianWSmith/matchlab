@@ -1,5 +1,25 @@
 use ndarray::{Array1, Array2};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KernelKind {
+    Matern52,
+    Matern32,
+    RBF,
+    RationalQuadratic,
+}
+
+impl KernelKind {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "matern52" | "matern_52" => Ok(Self::Matern52),
+            "matern32" | "matern_32" => Ok(Self::Matern32),
+            "rbf" | "squared_exponential" | "se" => Ok(Self::RBF),
+            "rq" | "rational_quadratic" => Ok(Self::RationalQuadratic),
+            _ => Err(format!("unknown kernel: {s}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct KernelParams {
     pub length_scales: Array1<f64>,
@@ -7,6 +27,8 @@ pub struct KernelParams {
     pub noise_variance: f64,
     pub categorical_indices: Vec<usize>,
     pub categorical_n_levels: Vec<usize>,
+    pub kernel_kind: KernelKind,
+    pub rq_alpha: f64,
 }
 
 impl KernelParams {
@@ -21,6 +43,8 @@ impl KernelParams {
             noise_variance: 0.1,
             categorical_indices,
             categorical_n_levels,
+            kernel_kind: KernelKind::Matern52,
+            rq_alpha: 1.0,
         }
     }
 }
@@ -33,15 +57,29 @@ pub fn matern52(r: f64) -> f64 {
     (1.0 + sqrt5_r + sqrt5_r * sqrt5_r / 3.0) * (-sqrt5_r).exp()
 }
 
-pub fn matern52_derivative(r: f64) -> f64 {
+pub fn matern32(r: f64) -> f64 {
     if r < 1e-10 {
-        return 0.0;
+        return 1.0;
     }
-    let sqrt5 = 5.0_f64.sqrt();
-    let exp_term = (-sqrt5 * r).exp();
-    let _poly = sqrt5 * r + 5.0 * r * r / 3.0;
-    -sqrt5 * exp_term * (1.0 + sqrt5 * r + 5.0 * r * r / 3.0) / r
-        + exp_term * (sqrt5 + 10.0 * r / 3.0)
+    let sqrt3_r = 3.0_f64.sqrt() * r;
+    (1.0 + sqrt3_r) * (-sqrt3_r).exp()
+}
+
+pub fn rbf(r: f64) -> f64 {
+    (-0.5 * r * r).exp()
+}
+
+pub fn rational_quadratic(r: f64, alpha: f64) -> f64 {
+    (1.0 + r * r / (2.0 * alpha)).powf(-alpha)
+}
+
+fn apply_continuous_kernel(kind: KernelKind, r: f64, alpha: f64) -> f64 {
+    match kind {
+        KernelKind::Matern52 => matern52(r),
+        KernelKind::Matern32 => matern32(r),
+        KernelKind::RBF => rbf(r),
+        KernelKind::RationalQuadratic => rational_quadratic(r, alpha),
+    }
 }
 
 pub fn hamming_match(a: f64, b: f64) -> f64 {
@@ -78,7 +116,8 @@ pub fn kernel_pair(
         r2_cont += diff * diff;
     }
     let r_cont = r2_cont.sqrt();
-    let k_cont = params.signal_variance * matern52(r_cont);
+    let k_cont = params.signal_variance
+        * apply_continuous_kernel(params.kernel_kind, r_cont, params.rq_alpha);
 
     let mut k_cat = 1.0;
     for (&cat_idx, &n_levels) in params
@@ -111,35 +150,6 @@ pub fn kernel_matrix_with_noise(k: &Array2<f64>, noise: f64) -> Array2<f64> {
     kn
 }
 
-pub fn kernel_cross(
-    x_new: &Array2<f64>,
-    x_train: &Array2<f64>,
-    params: &KernelParams,
-    cont_indices: &[usize],
-) -> Array1<f64> {
-    let n_new = x_new.nrows();
-    let n_train = x_train.nrows();
-    let mut k = Array1::<f64>::zeros(n_new);
-
-    for i in 0..n_new {
-        let mut sum = 0.0;
-        for j in 0..n_train {
-            sum += kernel_pair(x_new.row(i), x_train.row(j), params, cont_indices);
-        }
-        k[i] = sum;
-    }
-    k
-}
-
-pub fn kernel_self(x: &Array2<f64>, params: &KernelParams, cont_indices: &[usize]) -> Array1<f64> {
-    let n = x.nrows();
-    let mut k = Array1::<f64>::zeros(n);
-    for i in 0..n {
-        k[i] = kernel_pair(x.row(i), x.row(i), params, cont_indices);
-    }
-    k
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,6 +167,83 @@ mod tests {
         assert!(k1 > k2);
         assert!(k2 > k3);
         assert!(k3 > 0.0);
+    }
+
+    #[test]
+    fn matern32_at_zero() {
+        assert!((matern32(0.0) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn matern32_decay() {
+        let k1 = matern32(0.1);
+        let k2 = matern32(1.0);
+        let k3 = matern32(10.0);
+        assert!(k1 > k2);
+        assert!(k2 > k3);
+        assert!(k3 > 0.0);
+    }
+
+    #[test]
+    fn rbf_at_zero() {
+        assert!((rbf(0.0) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rbf_decay() {
+        let k1 = rbf(0.1);
+        let k2 = rbf(1.0);
+        let k3 = rbf(10.0);
+        assert!(k1 > k2);
+        assert!(k2 > k3);
+        assert!(k3 > 0.0);
+    }
+
+    #[test]
+    fn rq_at_zero() {
+        assert!((rational_quadratic(0.0, 1.0) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rq_decay() {
+        let k1 = rational_quadratic(0.1, 1.0);
+        let k2 = rational_quadratic(1.0, 1.0);
+        let k3 = rational_quadratic(10.0, 1.0);
+        assert!(k1 > k2);
+        assert!(k2 > k3);
+        assert!(k3 > 0.0);
+    }
+
+    #[test]
+    fn rq_alpha_large_approaches_rbf() {
+        let alpha = 1000.0;
+        let rq_val = rational_quadratic(1.0, alpha);
+        let rbf_val = rbf(1.0);
+        assert!((rq_val - rbf_val).abs() < 0.01);
+    }
+
+    #[test]
+    fn kernel_kind_parse() {
+        assert_eq!(KernelKind::parse("matern52").unwrap(), KernelKind::Matern52);
+        assert_eq!(
+            KernelKind::parse("MATERN_52").unwrap(),
+            KernelKind::Matern52
+        );
+        assert_eq!(KernelKind::parse("matern32").unwrap(), KernelKind::Matern32);
+        assert_eq!(KernelKind::parse("rbf").unwrap(), KernelKind::RBF);
+        assert_eq!(
+            KernelKind::parse("squared_exponential").unwrap(),
+            KernelKind::RBF
+        );
+        assert_eq!(
+            KernelKind::parse("rq").unwrap(),
+            KernelKind::RationalQuadratic
+        );
+        assert_eq!(
+            KernelKind::parse("rational_quadratic").unwrap(),
+            KernelKind::RationalQuadratic
+        );
+        assert!(KernelKind::parse("unknown").is_err());
     }
 
     #[test]

@@ -14,5 +14,6 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 rand.workspace = true
 rayon.workspace = true
+chrono.workspace = true
 ndarray = "0.17"
 tracing.workspace = true

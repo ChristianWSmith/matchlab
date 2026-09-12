@@ -37,6 +37,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 rayon = "1.10"
+chrono = "0.4"
 smallvec = "1"
 
 [package]
