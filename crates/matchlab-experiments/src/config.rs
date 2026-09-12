@@ -279,6 +279,19 @@ impl MetricEntry {
             MetricEntry::Script { script, .. } => script,
         }
     }
+
+    pub fn metric_key(&self) -> String {
+        match self {
+            MetricEntry::Name(name) => name.clone(),
+            MetricEntry::Script { script, .. } => {
+                let stem = std::path::Path::new(script)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(script);
+                stem.to_string()
+            }
+        }
+    }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OutputSpec {

@@ -77,7 +77,7 @@ impl GaussianProcess {
         cat_n_levels: &[usize],
         kernel_kind: KernelKind,
         seed: u64,
-    ) -> KernelParams {
+    ) -> Result<KernelParams, String> {
         let n_cont = cont_indices.len();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
         let mut params = KernelParams::new(n_cont, cat_indices.to_vec(), cat_n_levels.to_vec());
@@ -155,7 +155,13 @@ impl GaussianProcess {
             }
         }
 
-        best_params
+        if best_mll == f64::NEG_INFINITY {
+            return Err(
+                "GP hyperparameter optimization failed: all Cholesky decompositions failed".into(),
+            );
+        }
+
+        Ok(best_params)
     }
 
     fn marginal_log_likelihood(&self) -> f64 {
@@ -220,24 +226,22 @@ fn kernel_matrix_fast(
                     params.rq_alpha,
                 );
 
-            let mut k_cat = 1.0;
-            for (&cat_idx, &n_levels) in params
+            let cat_vals_a: Vec<f64> = params
                 .categorical_indices
                 .iter()
-                .zip(params.categorical_n_levels.iter())
-            {
-                if n_levels > 1 {
-                    let match_val = crate::kernel::hamming_match(x[[i, cat_idx]], x[[j, cat_idx]]);
-                    let cat_var = 1.0 / n_levels as f64;
-                    let cat_weight = 2.0 * cat_var * (1.0 - cat_var);
-                    let k_cat_val = if cat_weight > 1e-10 {
-                        (match_val - cat_var) / cat_var
-                    } else {
-                        match_val
-                    };
-                    k_cat *= 1.0 + cat_weight * (k_cat_val - 1.0);
-                }
-            }
+                .map(|&ci| x[[i, ci]])
+                .collect();
+            let cat_vals_b: Vec<f64> = params
+                .categorical_indices
+                .iter()
+                .map(|&ci| x[[j, ci]])
+                .collect();
+            let k_cat = crate::kernel::categorical_factor(
+                &cat_vals_a,
+                &cat_vals_b,
+                &params.categorical_indices,
+                &params.categorical_n_levels,
+            );
 
             let val = k_cont * k_cat;
             k[[i, j]] = val;
@@ -348,5 +352,61 @@ mod tests {
         let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
         assert!(mean[0].abs() < 2.0);
         assert!(std[0] > 0.0);
+    }
+
+    #[test]
+    fn gp_fit_single_point() {
+        let x = Array2::from_shape_vec((1, 1), vec![0.5]).unwrap();
+        let y = Array1::from_vec(vec![1.0]);
+        let params = KernelParams::new(1, vec![], vec![]);
+        let gp = GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let (mean, std) = gp.predict(&Array2::from_shape_vec((1, 1), vec![0.5]).unwrap());
+        assert!(mean[0].is_finite());
+        assert!(std[0] >= 0.0);
+    }
+
+    #[test]
+    fn cholesky_known_matrix() {
+        let a = Array2::from_shape_vec((2, 2), vec![4.0, 2.0, 2.0, 3.0]).unwrap();
+        let l = super::cholesky_lower(&a).unwrap();
+        let reconstructed = l.dot(&l.t());
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!(
+                    (reconstructed[[i, j]] - a[[i, j]]).abs() < 1e-10,
+                    "Cholesky mismatch at [{i},{j}]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn optimize_hyperparameters_returns_ok() {
+        let x = Array2::from_shape_vec((5, 1), vec![0.0, 0.25, 0.5, 0.75, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 0.5, 1.0, 0.5, 0.0]);
+        let result = GaussianProcess::optimize_hyperparameters(
+            &x,
+            &y,
+            &[0],
+            &[],
+            &[],
+            KernelKind::Matern52,
+            42,
+        );
+        assert!(result.is_ok(), "optimize_hyperparameters should succeed");
+        let params = result.unwrap();
+        assert!(params.signal_variance > 0.0);
+        assert!(params.noise_variance > 0.0);
+    }
+
+    #[test]
+    fn optimize_hyperparameters_identical_points() {
+        let x = Array2::from_shape_vec((2, 1), vec![1.0, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![1.0, 1.0]);
+        let result =
+            GaussianProcess::optimize_hyperparameters(&x, &y, &[0], &[], &[], KernelKind::RBF, 42);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(params.noise_variance > 0.0);
     }
 }

@@ -86,6 +86,34 @@ pub fn hamming_match(a: f64, b: f64) -> f64 {
     if (a - b).abs() < 1e-10 { 1.0 } else { 0.0 }
 }
 
+pub fn categorical_factor(
+    vals_a: &[f64],
+    vals_b: &[f64],
+    categorical_indices: &[usize],
+    categorical_n_levels: &[usize],
+) -> f64 {
+    let mut k_cat = 1.0;
+    for ((&cat_idx, &n_levels), (&va, &vb)) in categorical_indices
+        .iter()
+        .zip(categorical_n_levels.iter())
+        .zip(vals_a.iter().zip(vals_b.iter()))
+    {
+        let _ = cat_idx;
+        if n_levels > 1 {
+            let match_val = hamming_match(va, vb);
+            let cat_var = 1.0 / n_levels as f64;
+            let cat_weight = 2.0 * cat_var * (1.0 - cat_var);
+            let k_cat_val = if cat_weight > 1e-10 {
+                (match_val - cat_var) / cat_var
+            } else {
+                match_val
+            };
+            k_cat *= 1.0 + cat_weight * (k_cat_val - 1.0);
+        }
+    }
+    k_cat
+}
+
 pub fn kernel_matrix(
     x1: &Array2<f64>,
     x2: &Array2<f64>,
@@ -119,24 +147,14 @@ pub fn kernel_pair(
     let k_cont = params.signal_variance
         * apply_continuous_kernel(params.kernel_kind, r_cont, params.rq_alpha);
 
-    let mut k_cat = 1.0;
-    for (&cat_idx, &n_levels) in params
-        .categorical_indices
-        .iter()
-        .zip(params.categorical_n_levels.iter())
-    {
-        if n_levels > 1 {
-            let match_val = hamming_match(a[cat_idx], b[cat_idx]);
-            let cat_var = 1.0 / n_levels as f64;
-            let cat_weight = 2.0 * cat_var * (1.0 - cat_var);
-            let k_cat_val = if cat_weight > 1e-10 {
-                (match_val - cat_var) / cat_var
-            } else {
-                match_val
-            };
-            k_cat *= 1.0 + cat_weight * (k_cat_val - 1.0);
-        }
-    }
+    let cat_vals_a: Vec<f64> = params.categorical_indices.iter().map(|&ci| a[ci]).collect();
+    let cat_vals_b: Vec<f64> = params.categorical_indices.iter().map(|&ci| b[ci]).collect();
+    let k_cat = categorical_factor(
+        &cat_vals_a,
+        &cat_vals_b,
+        &params.categorical_indices,
+        &params.categorical_n_levels,
+    );
 
     k_cont * k_cat
 }

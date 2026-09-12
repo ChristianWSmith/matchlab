@@ -557,10 +557,7 @@ experiment:
         ];
         let result = ExperimentRunner::run(&config).unwrap();
         for entry in &config.experiment.metrics {
-            let key = match entry {
-                crate::config::MetricEntry::Name(name) => name.clone(),
-                crate::config::MetricEntry::Script { script, .. } => script.clone(),
-            };
+            let key = entry.metric_key();
             assert!(result.metrics.contains_key(&key), "missing metric: {key}");
         }
     }

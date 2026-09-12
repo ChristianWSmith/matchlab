@@ -70,7 +70,7 @@ pub fn probability_of_improvement(
             continue;
         }
         let z = (mean[i] - best_y - xi) / s;
-        pi[i] = erf(z / std::f64::consts::SQRT_2);
+        pi[i] = 0.5 * (1.0 + erf(z / std::f64::consts::SQRT_2));
     }
     pi
 }
@@ -90,8 +90,6 @@ pub fn evaluate_acquisition(
     }
 }
 
-// erfc handles the negative case via 2.0 - val, so 1.0 - erfc(x) is correct
-// for all x: erf(-x) = -erf(x) by the odd-function property.
 pub fn erf(x: f64) -> f64 {
     1.0 - erfc(x)
 }
@@ -115,6 +113,9 @@ pub fn parego_scalarize(objectives: &[f64], weights: &[f64], directions: &[bool]
 }
 
 pub fn parego_weights(n_objectives: usize, seed: u64) -> Vec<f64> {
+    if n_objectives == 0 {
+        return vec![];
+    }
     let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
     let mut weights = Vec::with_capacity(n_objectives);
     for _ in 0..n_objectives {
@@ -226,5 +227,56 @@ mod tests {
     fn erf_one() {
         let val = erf(1.0);
         assert!(val > 0.84 && val < 0.85, "erf(1.0) = {val}");
+    }
+
+    #[test]
+    fn parego_weights_zero_objectives() {
+        let w = parego_weights(0, 42);
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn ei_non_negative() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let params = crate::kernel::KernelParams::new(1, vec![], vec![]);
+        let gp = crate::gp::GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let x_cand = Array2::from_shape_vec((5, 1), vec![-0.5, 0.25, 0.5, 0.75, 1.5]).unwrap();
+        let ei = expected_improvement(&gp, &x_cand, 1.0, 0.01);
+        for v in ei.iter() {
+            assert!(*v >= 0.0, "EI should be non-negative, got {v}");
+        }
+    }
+
+    #[test]
+    fn ucb_greater_than_mean() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let params = crate::kernel::KernelParams::new(1, vec![], vec![]);
+        let gp = crate::gp::GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let x_cand = Array2::from_shape_vec((3, 1), vec![0.25, 0.5, 0.75]).unwrap();
+        let ucb = upper_confidence_bound(&gp, &x_cand, 2.0);
+        let (mean, _std) = gp.predict(&x_cand);
+        for i in 0..3 {
+            assert!(
+                ucb[i] >= mean[i],
+                "UCB[{i}]={} should be >= mean[{i}]={}",
+                ucb[i],
+                mean[i]
+            );
+        }
+    }
+
+    #[test]
+    fn pi_in_unit_interval() {
+        let x = Array2::from_shape_vec((3, 1), vec![0.0, 0.5, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 1.0, 0.0]);
+        let params = crate::kernel::KernelParams::new(1, vec![], vec![]);
+        let gp = crate::gp::GaussianProcess::fit(&x, &y, &params, &[0]).unwrap();
+        let x_cand = Array2::from_shape_vec((5, 1), vec![-0.5, 0.25, 0.5, 0.75, 1.5]).unwrap();
+        let pi = probability_of_improvement(&gp, &x_cand, 0.5, 0.01);
+        for v in pi.iter() {
+            assert!(*v >= 0.0 && *v <= 1.0, "PI should be in [0,1], got {v}");
+        }
     }
 }

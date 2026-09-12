@@ -57,6 +57,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                 &base_config,
                 point,
                 &config.objectives,
+                trial_idx,
                 config.seed + trial_idx,
             );
             (i, point, result)
@@ -119,6 +120,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
             &base_config,
             &next_point,
             &config.objectives,
+            trial_idx,
             config.seed + trial_idx,
         ) {
             Ok((obj_vals, trial_result)) => {
@@ -138,6 +140,15 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
             }
             Err(e) => {
                 consecutive_failures += 1;
+                let max_failures = config.bo.max_consecutive_failures.unwrap_or(10);
+                if consecutive_failures >= max_failures {
+                    tracing::error!(
+                        consecutive_failures,
+                        max_failures,
+                        "stopping optimization: too many consecutive failures"
+                    );
+                    break;
+                }
                 if consecutive_failures >= 5 {
                     tracing::warn!(
                         consecutive_failures,
@@ -152,6 +163,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                         &base_config,
                         &rand_point,
                         &config.objectives,
+                        trial_idx,
                         config.seed + trial_idx + 50000,
                     ) {
                         consecutive_failures = 0;
@@ -256,7 +268,7 @@ fn suggest_next_point(
             &indices.cat_n_levels,
             kernel_kind,
             seed,
-        );
+        )?;
         let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
         let best_y = y_train.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let xi = bo.xi.unwrap_or(0.01);
@@ -295,7 +307,7 @@ fn suggest_next_point(
             &indices.cat_n_levels,
             kernel_kind,
             seed,
-        );
+        )?;
         let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
         let xi = bo.xi.unwrap_or(0.01);
         let beta = bo.ucb_beta.unwrap_or(2.0);
@@ -380,6 +392,7 @@ fn evaluate_point(
     base_config: &ExperimentConfig,
     point: &BTreeMap<String, f64>,
     objectives: &[ObjectiveSpec],
+    trial_index: u64,
     seed: u64,
 ) -> Result<(Vec<f64>, TrialResult), String> {
     let mut config = base_config.clone();
@@ -394,7 +407,7 @@ fn evaluate_point(
     let obj_vals: Vec<f64> = objectives
         .iter()
         .map(|obj| extract_metric_value(&result.metrics, &obj.metric))
-        .collect();
+        .collect::<Result<Vec<f64>, String>>()?;
 
     let params_yaml: BTreeMap<String, serde_yaml::Value> = point
         .iter()
@@ -405,7 +418,7 @@ fn evaluate_point(
         .collect();
 
     let trial = TrialResult {
-        trial_index: 0,
+        trial_index,
         parameters: params_yaml,
         objectives: obj_vals.clone(),
         utility_score: result.utility_score,
@@ -424,21 +437,23 @@ fn apply_parameter(config: &mut ExperimentConfig, path: &str, val: f64) {
 fn extract_metric_value(
     metrics: &BTreeMap<String, matchlab_metrics::MetricResult>,
     metric_name: &str,
-) -> f64 {
+) -> Result<f64, String> {
     if let Some(result) = metrics.get(metric_name) {
         match result {
-            matchlab_metrics::MetricResult::Scalar(v) => *v,
-            matchlab_metrics::MetricResult::Summary { mean, .. } => *mean,
+            matchlab_metrics::MetricResult::Scalar(v) => Ok(*v),
+            matchlab_metrics::MetricResult::Summary { mean, .. } => Ok(*mean),
             matchlab_metrics::MetricResult::TimeSeries { bucket_means } => {
-                bucket_means.iter().sum::<f64>() / bucket_means.len() as f64
+                Ok(bucket_means.iter().sum::<f64>() / bucket_means.len() as f64)
             }
             matchlab_metrics::MetricResult::Distribution(v) => {
-                v.iter().sum::<f64>() / v.len() as f64
+                Ok(v.iter().sum::<f64>() / v.len() as f64)
             }
-            _ => 0.0,
+            _ => Err(format!(
+                "unsupported metric result variant for: {metric_name}"
+            )),
         }
     } else {
-        0.0
+        Err(format!("unknown metric in objectives: {metric_name}"))
     }
 }
 
@@ -450,7 +465,16 @@ fn best_objective_value(
 ) -> f64 {
     let best_idx = find_best_trial_index(all_objectives, objectives, eta, seed);
     if let Some(obj) = all_objectives.get(best_idx) {
-        obj.first().copied().unwrap_or(0.0)
+        if objectives.len() == 1 {
+            obj.first().copied().unwrap_or(0.0)
+        } else {
+            let directions: Vec<bool> = objectives
+                .iter()
+                .map(|o| o.direction == Direction::Maximize)
+                .collect();
+            let weights = parego_weights(objectives.len(), seed);
+            parego_scalarize(obj, &weights, &directions, eta)
+        }
     } else {
         0.0
     }
@@ -473,6 +497,7 @@ fn find_best_trial_index(
         all_objectives
             .iter()
             .enumerate()
+            .filter(|(_, v)| v[idx].is_finite())
             .max_by(|a, b| {
                 let va = if maximize { a.1[idx] } else { -a.1[idx] };
                 let vb = if maximize { b.1[idx] } else { -b.1[idx] };
@@ -530,7 +555,10 @@ fn write_checkpoint_ndjson(
         writeln!(file, "{line}").map_err(|e| format!("write checkpoint: {e}"))?;
     }
     file.flush().map_err(|e| format!("flush checkpoint: {e}"))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("rename checkpoint: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename checkpoint: {e}")
+    })?;
     Ok(())
 }
 
@@ -553,7 +581,7 @@ mod tests {
                 stddev: 0.02,
             },
         );
-        let val = extract_metric_value(&metrics, "match_quality");
+        let val = extract_metric_value(&metrics, "match_quality").unwrap();
         assert!((val - 0.95).abs() < 1e-10);
     }
 
@@ -564,7 +592,47 @@ mod tests {
             "stability".to_string(),
             matchlab_metrics::MetricResult::Scalar(42.0),
         );
-        let val = extract_metric_value(&metrics, "stability");
+        let val = extract_metric_value(&metrics, "stability").unwrap();
         assert!((val - 42.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn extract_metric_value_unknown_returns_error() {
+        let metrics = BTreeMap::new();
+        assert!(extract_metric_value(&metrics, "nonexistent").is_err());
+    }
+
+    #[test]
+    fn optimize_minimal_run() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../experiments/base/standard.yaml");
+        let yaml = format!(
+            r#"
+name: test_opt
+base: {}
+seed: 42
+budget: 3
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 50.0]
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  initial_points: 2
+"#,
+            base.display()
+        );
+        let config: OptConfig = serde_yaml::from_str(&yaml).unwrap();
+        let result = optimize(&config).unwrap();
+        assert!(result.trials.len() <= 3);
+        assert!(result.best_index < result.trials.len());
+        assert!(!result.pareto_indices.is_empty());
+        assert!(result.timestamp.contains("T"));
+        for trial in &result.trials {
+            assert!(trial.trial_index < 3);
+        }
     }
 }

@@ -406,6 +406,7 @@ optimize:
     xi: <f64>                   #   optional, EI/PI exploration parameter (default: 0.01)
     eta: <f64>                  #   optional, ParEGO scalarization (default: 0.05)
     ucb_beta: <f64>             #   optional, UCB exploration parameter (default: 2.0)
+    max_consecutive_failures: <u64>  # optional, stop after N failed evaluations (default: 10)
 
   output:                       # optional
     directory: <string>         #   default "results/optimization/"

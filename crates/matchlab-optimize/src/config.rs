@@ -31,6 +31,8 @@ pub struct BoConfig {
     pub eta: Option<f64>,
     #[serde(default)]
     pub ucb_beta: Option<f64>,
+    #[serde(default = "default_max_consecutive_failures")]
+    pub max_consecutive_failures: Option<u64>,
 }
 
 impl Default for BoConfig {
@@ -43,6 +45,7 @@ impl Default for BoConfig {
             xi: None,
             eta: None,
             ucb_beta: None,
+            max_consecutive_failures: default_max_consecutive_failures(),
         }
     }
 }
@@ -58,6 +61,9 @@ fn default_kernel() -> String {
 }
 fn default_acquisition() -> String {
     "ei".to_string()
+}
+fn default_max_consecutive_failures() -> Option<u64> {
+    Some(10)
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -241,6 +247,7 @@ objectives:
         assert!(config.bo.xi.is_none());
         assert!(config.bo.eta.is_none());
         assert!(config.bo.ucb_beta.is_none());
+        assert_eq!(config.bo.max_consecutive_failures, Some(10));
     }
 
     #[test]
@@ -261,6 +268,7 @@ bo:
   xi: 0.05
   eta: 0.1
   ucb_beta: 4.0
+  max_consecutive_failures: 5
 "#;
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.bo.kernel, "rbf");
@@ -268,6 +276,7 @@ bo:
         assert_eq!(config.bo.xi, Some(0.05));
         assert_eq!(config.bo.eta, Some(0.1));
         assert_eq!(config.bo.ucb_beta, Some(4.0));
+        assert_eq!(config.bo.max_consecutive_failures, Some(5));
     }
 
     #[test]
