@@ -4,6 +4,31 @@ use rand::Rng;
 use rand::SeedableRng;
 
 #[derive(Debug, Clone)]
+pub struct GpConfig {
+    pub phase1_restarts: u64,
+    pub phase1_inner_iters: u64,
+    pub phase1_perturbation: f64,
+    pub phase2_restarts: u64,
+    pub phase2_inner_iters: u64,
+    pub phase2_perturbation: f64,
+    pub threads: Option<usize>,
+}
+
+impl Default for GpConfig {
+    fn default() -> Self {
+        Self {
+            phase1_restarts: 50,
+            phase1_inner_iters: 10,
+            phase1_perturbation: 0.5,
+            phase2_restarts: 200,
+            phase2_inner_iters: 40,
+            phase2_perturbation: 0.3,
+            threads: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct GaussianProcess {
     pub params: KernelParams,
     pub x_train: Array2<f64>,
@@ -78,80 +103,169 @@ impl GaussianProcess {
         kernel_kind: KernelKind,
         seed: u64,
     ) -> Result<KernelParams, String> {
+        Self::optimize_hyperparameters_with_config(
+            x,
+            y,
+            cont_indices,
+            cat_indices,
+            cat_n_levels,
+            kernel_kind,
+            seed,
+            &GpConfig::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn optimize_hyperparameters_with_config(
+        x: &Array2<f64>,
+        y: &Array1<f64>,
+        cont_indices: &[usize],
+        cat_indices: &[usize],
+        cat_n_levels: &[usize],
+        kernel_kind: KernelKind,
+        seed: u64,
+        gp_config: &GpConfig,
+    ) -> Result<KernelParams, String> {
+        use rayon::prelude::*;
+
         let n_cont = cont_indices.len();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-        let mut params = KernelParams::new(n_cont, cat_indices.to_vec(), cat_n_levels.to_vec());
-        params.kernel_kind = kernel_kind;
+        let base_params = KernelParams::new(n_cont, cat_indices.to_vec(), cat_n_levels.to_vec());
 
         let diffs = pairwise_raw_diffs(x, cont_indices);
 
-        let mut best_params = params.clone();
-        let mut best_mll = f64::NEG_INFINITY;
+        let phase1_pert = gp_config.phase1_perturbation;
+        let phase1_inner = gp_config.phase1_inner_iters;
 
-        for _ in 0..50 {
-            let log_ls: Vec<f64> = params
-                .length_scales
-                .iter()
-                .map(|&v| v.ln() + rng.gen_range(-0.5..0.5))
-                .collect();
-            for (i, &ls) in log_ls.iter().enumerate() {
-                params.length_scales[i] = ls.exp().max(0.01);
-            }
+        let run_phase1 = |thread_seed: u64| -> (KernelParams, f64) {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(thread_seed);
+            let mut params = base_params.clone();
+            params.kernel_kind = kernel_kind;
 
-            let log_sv = params.signal_variance.ln() + rng.gen_range(-0.5..0.5);
-            params.signal_variance = log_sv.exp().max(0.01);
+            let mut best_local_params = params.clone();
+            let mut best_local_mll = f64::NEG_INFINITY;
 
-            let log_nv = params.noise_variance.ln() + rng.gen_range(-0.5..0.5);
-            params.noise_variance = log_nv.exp().max(1e-6);
-
-            if let Ok(gp) = GaussianProcess::fit(x, y, &params, cont_indices) {
-                let mll = gp.marginal_log_likelihood();
-                if mll.is_finite() && mll > best_mll {
-                    best_mll = mll;
-                    best_params = params.clone();
-                } else if !mll.is_finite() {
-                    params.length_scales = Array1::ones(n_cont);
-                    params.signal_variance = 1.0;
-                    params.noise_variance = 0.1;
+            for _ in 0..phase1_inner {
+                let mut p = params.clone();
+                let log_ls: Vec<f64> = p
+                    .length_scales
+                    .iter()
+                    .map(|&v| v.ln() + rng.gen_range(-phase1_pert..phase1_pert))
+                    .collect();
+                for (i, &ls) in log_ls.iter().enumerate() {
+                    p.length_scales[i] = ls.exp().max(0.01);
                 }
-            } else {
-                params.length_scales = Array1::ones(n_cont);
-                params.signal_variance = 1.0;
-                params.noise_variance = 0.1;
+                let log_sv = p.signal_variance.ln() + rng.gen_range(-phase1_pert..phase1_pert);
+                p.signal_variance = log_sv.exp().max(0.01);
+                let log_nv = p.noise_variance.ln() + rng.gen_range(-phase1_pert..phase1_pert);
+                p.noise_variance = log_nv.exp().max(1e-6);
+
+                if let Ok(gp) = GaussianProcess::fit(x, y, &p, cont_indices) {
+                    let mll = gp.marginal_log_likelihood();
+                    if mll.is_finite() && mll > best_local_mll {
+                        best_local_mll = mll;
+                        best_local_params = p;
+                    }
+                }
+            }
+            (best_local_params, best_local_mll)
+        };
+
+        let phase1_n = gp_config.phase1_restarts;
+        let phase1_results: Vec<(KernelParams, f64)> = if let Some(n_threads) = gp_config.threads {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(n_threads)
+                .build()
+                .map_err(|e| format!("build thread pool: {e}"))?;
+            pool.install(|| {
+                (0..phase1_n)
+                    .into_par_iter()
+                    .map(|i| run_phase1(seed.wrapping_add(i * 1000)))
+                    .collect()
+            })
+        } else {
+            (0..phase1_n)
+                .into_par_iter()
+                .map(|i| run_phase1(seed.wrapping_add(i * 1000)))
+                .collect()
+        };
+
+        let mut best_params = base_params.clone();
+        best_params.kernel_kind = kernel_kind;
+        let mut best_mll = f64::NEG_INFINITY;
+        for (params, mll) in &phase1_results {
+            if *mll > best_mll {
+                best_mll = *mll;
+                best_params = params.clone();
             }
         }
 
-        params = best_params.clone();
+        let phase2_pert = gp_config.phase2_perturbation;
+        let phase2_inner = gp_config.phase2_inner_iters;
 
-        for _ in 0..200 {
-            let log_ls: Vec<f64> = params
-                .length_scales
-                .iter()
-                .map(|&v| v.ln() + rng.gen_range(-0.3..0.3))
-                .collect();
-            for (i, &ls) in log_ls.iter().enumerate() {
-                params.length_scales[i] = ls.exp().max(0.01);
-            }
-            let log_sv = params.signal_variance.ln() + rng.gen_range(-0.3..0.3);
-            params.signal_variance = log_sv.exp().max(0.01);
-            let log_nv = params.noise_variance.ln() + rng.gen_range(-0.3..0.3);
-            params.noise_variance = log_nv.exp().max(1e-6);
+        let run_phase2 = |thread_seed: u64, start_params: &KernelParams| -> (KernelParams, f64) {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(thread_seed);
+            let params = start_params.clone();
+            let mut best_local_params = params.clone();
+            let mut best_local_mll = f64::NEG_INFINITY;
 
-            let k = kernel_matrix_fast(&diffs, x, &params, cont_indices);
-            let k_noisy = kernel_matrix_with_noise(&k, params.noise_variance);
-            if let Ok(l) = cholesky_lower(&k_noisy) {
-                let alpha = solve_cholesky(&l, y);
-                let log_det = 2.0
-                    * l.diag()
-                        .mapv(|v| v.max(1e-10))
-                        .fold(0.0, |acc, v| acc + v.ln());
-                let quad = y.dot(&alpha);
-                let mll =
-                    -0.5 * (quad + log_det + y.len() as f64 * (2.0 * std::f64::consts::PI).ln());
-                if mll > best_mll {
-                    best_mll = mll;
-                    best_params = params.clone();
+            for _ in 0..phase2_inner {
+                let mut p = params.clone();
+                let log_ls: Vec<f64> = p
+                    .length_scales
+                    .iter()
+                    .map(|&v| v.ln() + rng.gen_range(-phase2_pert..phase2_pert))
+                    .collect();
+                for (i, &ls) in log_ls.iter().enumerate() {
+                    p.length_scales[i] = ls.exp().max(0.01);
                 }
+                let log_sv = p.signal_variance.ln() + rng.gen_range(-phase2_pert..phase2_pert);
+                p.signal_variance = log_sv.exp().max(0.01);
+                let log_nv = p.noise_variance.ln() + rng.gen_range(-phase2_pert..phase2_pert);
+                p.noise_variance = log_nv.exp().max(1e-6);
+
+                let k = kernel_matrix_fast(&diffs, x, &p, cont_indices);
+                let k_noisy = kernel_matrix_with_noise(&k, p.noise_variance);
+                if let Ok(l) = cholesky_lower(&k_noisy) {
+                    let alpha = solve_cholesky(&l, y);
+                    let log_det = 2.0
+                        * l.diag()
+                            .mapv(|v| v.max(1e-10))
+                            .fold(0.0, |acc, v| acc + v.ln());
+                    let quad = y.dot(&alpha);
+                    let mll = -0.5
+                        * (quad + log_det + y.len() as f64 * (2.0 * std::f64::consts::PI).ln());
+                    if mll > best_local_mll {
+                        best_local_mll = mll;
+                        best_local_params = p;
+                    }
+                }
+            }
+            (best_local_params, best_local_mll)
+        };
+
+        let phase2_n = gp_config.phase2_restarts;
+        let phase2_results: Vec<(KernelParams, f64)> = if let Some(n_threads) = gp_config.threads {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(n_threads)
+                .build()
+                .map_err(|e| format!("build thread pool: {e}"))?;
+            pool.install(|| {
+                (0..phase2_n)
+                    .into_par_iter()
+                    .map(|i| run_phase2(seed.wrapping_add(i * 2000 + 50_000), &best_params))
+                    .collect()
+            })
+        } else {
+            (0..phase2_n)
+                .into_par_iter()
+                .map(|i| run_phase2(seed.wrapping_add(i * 2000 + 50_000), &best_params))
+                .collect()
+        };
+
+        for (params, mll) in &phase2_results {
+            if *mll > best_mll {
+                best_mll = *mll;
+                best_params = params.clone();
             }
         }
 
@@ -419,5 +533,49 @@ mod tests {
         assert!(result.is_ok());
         let params = result.unwrap();
         assert!(params.noise_variance > 0.0);
+    }
+
+    #[test]
+    fn optimize_hyperparameters_with_custom_config() {
+        let x = Array2::from_shape_vec((5, 1), vec![0.0, 0.25, 0.5, 0.75, 1.0]).unwrap();
+        let y = Array1::from_vec(vec![0.0, 0.5, 1.0, 0.5, 0.0]);
+        let gp_cfg = GpConfig {
+            phase1_restarts: 5,
+            phase1_inner_iters: 3,
+            phase1_perturbation: 0.3,
+            phase2_restarts: 10,
+            phase2_inner_iters: 5,
+            phase2_perturbation: 0.2,
+            threads: Some(2),
+        };
+        let result = GaussianProcess::optimize_hyperparameters_with_config(
+            &x,
+            &y,
+            &[0],
+            &[],
+            &[],
+            KernelKind::Matern52,
+            42,
+            &gp_cfg,
+        );
+        assert!(
+            result.is_ok(),
+            "optimize_hyperparameters_with_config should succeed"
+        );
+        let params = result.unwrap();
+        assert!(params.signal_variance > 0.0);
+        assert!(params.noise_variance > 0.0);
+    }
+
+    #[test]
+    fn gp_config_default_values() {
+        let cfg = GpConfig::default();
+        assert_eq!(cfg.phase1_restarts, 50);
+        assert_eq!(cfg.phase1_inner_iters, 10);
+        assert_eq!(cfg.phase1_perturbation, 0.5);
+        assert_eq!(cfg.phase2_restarts, 200);
+        assert_eq!(cfg.phase2_inner_iters, 40);
+        assert_eq!(cfg.phase2_perturbation, 0.3);
+        assert!(cfg.threads.is_none());
     }
 }

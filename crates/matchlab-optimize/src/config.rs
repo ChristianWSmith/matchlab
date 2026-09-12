@@ -33,6 +33,26 @@ pub struct BoConfig {
     pub ucb_beta: Option<f64>,
     #[serde(default = "default_max_consecutive_failures")]
     pub max_consecutive_failures: Option<u64>,
+    #[serde(default)]
+    pub batch_size: Option<usize>,
+    #[serde(default)]
+    pub k_dpp_candidates: Option<usize>,
+    #[serde(default)]
+    pub gp_phase1_restarts: Option<u64>,
+    #[serde(default)]
+    pub gp_phase1_inner_iters: Option<u64>,
+    #[serde(default)]
+    pub gp_phase1_perturbation: Option<f64>,
+    #[serde(default)]
+    pub gp_phase2_restarts: Option<u64>,
+    #[serde(default)]
+    pub gp_phase2_inner_iters: Option<u64>,
+    #[serde(default)]
+    pub gp_phase2_perturbation: Option<f64>,
+    #[serde(default)]
+    pub min_gp_training_points: Option<usize>,
+    #[serde(default)]
+    pub early_warning_failures: Option<u64>,
 }
 
 impl Default for BoConfig {
@@ -46,7 +66,59 @@ impl Default for BoConfig {
             eta: None,
             ucb_beta: None,
             max_consecutive_failures: default_max_consecutive_failures(),
+            batch_size: None,
+            k_dpp_candidates: None,
+            gp_phase1_restarts: None,
+            gp_phase1_inner_iters: None,
+            gp_phase1_perturbation: None,
+            gp_phase2_restarts: None,
+            gp_phase2_inner_iters: None,
+            gp_phase2_perturbation: None,
+            min_gp_training_points: None,
+            early_warning_failures: None,
         }
+    }
+}
+
+impl BoConfig {
+    pub fn xi(&self) -> f64 {
+        self.xi.unwrap_or(0.01)
+    }
+    pub fn eta(&self) -> f64 {
+        self.eta.unwrap_or(0.05)
+    }
+    pub fn ucb_beta(&self) -> f64 {
+        self.ucb_beta.unwrap_or(2.0)
+    }
+    pub fn max_consecutive_failures(&self) -> u64 {
+        self.max_consecutive_failures.unwrap_or(10)
+    }
+    pub fn k_dpp_candidates(&self) -> usize {
+        self.k_dpp_candidates.unwrap_or(1000)
+    }
+    pub fn gp_phase1_restarts(&self) -> u64 {
+        self.gp_phase1_restarts.unwrap_or(50)
+    }
+    pub fn gp_phase1_inner_iters(&self) -> u64 {
+        self.gp_phase1_inner_iters.unwrap_or(10)
+    }
+    pub fn gp_phase1_perturbation(&self) -> f64 {
+        self.gp_phase1_perturbation.unwrap_or(0.5)
+    }
+    pub fn gp_phase2_restarts(&self) -> u64 {
+        self.gp_phase2_restarts.unwrap_or(200)
+    }
+    pub fn gp_phase2_inner_iters(&self) -> u64 {
+        self.gp_phase2_inner_iters.unwrap_or(40)
+    }
+    pub fn gp_phase2_perturbation(&self) -> f64 {
+        self.gp_phase2_perturbation.unwrap_or(0.3)
+    }
+    pub fn min_gp_training_points(&self) -> usize {
+        self.min_gp_training_points.unwrap_or(2)
+    }
+    pub fn early_warning_failures(&self) -> u64 {
+        self.early_warning_failures.unwrap_or(5)
     }
 }
 
@@ -381,5 +453,42 @@ objectives:
 "#;
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(config.search_space.validate().is_ok());
+    }
+
+    #[test]
+    fn bo_config_parses_new_fields() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters: {}
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  batch_size: 8
+  k_dpp_candidates: 500
+  gp_phase1_restarts: 20
+  gp_phase1_inner_iters: 5
+  gp_phase1_perturbation: 0.3
+  gp_phase2_restarts: 100
+  gp_phase2_inner_iters: 20
+  gp_phase2_perturbation: 0.2
+  min_gp_training_points: 3
+  early_warning_failures: 3
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.bo.batch_size, Some(8));
+        assert_eq!(config.bo.k_dpp_candidates, Some(500));
+        assert_eq!(config.bo.gp_phase1_restarts, Some(20));
+        assert_eq!(config.bo.gp_phase1_inner_iters, Some(5));
+        assert_eq!(config.bo.gp_phase1_perturbation, Some(0.3));
+        assert_eq!(config.bo.gp_phase2_restarts, Some(100));
+        assert_eq!(config.bo.gp_phase2_inner_iters, Some(20));
+        assert_eq!(config.bo.gp_phase2_perturbation, Some(0.2));
+        assert_eq!(config.bo.min_gp_training_points, Some(3));
+        assert_eq!(config.bo.early_warning_failures, Some(3));
     }
 }

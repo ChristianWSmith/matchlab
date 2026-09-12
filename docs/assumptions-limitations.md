@@ -264,6 +264,20 @@ Some metrics converge slowly or are sensitive to outliers.
 - `queue_time` may be skewed by a small number of players who wait much longer than average.
 - `rating_accuracy` depends on the rating system's convergence rate, which varies by population and configuration.
 
+### Optimization Trajectory Determinism
+
+Bayesian optimization with `batch_size > 1` evaluates multiple experiments concurrently via rayon. This means the order in which trial results are added to the GP model is non-deterministic, which can affect the optimization trajectory.
+
+**Assumption:** The optimization trajectory is reproducible given the same seed and config.
+
+**Limitation:**
+- When `batch_size > 1`, concurrent evaluation order varies across runs, producing different optimization trajectories even with the same seed.
+- Each individual experiment within the trajectory remains fully deterministic.
+- The final Pareto set may differ across runs due to trajectory divergence.
+- `batch_size = 1` (the default) preserves full trajectory determinism.
+
+**Threat:** If optimal hyperparameters depend on a specific optimization trajectory, researchers should run multiple optimization replicates and report the distribution of solutions rather than a single run.
+
 ---
 
 ## Simulation-to-Reality Gap

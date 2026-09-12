@@ -560,19 +560,39 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
 fn optimize_cmd(args: &[String]) -> ExitCode {
     let mut json_out = false;
     let mut path: Option<String> = None;
-    for arg in args {
-        match arg.as_str() {
+    let mut threads: Option<usize> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
             "--json" => json_out = true,
+            "--threads" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("--threads requires a numeric argument");
+                    return ExitCode::from(2);
+                }
+                match args[i].parse::<usize>() {
+                    Ok(n) if n > 0 => threads = Some(n),
+                    _ => {
+                        eprintln!(
+                            "--threads: invalid value '{}', must be a positive integer",
+                            args[i]
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
+            }
             p if !p.starts_with('-') => path = Some(p.to_string()),
             _ => {}
         }
+        i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: matchlab optimize <optimize.yaml> [--json]");
+        eprintln!("usage: matchlab optimize <optimize.yaml> [--json] [--threads N]");
         return ExitCode::from(2);
     };
     let _span = tracing::info_span!("optimize_run", path = %path).entered();
-    let config = match matchlab_optimize::OptConfig::load(Path::new(&path)) {
+    let mut config = match matchlab_optimize::OptConfig::load(Path::new(&path)) {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(path, error = %e, "failed to load optimization config");
@@ -580,6 +600,9 @@ fn optimize_cmd(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    if let Some(n) = threads {
+        config.bo.batch_size = Some(n);
+    }
     let result = match matchlab_optimize::optimize(&config) {
         Ok(r) => r,
         Err(e) => {
