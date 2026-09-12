@@ -19,13 +19,13 @@ pub fn latin_hypercube_sample(
     let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
     let mut samples = vec![vec![0.0f64; d]; n];
 
-    for col in samples.iter_mut().take(d) {
+    for (j, _) in params.iter().enumerate() {
         let mut perm: Vec<usize> = (0..n).collect();
         fisher_yates(&mut perm, &mut rng);
 
         for (i_idx, &i) in perm.iter().enumerate() {
             let u: f64 = rng.gen_range(0.0..1.0);
-            col[i] = (i_idx as f64 + u) / n as f64;
+            samples[i][j] = (i_idx as f64 + u) / n as f64;
         }
     }
 
