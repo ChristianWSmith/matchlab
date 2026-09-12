@@ -73,7 +73,7 @@ pub fn rational_quadratic(r: f64, alpha: f64) -> f64 {
     (1.0 + r * r / (2.0 * alpha)).powf(-alpha)
 }
 
-fn apply_continuous_kernel(kind: KernelKind, r: f64, alpha: f64) -> f64 {
+pub fn apply_continuous_kernel(kind: KernelKind, r: f64, alpha: f64) -> f64 {
     match kind {
         KernelKind::Matern52 => matern52(r),
         KernelKind::Matern32 => matern32(r),

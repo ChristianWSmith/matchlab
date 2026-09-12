@@ -416,7 +416,9 @@ optimize:
 
 ### Search Space Parameters
 
-Search space parameters use dotted paths into the experiment config tree. Common paths:
+Search space parameters use dotted paths into the experiment config tree. Float bounds must satisfy `min < max`. Categorical parameters must have at least one value. These constraints are validated at load time.
+
+Common paths:
 
 | Path | What it controls |
 |------|-----------------|

@@ -1,5 +1,5 @@
 use crate::kernel::{KernelKind, KernelParams, kernel_matrix, kernel_matrix_with_noise};
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, Array3};
 use rand::Rng;
 use rand::SeedableRng;
 
@@ -83,6 +83,11 @@ impl GaussianProcess {
         let mut params = KernelParams::new(n_cont, cat_indices.to_vec(), cat_n_levels.to_vec());
         params.kernel_kind = kernel_kind;
 
+        let diffs = pairwise_raw_diffs(x, cont_indices);
+
+        let mut best_params = params.clone();
+        let mut best_mll = f64::NEG_INFINITY;
+
         for _ in 0..50 {
             let log_ls: Vec<f64> = params
                 .length_scales
@@ -101,7 +106,10 @@ impl GaussianProcess {
 
             if let Ok(gp) = GaussianProcess::fit(x, y, &params, cont_indices) {
                 let mll = gp.marginal_log_likelihood();
-                if !mll.is_finite() {
+                if mll.is_finite() && mll > best_mll {
+                    best_mll = mll;
+                    best_params = params.clone();
+                } else if !mll.is_finite() {
                     params.length_scales = Array1::ones(n_cont);
                     params.signal_variance = 1.0;
                     params.noise_variance = 0.1;
@@ -113,8 +121,7 @@ impl GaussianProcess {
             }
         }
 
-        let mut best_params = params.clone();
-        let mut best_mll = f64::NEG_INFINITY;
+        params = best_params.clone();
 
         for _ in 0..200 {
             let log_ls: Vec<f64> = params
@@ -130,8 +137,17 @@ impl GaussianProcess {
             let log_nv = params.noise_variance.ln() + rng.gen_range(-0.3..0.3);
             params.noise_variance = log_nv.exp().max(1e-6);
 
-            if let Ok(gp) = GaussianProcess::fit(x, y, &params, cont_indices) {
-                let mll = gp.marginal_log_likelihood();
+            let k = kernel_matrix_fast(&diffs, x, &params, cont_indices);
+            let k_noisy = kernel_matrix_with_noise(&k, params.noise_variance);
+            if let Ok(l) = cholesky_lower(&k_noisy) {
+                let alpha = solve_cholesky(&l, y);
+                let log_det = 2.0
+                    * l.diag()
+                        .mapv(|v| v.max(1e-10))
+                        .fold(0.0, |acc, v| acc + v.ln());
+                let quad = y.dot(&alpha);
+                let mll =
+                    -0.5 * (quad + log_det + y.len() as f64 * (2.0 * std::f64::consts::PI).ln());
                 if mll > best_mll {
                     best_mll = mll;
                     best_params = params.clone();
@@ -164,6 +180,73 @@ impl GaussianProcess {
             f64::NEG_INFINITY
         }
     }
+}
+
+fn pairwise_raw_diffs(x: &Array2<f64>, cont_indices: &[usize]) -> Array3<f64> {
+    let n = x.nrows();
+    let d = cont_indices.len();
+    let mut diffs = Array3::<f64>::zeros((n, n, d));
+    for i in 0..n {
+        for j in 0..n {
+            for (dim, &ci) in cont_indices.iter().enumerate() {
+                diffs[[i, j, dim]] = x[[i, ci]] - x[[j, ci]];
+            }
+        }
+    }
+    diffs
+}
+
+fn kernel_matrix_fast(
+    diffs: &Array3<f64>,
+    x: &Array2<f64>,
+    params: &KernelParams,
+    cont_indices: &[usize],
+) -> Array2<f64> {
+    let n = x.nrows();
+    let mut k = Array2::<f64>::zeros((n, n));
+
+    for i in 0..n {
+        for j in 0..=i {
+            let mut r2_cont = 0.0;
+            for dim in 0..cont_indices.len() {
+                let diff = diffs[[i, j, dim]] / params.length_scales[dim];
+                r2_cont += diff * diff;
+            }
+            let r_cont = r2_cont.sqrt();
+            let k_cont = params.signal_variance
+                * crate::kernel::apply_continuous_kernel(
+                    params.kernel_kind,
+                    r_cont,
+                    params.rq_alpha,
+                );
+
+            let mut k_cat = 1.0;
+            for (&cat_idx, &n_levels) in params
+                .categorical_indices
+                .iter()
+                .zip(params.categorical_n_levels.iter())
+            {
+                if n_levels > 1 {
+                    let match_val = crate::kernel::hamming_match(x[[i, cat_idx]], x[[j, cat_idx]]);
+                    let cat_var = 1.0 / n_levels as f64;
+                    let cat_weight = 2.0 * cat_var * (1.0 - cat_var);
+                    let k_cat_val = if cat_weight > 1e-10 {
+                        (match_val - cat_var) / cat_var
+                    } else {
+                        match_val
+                    };
+                    k_cat *= 1.0 + cat_weight * (k_cat_val - 1.0);
+                }
+            }
+
+            let val = k_cont * k_cat;
+            k[[i, j]] = val;
+            if i != j {
+                k[[j, i]] = val;
+            }
+        }
+    }
+    k
 }
 
 fn invert_matrix(a: &Array2<f64>) -> Result<Array2<f64>, String> {

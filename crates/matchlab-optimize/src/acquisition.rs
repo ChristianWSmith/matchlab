@@ -205,4 +205,26 @@ mod tests {
         let val_high = parego_scalarize(&obj, &weights, &dirs, 0.5);
         assert!(val_low != val_high);
     }
+
+    #[test]
+    fn erf_erfc_roundtrip() {
+        for x in [-3.0, -1.0, -0.5, 0.0, 0.5, 1.0, 3.0] {
+            let sum = erf(x) + erfc(x);
+            assert!(
+                (sum - 1.0).abs() < 1e-6,
+                "erf({x}) + erfc({x}) = {sum}, expected 1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn erfc_zero() {
+        assert!((erfc(0.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn erf_one() {
+        let val = erf(1.0);
+        assert!(val > 0.84 && val < 0.85, "erf(1.0) = {val}");
+    }
 }

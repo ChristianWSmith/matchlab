@@ -12,9 +12,18 @@ impl ParetoFront {
         let n = objectives.len();
         let mut dominated = vec![false; n];
 
+        for (i, obj) in objectives.iter().enumerate() {
+            if obj.iter().any(|v| !v.is_finite()) {
+                dominated[i] = true;
+            }
+        }
+
         for i in 0..n {
+            if dominated[i] {
+                continue;
+            }
             for j in 0..n {
-                if i == j || dominated[i] {
+                if i == j || dominated[j] {
                     continue;
                 }
                 if dominates(&objectives[j], &objectives[i], directions) {
@@ -33,6 +42,9 @@ impl ParetoFront {
 }
 
 pub fn dominates(a: &[f64], b: &[f64], directions: &[bool]) -> bool {
+    if a.iter().any(|v| !v.is_finite()) || b.iter().any(|v| !v.is_finite()) {
+        return false;
+    }
     let mut at_least_one_better = false;
     for (i, (&ai, &bi)) in a.iter().zip(b.iter()).enumerate() {
         let (ai_adj, bi_adj) = if directions[i] { (ai, bi) } else { (-ai, -bi) };
@@ -139,5 +151,40 @@ mod tests {
         let dirs = vec![true, true];
         pf.update(&objectives, &dirs);
         assert_eq!(pf.indices.len(), 4);
+    }
+
+    #[test]
+    fn dominates_nan_in_a() {
+        let a = vec![f64::NAN, 1.0];
+        let b = vec![0.5, 0.5];
+        let dirs = vec![true, true];
+        assert!(!dominates(&a, &b, &dirs));
+    }
+
+    #[test]
+    fn dominates_nan_in_b() {
+        let a = vec![1.0, 1.0];
+        let b = vec![f64::NAN, 0.5];
+        let dirs = vec![true, true];
+        assert!(!dominates(&a, &b, &dirs));
+    }
+
+    #[test]
+    fn dominates_inf_in_a() {
+        let a = vec![f64::INFINITY, 1.0];
+        let b = vec![0.5, 0.5];
+        let dirs = vec![true, true];
+        assert!(!dominates(&a, &b, &dirs));
+    }
+
+    #[test]
+    fn pareto_front_with_nan_objective() {
+        let mut pf = ParetoFront::new();
+        let objectives = vec![vec![1.0, 3.0], vec![f64::NAN, 2.0], vec![3.0, 1.0]];
+        let dirs = vec![true, true];
+        pf.update(&objectives, &dirs);
+        assert!(pf.indices.contains(&0));
+        assert!(!pf.indices.contains(&1));
+        assert!(pf.indices.contains(&2));
     }
 }

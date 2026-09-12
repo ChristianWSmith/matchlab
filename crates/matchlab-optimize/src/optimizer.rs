@@ -35,6 +35,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
     let mut all_params: Vec<BTreeMap<String, f64>> = Vec::new();
     let mut all_trial_results: Vec<TrialResult> = Vec::new();
     let mut pareto = ParetoFront::new();
+    let mut consecutive_failures = 0u64;
     let directions: Vec<bool> = config
         .objectives
         .iter()
@@ -70,18 +71,16 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                 all_params.push(point.clone());
                 all_trial_results.push(trial_result);
                 pareto.update(&all_objectives, &directions);
-                tracing::info!(
-                    trial = trial_idx + 1,
-                    best = best_objective_value(
-                        &all_objectives,
-                        &config.objectives,
-                        config.bo.eta.unwrap_or(0.05),
-                        config.seed
-                    ),
-                    "initial point evaluated"
+                let best = best_objective_value(
+                    &all_objectives,
+                    &config.objectives,
+                    config.bo.eta.unwrap_or(0.05),
+                    config.seed,
                 );
+                tracing::info!(trial = trial_idx + 1, best, "initial point evaluated");
             }
             Err(e) => {
+                consecutive_failures += 1;
                 tracing::warn!(trial = trial_idx + 1, error = %e, "initial point evaluation failed, skipping");
             }
         }
@@ -90,7 +89,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
         &config.output,
         &config.name,
         &all_trial_results,
-        initial_n - 1,
+        initial_n.saturating_sub(1),
     );
 
     for t in initial_n..config.budget {
@@ -123,23 +122,28 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
             config.seed + trial_idx,
         ) {
             Ok((obj_vals, trial_result)) => {
+                consecutive_failures = 0;
                 all_objectives.push(obj_vals);
                 all_params.push(next_point);
                 all_trial_results.push(trial_result);
                 pareto.update(&all_objectives, &directions);
                 maybe_write_checkpoint(&config.output, &config.name, &all_trial_results, trial_idx);
-                tracing::info!(
-                    trial = trial_idx + 1,
-                    best = best_objective_value(
-                        &all_objectives,
-                        &config.objectives,
-                        config.bo.eta.unwrap_or(0.05),
-                        config.seed
-                    ),
-                    "trial completed"
+                let best = best_objective_value(
+                    &all_objectives,
+                    &config.objectives,
+                    config.bo.eta.unwrap_or(0.05),
+                    config.seed,
                 );
+                tracing::info!(trial = trial_idx + 1, best, "trial completed");
             }
             Err(e) => {
+                consecutive_failures += 1;
+                if consecutive_failures >= 5 {
+                    tracing::warn!(
+                        consecutive_failures,
+                        "multiple consecutive evaluation failures"
+                    );
+                }
                 tracing::warn!(trial = trial_idx + 1, error = %e, "evaluation failed, retrying with random point");
                 let mut points =
                     random_sample(&config.search_space, 1, config.seed + trial_idx * 777);
@@ -150,6 +154,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                         &config.objectives,
                         config.seed + trial_idx + 50000,
                     ) {
+                        consecutive_failures = 0;
                         all_objectives.push(obj_vals);
                         all_params.push(rand_point);
                         all_trial_results.push(trial_result);
@@ -160,6 +165,8 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                             &all_trial_results,
                             trial_idx,
                         );
+                    } else {
+                        consecutive_failures += 1;
                     }
                 }
             }
@@ -261,6 +268,7 @@ fn suggest_next_point(
         let best_cand = scores
             .iter()
             .enumerate()
+            .filter(|(_, s)| s.is_finite())
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(i, _)| i)
             .unwrap_or(0);
@@ -434,6 +442,20 @@ fn extract_metric_value(
     }
 }
 
+fn best_objective_value(
+    all_objectives: &[Vec<f64>],
+    objectives: &[ObjectiveSpec],
+    eta: f64,
+    seed: u64,
+) -> f64 {
+    let best_idx = find_best_trial_index(all_objectives, objectives, eta, seed);
+    if let Some(obj) = all_objectives.get(best_idx) {
+        obj.first().copied().unwrap_or(0.0)
+    } else {
+        0.0
+    }
+}
+
 fn find_best_trial_index(
     all_objectives: &[Vec<f64>],
     objectives: &[ObjectiveSpec],
@@ -470,20 +492,6 @@ fn find_best_trial_index(
             }
         }
         best_idx
-    }
-}
-
-fn best_objective_value(
-    all_objectives: &[Vec<f64>],
-    objectives: &[ObjectiveSpec],
-    eta: f64,
-    seed: u64,
-) -> f64 {
-    let best_idx = find_best_trial_index(all_objectives, objectives, eta, seed);
-    if let Some(obj) = all_objectives.get(best_idx) {
-        obj.first().copied().unwrap_or(0.0)
-    } else {
-        0.0
     }
 }
 

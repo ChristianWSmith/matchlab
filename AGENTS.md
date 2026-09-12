@@ -72,7 +72,7 @@ matchlab-loop          (depends on core + players + game + rating + matchmaking 
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
 matchlab-validation    (depends on core + players + game + rating + matchmaking + loop + metrics + experiments; test-side references only)
-matchlab-optimize      (depends on core + experiments + metrics + ndarray)
+matchlab-optimize      (depends on experiments + metrics + ndarray)
 matchlab (binary)      (depends on experiments + analysis + optimize)
 ```
 

@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-matchlab-core = { path = "../matchlab-core" }
 matchlab-experiments = { path = "../matchlab-experiments" }
 matchlab-metrics = { path = "../matchlab-metrics" }
 serde.workspace = true

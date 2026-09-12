@@ -80,6 +80,27 @@ pub struct SearchSpace {
     pub parameters: BTreeMap<String, ParameterSpec>,
 }
 
+impl SearchSpace {
+    pub fn validate(&self) -> Result<(), String> {
+        for (name, spec) in &self.parameters {
+            if let ParameterSpec::Float { bounds, .. } = spec {
+                if bounds[0] >= bounds[1] {
+                    return Err(format!(
+                        "{name}: bounds [{}, {}] must satisfy min < max",
+                        bounds[0], bounds[1]
+                    ));
+                }
+            }
+            if let ParameterSpec::Categorical { values } = spec {
+                if values.is_empty() {
+                    return Err(format!("{name}: categorical must have at least one value"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum ParameterSpec {
@@ -138,6 +159,7 @@ impl OptConfig {
             serde_yaml::from_slice(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
         let config: OptConfig =
             serde_yaml::from_value(raw).map_err(|e| format!("validate {}: {e}", path.display()))?;
+        config.search_space.validate()?;
         Ok(config)
     }
 }
@@ -267,5 +289,88 @@ output:
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(config.output.checkpoint);
         assert_eq!(config.output.checkpoint_interval, Some(5));
+    }
+
+    #[test]
+    fn search_space_validate_rejects_inverted_bounds() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [100.0, 1.0]
+objectives:
+  - metric: match_quality
+    direction: maximize
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.search_space.validate().is_err());
+    }
+
+    #[test]
+    fn search_space_validate_rejects_equal_bounds() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [5.0, 5.0]
+objectives:
+  - metric: match_quality
+    direction: maximize
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.search_space.validate().is_err());
+    }
+
+    #[test]
+    fn search_space_validate_rejects_empty_categorical() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters:
+    experiment.rating.systems.0.name:
+      type: categorical
+      values: []
+objectives:
+  - metric: match_quality
+    direction: maximize
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.search_space.validate().is_err());
+    }
+
+    #[test]
+    fn search_space_validate_accepts_valid_config() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 100.0]
+    experiment.rating.systems.0.name:
+      type: categorical
+      values: [elo, glicko2]
+objectives:
+  - metric: match_quality
+    direction: maximize
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.search_space.validate().is_ok());
     }
 }

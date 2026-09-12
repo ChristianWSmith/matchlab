@@ -93,6 +93,7 @@ fn print_help() {
     eprintln!("    --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)");
     eprintln!("    --log-file <PATH>  Write logs to a file in addition to stdout");
     eprintln!("    --json-logs   Output logs as JSON Lines (for tooling)");
+    eprintln!("    --json        Print command output as structured JSON");
     eprintln!(
         "    --threads <N> Number of threads for parallel study execution (default: num_cpus)"
     );
@@ -103,6 +104,7 @@ fn print_help() {
     eprintln!("    matchlab study experiments/studies/elo_vs_glicko.yaml --replicates 50");
     eprintln!("    matchlab compare results/elo.json results/glicko.json");
     eprintln!("    matchlab power --effect 10 --sd 15 --alpha 0.05 --power 0.80");
+    eprintln!("    matchlab optimize experiments/optimize/elo_kfactor.yaml --json");
 }
 fn compare(args: &[String]) -> ExitCode {
     let mut json_out = false;
