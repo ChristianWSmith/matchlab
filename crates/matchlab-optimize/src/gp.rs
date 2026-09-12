@@ -239,7 +239,6 @@ fn kernel_matrix_fast(
             let k_cat = crate::kernel::categorical_factor(
                 &cat_vals_a,
                 &cat_vals_b,
-                &params.categorical_indices,
                 &params.categorical_n_levels,
             );
 

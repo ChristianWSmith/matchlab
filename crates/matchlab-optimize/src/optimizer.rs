@@ -18,6 +18,10 @@ use std::io::Write;
 use std::path::Path;
 use tracing;
 
+const SUGGEST_SEED_MULT: u64 = 1000;
+const FALLBACK_SEED_MULT: u64 = 777;
+const FALLBACK_SEED_OFFSET: u64 = 50_000;
+
 pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
     let base_path = Path::new(&config.base);
     let base_config =
@@ -102,7 +106,11 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
         );
 
         let next_point = if all_params.len() < 2 {
-            let mut points = random_sample(&config.search_space, 1, config.seed + trial_idx * 1000);
+            let mut points = random_sample(
+                &config.search_space,
+                1,
+                config.seed + trial_idx * SUGGEST_SEED_MULT,
+            );
             points.pop().unwrap()
         } else {
             suggest_next_point(
@@ -112,7 +120,7 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                 &param_indices,
                 &config.objectives,
                 &config.bo,
-                config.seed + trial_idx * 1000,
+                config.seed + trial_idx * SUGGEST_SEED_MULT,
             )?
         };
 
@@ -156,15 +164,18 @@ pub fn optimize(config: &OptConfig) -> Result<OptimizationResult, String> {
                     );
                 }
                 tracing::warn!(trial = trial_idx + 1, error = %e, "evaluation failed, retrying with random point");
-                let mut points =
-                    random_sample(&config.search_space, 1, config.seed + trial_idx * 777);
+                let mut points = random_sample(
+                    &config.search_space,
+                    1,
+                    config.seed + trial_idx * FALLBACK_SEED_MULT,
+                );
                 if let Some(rand_point) = points.pop() {
                     if let Ok((obj_vals, trial_result)) = evaluate_point(
                         &base_config,
                         &rand_point,
                         &config.objectives,
                         trial_idx,
-                        config.seed + trial_idx + 50000,
+                        config.seed + trial_idx + FALLBACK_SEED_OFFSET,
                     ) {
                         consecutive_failures = 0;
                         all_objectives.push(obj_vals);

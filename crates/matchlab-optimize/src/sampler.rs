@@ -86,18 +86,6 @@ fn fisher_yates(arr: &mut [usize], rng: &mut rand::rngs::SmallRng) {
     }
 }
 
-pub fn point_to_vector(point: &BTreeMap<String, f64>, param_order: &[String]) -> Vec<f64> {
-    param_order.iter().map(|p| point[p]).collect()
-}
-
-pub fn vector_to_point(vec: &[f64], param_order: &[String]) -> BTreeMap<String, f64> {
-    param_order
-        .iter()
-        .zip(vec.iter())
-        .map(|(k, &v)| (k.clone(), v))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

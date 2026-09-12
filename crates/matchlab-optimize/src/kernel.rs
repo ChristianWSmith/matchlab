@@ -86,19 +86,13 @@ pub fn hamming_match(a: f64, b: f64) -> f64 {
     if (a - b).abs() < 1e-10 { 1.0 } else { 0.0 }
 }
 
-pub fn categorical_factor(
-    vals_a: &[f64],
-    vals_b: &[f64],
-    categorical_indices: &[usize],
-    categorical_n_levels: &[usize],
-) -> f64 {
+pub fn categorical_factor(vals_a: &[f64], vals_b: &[f64], categorical_n_levels: &[usize]) -> f64 {
     let mut k_cat = 1.0;
-    for ((&cat_idx, &n_levels), (&va, &vb)) in categorical_indices
+    for ((&n_levels, &va), &vb) in categorical_n_levels
         .iter()
-        .zip(categorical_n_levels.iter())
-        .zip(vals_a.iter().zip(vals_b.iter()))
+        .zip(vals_a.iter())
+        .zip(vals_b.iter())
     {
-        let _ = cat_idx;
         if n_levels > 1 {
             let match_val = hamming_match(va, vb);
             let cat_var = 1.0 / n_levels as f64;
@@ -149,12 +143,7 @@ pub fn kernel_pair(
 
     let cat_vals_a: Vec<f64> = params.categorical_indices.iter().map(|&ci| a[ci]).collect();
     let cat_vals_b: Vec<f64> = params.categorical_indices.iter().map(|&ci| b[ci]).collect();
-    let k_cat = categorical_factor(
-        &cat_vals_a,
-        &cat_vals_b,
-        &params.categorical_indices,
-        &params.categorical_n_levels,
-    );
+    let k_cat = categorical_factor(&cat_vals_a, &cat_vals_b, &params.categorical_n_levels);
 
     k_cont * k_cat
 }
