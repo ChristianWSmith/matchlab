@@ -298,6 +298,7 @@ fn suggest_next_point(
         let best_cand = scores
             .iter()
             .enumerate()
+            .filter(|(_, s)| s.is_finite())
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(i, _)| i)
             .unwrap_or(0);

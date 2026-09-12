@@ -138,7 +138,7 @@ CLI flags for controlling output:
 | `--log-level <LEVEL>` | Set log level (trace, debug, info, warn, error) |
 | `--log-file <PATH>` | Write logs to a file in addition to stdout |
 | `--json-logs` | Output logs as JSON Lines (for tooling) |
-| `--json` | Print comparison output as structured JSON |
+| `--json` | Print output as structured JSON (tracing remains on stderr) |
 
 ---
 
@@ -173,6 +173,12 @@ The repo ships the following experiment manifests:
 |----------|----------------------|
 | `studies/elo_vs_glicko.yaml` | 2-arm CRN study with 50+ replicates |
 | `studies/elo_vs_glicko_replay.yaml` | Counterfactual replay study |
+
+### Optimization
+
+| Manifest | What it demonstrates |
+|----------|----------------------|
+| `optimize/elo_kfactor.yaml` | Multi-objective optimization of Elo K-factor and beta |
 
 ### Feedback loop grid
 
@@ -647,10 +653,101 @@ matchlab study experiments/studies/elo_vs_glicko.yaml
 
 ---
 
+## Bayesian hyperparameter optimization
+
+`matchlab optimize` finds the best configuration for developer-controlled
+parameters (rating system configs, matchmaker configs, detection configs) using
+Bayesian optimization with a Gaussian Process surrogate model.
+
+```bash
+matchlab optimize experiments/optimize/elo_kfactor.yaml
+matchlab optimize experiments/optimize/elo_kfactor.yaml --json
+```
+
+### How it works
+
+1. **Initial design.** Latin Hypercube Sampling (or random) generates the first
+   batch of parameter combinations.
+2. **Surrogate model.** A Gaussian Process fits the observed objective values.
+3. **Acquisition function.** The next point to evaluate is chosen by maximizing
+   an acquisition function (Expected Improvement, UCB, or PI).
+4. **Evaluation.** Each candidate is evaluated by running a full experiment.
+5. **Repeat** steps 2–4 until the budget is exhausted.
+
+### Kernel options
+
+| Kernel | Config value | Description |
+|--------|-------------|-------------|
+| Matern 5/2 | `matern52` (default) | Smooth, once-differentiable |
+| Matern 3/2 | `matern32` | Less smooth, three-times-differentiable |
+| RBF / SE | `rbf` | Infinitely smooth, Gaussian |
+| Rational Quadratic | `rq` | Heavy-tailed, configurable alpha |
+
+### Acquisition functions
+
+| Function | Config value | Description |
+|----------|-------------|-------------|
+| Expected Improvement | `ei` (default) | Balances exploration/exploitation via `xi` |
+| Upper Confidence Bound | `ucb` | Optimistic bound, tuned via `ucb_beta` |
+| Probability of Improvement | `pi` | Greedy, tuned via `xi` |
+
+### Example manifest
+
+```yaml
+name: elo_kfactor_optimization
+base: experiments/base/standard.yaml
+seed: 42
+budget: 50
+
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 100.0]
+    experiment.rating.systems.0.name:
+      type: categorical
+      values: [elo, glicko2, trueskill]
+
+objectives:
+  - metric: match_quality
+    direction: maximize
+  - metric: rating_accuracy
+    direction: minimize
+
+bo:
+  kernel: matern52
+  acquisition: ei
+  xi: 0.01
+  eta: 0.05
+
+output:
+  directory: results/optimization/
+  checkpoint: true
+```
+
+### Checkpointing
+
+For long optimization runs, enable checkpointing to save intermediate results:
+
+```yaml
+output:
+  checkpoint: true
+  checkpoint_interval: 5   # write every 5 trials (default: every trial)
+```
+
+Checkpoints are written as NDJSON (one JSON object per line) to
+`{directory}/{name}_checkpoint.ndjson`.
+
+See [`docs/manifest-schema.md`](docs/manifest-schema.md) for the full
+optimization manifest schema.
+
+---
+
 ## Observability
 
-matchlab provides structured logging for debugging and monitoring. Control
-verbosity from the command line:
+matchlab provides structured logging for debugging and monitoring. All
+diagnostic output goes to **stderr**, keeping stdout clean for program output
+(reports, JSON, piped results). Control verbosity from the command line:
 
 ```bash
 matchlab run experiment.yaml --verbose              # debug-level output
@@ -699,7 +796,7 @@ crates/                   Rust crate workspace
   matchlab-experiments/   manifest parsing, config inheritance, runner, factorial design, replication
   matchlab-analysis/      statistics, Pareto, cohorts, reports, provenance
   matchlab-validation/    analytical-baseline regression tests (test-side only)
-  matchlab-optimize/      Bayesian hyperparameter optimization (GP, EI, ParEGO)
+  matchlab-optimize/      Bayesian hyperparameter optimization (GP, kernels, EI/UCB/PI, ParEGO)
 docs/                     Documentation
   manifest-schema.md      Complete manifest schema reference
   plugin-api.md           Plugin API contracts for all 7 types

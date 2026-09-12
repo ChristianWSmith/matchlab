@@ -163,7 +163,7 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | `matchlab-experiments` | YAML config, inheritance, factorial design, replication, counterfactual replay, study manifests |
 | `matchlab-analysis` | Statistics (CIs, effect sizes, power), Pareto, cohorts, reporting, provenance |
 | `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget) |
-| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate, Matern 5/2 kernel, EI/EHVI acquisition, ParEGO multi-objective, Latin Hypercube sampling |
+| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate, 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, NDJSON checkpointing |
 
 ### CLI commands
 

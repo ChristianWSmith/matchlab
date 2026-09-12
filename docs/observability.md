@@ -1,6 +1,6 @@
 # Observability
 
-matchlab provides structured logging for debugging, monitoring, and diagnostics during simulation runs.
+matchlab provides structured logging for debugging, monitoring, and diagnostics during simulation runs. All diagnostic output goes to **stderr**, keeping stdout clean for program output (reports, JSON results, piped data).
 
 ## Log Levels
 
@@ -108,6 +108,7 @@ RUST_LOG="mlua=trace,matchlab_loop=debug" \
 | `matchlab-ranking` | `matchlab_ranking` |
 | `matchlab-adversarial` | `matchlab_adversarial` |
 | `matchlab-utility` | `matchlab_utility` |
+| `matchlab-optimize` | `matchlab_optimize` |
 
 ## Debugging Guides
 
@@ -178,7 +179,7 @@ In human-readable format:
 2026-09-08T12:00:00Z  INFO progress{completed=500}: matchlab_loop::machine
 ```
 
-For long-running experiments, combine with `--log-file` to capture progress without cluttering the terminal.
+For long-running experiments, combine with `--log-file` to capture progress without cluttering the terminal. Note that diagnostic logs always go to stderr, so your stdout remains clean for program output.
 
 ## File Logging Setup for Long-Running Studies
 
