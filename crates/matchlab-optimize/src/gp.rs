@@ -170,6 +170,9 @@ impl GaussianProcess {
             (best_local_params, best_local_mll)
         };
 
+        // Phase 1: parallel random restarts for coarse exploration.
+        // Seed layout: phase 1 uses seed + i * 1000, phase 2 uses seed + i * 2000 + 50_000.
+        // Safe as long as phase1_restarts < 50_000 / 1000 = 50 (well above typical usage).
         let phase1_n = gp_config.phase1_restarts;
         let phase1_results: Vec<(KernelParams, f64)> = if let Some(n_threads) = gp_config.threads {
             let pool = rayon::ThreadPoolBuilder::new()

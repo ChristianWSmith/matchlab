@@ -2,6 +2,7 @@ use crate::acquisition::{AcquisitionKind, evaluate_acquisition, parego_scalarize
 use crate::config::{
     BoConfig, Direction, ObjectiveSpec, OptConfig, OptimizationResult, ParameterSpec, TrialResult,
 };
+use crate::dpp;
 use crate::gp::{GaussianProcess, GpConfig};
 use crate::kernel::KernelKind;
 use crate::multiobj::ParetoFront;
@@ -322,43 +323,72 @@ fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationR
 
     let mut next_trial = initial_n;
     let mut pending: Vec<BTreeMap<String, f64>> = Vec::new();
+    let mut pending_count = 0usize;
     let mut consecutive_failures = 0u64;
 
     let (tx, rx) = mpsc::channel::<WorkerMessage>();
 
     let workers_to_dispatch = batch_size.min((config.budget - initial_n) as usize);
-    for _ in 0..workers_to_dispatch {
-        let point = if all_params.len() < 2 {
-            let mut pts = random_sample(
-                &config.search_space,
-                1,
-                config.seed + next_trial * SUGGEST_SEED_MULT,
-            );
-            pts.pop().unwrap()
-        } else {
-            suggest_next_point(
-                &all_params,
-                &all_objectives,
-                &config.search_space,
-                &param_indices,
-                &config.objectives,
-                &config.bo,
-                config.seed + next_trial * SUGGEST_SEED_MULT,
-            )?
-        };
-        pending.push(point.clone());
-        dispatch_worker(
-            &base_config,
-            point,
+    if all_params.len() >= config.bo.min_gp_training_points() && workers_to_dispatch > 1 {
+        let batch_points = suggest_batch(
+            &all_params,
+            &all_objectives,
+            &config.search_space,
+            &param_indices,
             &config.objectives,
-            next_trial,
-            config.seed + next_trial,
-            &tx,
-        );
-        next_trial += 1;
+            &config.bo,
+            workers_to_dispatch,
+            config.seed + next_trial * SUGGEST_SEED_MULT,
+        )?;
+        for point in batch_points {
+            pending.push(point.clone());
+            dispatch_worker(
+                &base_config,
+                point,
+                &config.objectives,
+                next_trial,
+                config.seed + next_trial,
+                &tx,
+            );
+            next_trial += 1;
+            pending_count += 1;
+        }
+    } else {
+        for _ in 0..workers_to_dispatch {
+            let point = if all_params.len() < config.bo.min_gp_training_points() {
+                let mut pts = random_sample(
+                    &config.search_space,
+                    1,
+                    config.seed + next_trial * SUGGEST_SEED_MULT,
+                );
+                pts.pop().unwrap()
+            } else {
+                suggest_next_point(
+                    &all_params,
+                    &all_objectives,
+                    &config.search_space,
+                    &param_indices,
+                    &config.objectives,
+                    &config.bo,
+                    config.seed + next_trial * SUGGEST_SEED_MULT,
+                )?
+            };
+            pending.push(point.clone());
+            dispatch_worker(
+                &base_config,
+                point,
+                &config.objectives,
+                next_trial,
+                config.seed + next_trial,
+                &tx,
+            );
+            next_trial += 1;
+            pending_count += 1;
+        }
     }
 
     while let Ok(msg) = rx.recv() {
+        pending_count -= 1;
         match msg.result {
             Ok((obj_vals, trial_result)) => {
                 consecutive_failures = 0;
@@ -411,6 +441,7 @@ fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationR
                             &tx,
                         );
                         next_trial += 1;
+                        pending_count += 1;
                     }
                 }
             }
@@ -446,6 +477,11 @@ fn optimize_async(config: &OptConfig, batch_size: usize) -> Result<OptimizationR
                 &tx,
             );
             next_trial += 1;
+            pending_count += 1;
+        }
+
+        if pending_count == 0 {
+            break;
         }
     }
 
@@ -485,7 +521,7 @@ fn dispatch_worker(
     let config = base_config.clone();
     let objectives = objectives.to_vec();
     let tx = tx.clone();
-    std::thread::spawn(move || {
+    rayon::spawn(move || {
         let result = evaluate_point(&config, &point, &objectives, trial_index, seed);
         let _ = tx.send(WorkerMessage {
             trial_index,
@@ -716,6 +752,83 @@ fn suggest_next_point(
 
         Ok(candidates[best_cand].clone())
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn suggest_batch(
+    all_params: &[BTreeMap<String, f64>],
+    all_objectives: &[Vec<f64>],
+    space: &crate::config::SearchSpace,
+    indices: &ParamIndices,
+    objectives: &[ObjectiveSpec],
+    bo: &BoConfig,
+    batch_size: usize,
+    seed: u64,
+) -> Result<Vec<BTreeMap<String, f64>>, String> {
+    let param_order: Vec<String> = space.parameters.keys().cloned().collect();
+    let n_obj = objectives.len();
+    let kernel_kind = KernelKind::parse(&bo.kernel).map_err(|e| format!("invalid kernel: {e}"))?;
+    let acq_kind =
+        AcquisitionKind::parse(&bo.acquisition).map_err(|e| format!("invalid acquisition: {e}"))?;
+    let gp_cfg = gp_config_from_bo(bo);
+
+    let x_train = build_training_matrix(all_params, &param_order);
+    let directions: Vec<bool> = objectives
+        .iter()
+        .map(|o| o.direction == Direction::Maximize)
+        .collect();
+
+    let (y_train, best_scalarized) = if n_obj == 1 {
+        let y = build_single_objective(all_objectives, 0, directions[0]);
+        let best = y.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        (y, best)
+    } else {
+        let weights = parego_weights(n_obj, seed);
+        let eta = bo.eta();
+        let mut best = f64::NEG_INFINITY;
+        for obj in all_objectives {
+            let s = parego_scalarize(obj, &weights, &directions, eta);
+            if s > best {
+                best = s;
+            }
+        }
+        (
+            build_scalarized_objective(all_objectives, &weights, &directions, eta),
+            best,
+        )
+    };
+
+    let params_gp = GaussianProcess::optimize_hyperparameters_with_config(
+        &x_train,
+        &y_train,
+        &indices.cont,
+        &indices.cat,
+        &indices.cat_n_levels,
+        kernel_kind,
+        seed,
+        &gp_cfg,
+    )?;
+    let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
+    let xi = bo.xi();
+    let beta = bo.ucb_beta();
+
+    let n_cand = bo.k_dpp_candidates();
+    let candidates = random_candidates(space, n_cand, seed);
+    let x_cand = build_training_matrix(&candidates, &param_order);
+    let scores = evaluate_acquisition(acq_kind, &gp, &x_cand, best_scalarized, xi, beta);
+
+    let selected = dpp::k_dpp_sample(
+        &candidates,
+        scores.as_slice().unwrap(),
+        &param_order,
+        batch_size,
+        seed,
+    );
+
+    Ok(selected
+        .into_iter()
+        .map(|i| candidates[i].clone())
+        .collect())
 }
 
 fn build_training_matrix(points: &[BTreeMap<String, f64>], param_order: &[String]) -> Array2<f64> {

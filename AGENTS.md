@@ -108,7 +108,7 @@ Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
 
-Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction. Note: when using Bayesian optimization with `batch_size > 1`, the optimization loop itself is non-deterministic due to parallel experiment evaluation — each batch is evaluated concurrently via rayon, so evaluation order (and thus GP fitting order) may vary across runs. The underlying individual experiments remain deterministic given the same seed.
+Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction. Note: the CLI `--threads` flag sets both `batch_size` and `gp_threads` to the same value (defaulting to `num_cpus`), so `matchlab optimize` runs in non-deterministic batch mode by default. Pass `--threads 1` or set `batch_size: 1` in the YAML to preserve full trajectory determinism. The underlying individual experiments remain deterministic given the same seed.
 
 ### 4. Multi-Scale Time
 

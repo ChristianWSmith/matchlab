@@ -71,7 +71,9 @@ Every experiment is fully reproducible given its config and seed:
 deterministic — parallel experiment evaluation means the optimization trajectory
 (which experiments are evaluated in which order) may vary across runs, though
 each individual experiment within the trajectory is still deterministic given
-the same seed.
+the same seed. The CLI `--threads` flag sets `batch_size` to `num_cpus` by
+default, so `matchlab optimize` runs in batch mode unless `--threads 1` is
+passed.
 
 ---
 
@@ -145,7 +147,7 @@ CLI flags for controlling output:
 | `--log-file <PATH>` | Write logs to a file in addition to stdout |
 | `--json-logs` | Output logs as JSON Lines (for tooling) |
 | `--json` | Print output as structured JSON (tracing remains on stderr) |
-| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); used by `study` and `optimize` |
+| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); sets both `batch_size` and `gp_threads` for `optimize`, controls batch size for `study` |
 
 ---
 
@@ -682,7 +684,7 @@ matchlab optimize experiments/optimize/elo_kfactor.yaml --json
    a k-DPP sampler selects a diverse batch of candidates from the top acquisition
    scores.
 4. **Evaluation.** Each candidate is evaluated by running a full experiment. When
-   `batch_size > 1`, evaluations run concurrently (async), breaking full trajectory
+   `batch_size > 1`, evaluations run concurrently via rayon, breaking full trajectory
    determinism.
 5. **Repeat** steps 2–4 until the budget is exhausted.
 

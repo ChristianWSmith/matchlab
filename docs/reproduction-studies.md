@@ -200,7 +200,7 @@ Use this checklist for every reproduction study:
 2. **Check the seed** — confirm the seed was passed correctly.
 3. **Compare environments** — OS-level differences (e.g. allocator) can cause
    floating-point divergence on edge cases, but never > 1 ULP for well-conditioned
-   math. For optimization runs with `batch_size > 1`, also check whether the
+   math. For optimization runs with `batch_size > 1` (the CLI default when `--threads` > 1), also check whether the
    trial ordering differs — this is expected non-determinism, not a bug.
 4. **Check for script changes** — the config hash includes Lua script contents;
    if the hash matches, the scripts are identical.
