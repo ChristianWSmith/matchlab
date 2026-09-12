@@ -558,31 +558,41 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     }
     parts.join(", ")
 }
-fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
+
+struct OptimizeArgs {
+    json_out: bool,
+    path: Option<String>,
+    gp_threads: Option<usize>,
+}
+
+fn parse_optimize_args(args: &[String]) -> OptimizeArgs {
     let mut json_out = false;
     let mut path: Option<String> = None;
     let mut gp_threads: Option<usize> = None;
-    for arg in args {
-        match arg.as_str() {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
             "--json" => json_out = true,
             "--gp-threads" => {
-                // Handled via positional scan below
+                i += 1;
+                gp_threads = args.get(i).and_then(|s| s.parse().ok());
             }
             p if !p.starts_with('-') => path = Some(p.to_string()),
             _ => {}
         }
+        i += 1;
     }
-    // Parse --gp-threads from args
-    let mut j = 0;
-    while j < args.len() {
-        if args[j] == "--gp-threads" {
-            if let Some(val) = args.get(j + 1) {
-                gp_threads = val.parse().ok();
-            }
-        }
-        j += 1;
+    OptimizeArgs {
+        json_out,
+        path,
+        gp_threads,
     }
-    let Some(path) = path else {
+}
+
+fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
+    let parsed = parse_optimize_args(args);
+    let json_out = parsed.json_out;
+    let Some(path) = parsed.path else {
         eprintln!("usage: matchlab optimize <optimize.yaml> [--json] [--gp-threads N]");
         return ExitCode::from(2);
     };
@@ -596,7 +606,7 @@ fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
         }
     };
     config.bo.threads = Some(threads);
-    config.bo.gp_threads = gp_threads.or(Some(threads));
+    config.bo.gp.threads = parsed.gp_threads.or(Some(threads));
     let result = match matchlab_optimize::optimize(&config) {
         Ok(r) => r,
         Err(e) => {
@@ -636,4 +646,55 @@ fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
         println!("results → {}", json_path.display());
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &str) -> String {
+        v.to_string()
+    }
+
+    #[test]
+    fn parse_optimize_args_basic() {
+        let args = vec![s("config.yaml")];
+        let parsed = parse_optimize_args(&args);
+        assert!(!parsed.json_out);
+        assert_eq!(parsed.path.as_deref(), Some("config.yaml"));
+        assert!(parsed.gp_threads.is_none());
+    }
+
+    #[test]
+    fn parse_optimize_args_json_and_gp_threads() {
+        let args = vec![s("--json"), s("--gp-threads"), s("4"), s("config.yaml")];
+        let parsed = parse_optimize_args(&args);
+        assert!(parsed.json_out);
+        assert_eq!(parsed.gp_threads, Some(4));
+        assert_eq!(parsed.path.as_deref(), Some("config.yaml"));
+    }
+
+    #[test]
+    fn parse_optimize_args_gp_threads_missing_value() {
+        let args = vec![s("--gp-threads"), s("config.yaml")];
+        let parsed = parse_optimize_args(&args);
+        assert!(parsed.gp_threads.is_none());
+        assert!(parsed.path.is_none(), "non-numeric value consumed as gp-threads value, no path left");
+    }
+
+    #[test]
+    fn parse_optimize_args_gp_threads_non_numeric() {
+        let args = vec![s("--gp-threads"), s("abc"), s("config.yaml")];
+        let parsed = parse_optimize_args(&args);
+        assert!(parsed.gp_threads.is_none());
+        assert_eq!(parsed.path.as_deref(), Some("config.yaml"));
+    }
+
+    #[test]
+    fn parse_optimize_args_no_path() {
+        let args = vec![s("--json")];
+        let parsed = parse_optimize_args(&args);
+        assert!(parsed.json_out);
+        assert!(parsed.path.is_none());
+    }
 }

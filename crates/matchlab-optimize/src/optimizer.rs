@@ -123,7 +123,7 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
             "optimization step"
         );
 
-        let next_point = if all_params.len() < config.bo.min_gp_training_points() {
+        let next_point = if all_params.len() < config.bo.gp.min_gp_training_points() {
             let mut points = random_sample(
                 &config.search_space,
                 1,
@@ -321,7 +321,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
     let (tx, rx) = mpsc::channel::<WorkerMessage>();
 
     let workers_to_dispatch = threads.min((config.budget - initial_n) as usize);
-    if all_params.len() >= config.bo.min_gp_training_points() && workers_to_dispatch > 1 {
+    if all_params.len() >= config.bo.gp.min_gp_training_points() && workers_to_dispatch > 1 {
         let batch_points = suggest_batch(
             &all_params,
             &all_objectives,
@@ -347,7 +347,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
         }
     } else {
         for _ in 0..workers_to_dispatch {
-            let point = if all_params.len() < config.bo.min_gp_training_points() {
+            let point = if all_params.len() < config.bo.gp.min_gp_training_points() {
                 let mut pts = random_sample(
                     &config.search_space,
                     1,
@@ -440,36 +440,22 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
         }
 
         if next_trial < config.budget {
-            let point = if all_params.len() < config.bo.min_gp_training_points() {
-                let mut pts = random_sample(
-                    &config.search_space,
-                    1,
-                    config.seed + next_trial * SUGGEST_SEED_MULT,
-                );
-                pts.pop().unwrap()
-            } else {
-                suggest_next_point_with_pending(
-                    &all_params,
-                    &all_objectives,
-                    &pending,
-                    &config.search_space,
-                    &param_indices,
-                    &config.objectives,
-                    &config.bo,
-                    config.seed + next_trial * SUGGEST_SEED_MULT,
-                )?
-            };
-            pending.push(point.clone());
-            dispatch_worker(
-                &base_config,
-                point,
+            let (point, inc) = suggest_and_dispatch(
+                &all_params,
+                &all_objectives,
+                &pending,
+                &config.search_space,
+                &param_indices,
                 &config.objectives,
+                &config.bo,
+                config.seed,
                 next_trial,
-                config.seed + next_trial,
+                &base_config,
                 &tx,
-            );
-            next_trial += 1;
-            pending_count += 1;
+            )?;
+            pending.push(point);
+            next_trial += inc;
+            pending_count += inc as usize;
         }
 
         if pending_count == 0 {
@@ -612,15 +598,55 @@ fn suggest_next_point_with_pending(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+fn suggest_and_dispatch(
+    all_params: &[BTreeMap<String, f64>],
+    all_objectives: &[Vec<f64>],
+    pending: &[BTreeMap<String, f64>],
+    space: &crate::config::SearchSpace,
+    indices: &ParamIndices,
+    objectives: &[ObjectiveSpec],
+    bo: &BoConfig,
+    seed: u64,
+    next_trial: u64,
+    base_config: &ExperimentConfig,
+    tx: &mpsc::Sender<WorkerMessage>,
+) -> Result<(BTreeMap<String, f64>, u64), String> {
+    let point = if all_params.len() < bo.gp.min_gp_training_points() {
+        let mut pts = random_sample(space, 1, seed + next_trial * SUGGEST_SEED_MULT);
+        pts.pop().unwrap()
+    } else {
+        suggest_next_point_with_pending(
+            all_params,
+            all_objectives,
+            pending,
+            space,
+            indices,
+            objectives,
+            bo,
+            seed + next_trial * SUGGEST_SEED_MULT,
+        )?
+    };
+    dispatch_worker(
+        base_config,
+        point.clone(),
+        objectives,
+        next_trial,
+        seed + next_trial,
+        tx,
+    );
+    Ok((point, 1u64))
+}
+
 fn gp_config_from_bo(bo: &BoConfig) -> GpConfig {
     GpConfig {
-        phase1_restarts: bo.gp_phase1_restarts(),
-        phase1_inner_iters: bo.gp_phase1_inner_iters(),
-        phase1_perturbation: bo.gp_phase1_perturbation(),
-        phase2_restarts: bo.gp_phase2_restarts(),
-        phase2_inner_iters: bo.gp_phase2_inner_iters(),
-        phase2_perturbation: bo.gp_phase2_perturbation(),
-        threads: bo.gp_threads(),
+        phase1_restarts: bo.gp.phase1_restarts(),
+        phase1_inner_iters: bo.gp.phase1_inner_iters(),
+        phase1_perturbation: bo.gp.phase1_perturbation(),
+        phase2_restarts: bo.gp.phase2_restarts(),
+        phase2_inner_iters: bo.gp.phase2_inner_iters(),
+        phase2_perturbation: bo.gp.phase2_perturbation(),
+        threads: bo.gp.threads(),
     }
 }
 
@@ -1238,14 +1264,14 @@ objectives:
         assert_eq!(config.bo.ucb_beta(), 2.0);
         assert_eq!(config.bo.max_consecutive_failures(), 10);
         assert_eq!(config.bo.k_dpp_candidates(), 1000);
-        assert_eq!(config.bo.gp_phase1_restarts(), 50);
-        assert_eq!(config.bo.gp_phase1_inner_iters(), 10);
-        assert_eq!(config.bo.gp_phase1_perturbation(), 0.5);
-        assert_eq!(config.bo.gp_phase2_restarts(), 200);
-        assert_eq!(config.bo.gp_phase2_inner_iters(), 40);
-        assert_eq!(config.bo.gp_phase2_perturbation(), 0.3);
-        assert_eq!(config.bo.min_gp_training_points(), 2);
         assert_eq!(config.bo.early_warning_failures(), 5);
+        assert_eq!(config.bo.gp.phase1_restarts(), 50);
+        assert_eq!(config.bo.gp.phase1_inner_iters(), 10);
+        assert_eq!(config.bo.gp.phase1_perturbation(), 0.5);
+        assert_eq!(config.bo.gp.phase2_restarts(), 200);
+        assert_eq!(config.bo.gp.phase2_inner_iters(), 40);
+        assert_eq!(config.bo.gp.phase2_perturbation(), 0.3);
+        assert_eq!(config.bo.gp.min_gp_training_points(), 2);
     }
 
     #[test]
@@ -1266,10 +1292,11 @@ bo:
   ucb_beta: 4.0
   max_consecutive_failures: 5
   k_dpp_candidates: 500
-  gp_phase1_restarts: 20
-  gp_phase2_restarts: 100
-  min_gp_training_points: 3
   early_warning_failures: 3
+  gp:
+    phase1_restarts: 20
+    phase2_restarts: 100
+    min_gp_training_points: 3
 "#;
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.bo.xi(), 0.05);
@@ -1277,9 +1304,111 @@ bo:
         assert_eq!(config.bo.ucb_beta(), 4.0);
         assert_eq!(config.bo.max_consecutive_failures(), 5);
         assert_eq!(config.bo.k_dpp_candidates(), 500);
-        assert_eq!(config.bo.gp_phase1_restarts(), 20);
-        assert_eq!(config.bo.gp_phase2_restarts(), 100);
-        assert_eq!(config.bo.min_gp_training_points(), 3);
         assert_eq!(config.bo.early_warning_failures(), 3);
+        assert_eq!(config.bo.gp.phase1_restarts(), 20);
+        assert_eq!(config.bo.gp.phase2_restarts(), 100);
+        assert_eq!(config.bo.gp.min_gp_training_points(), 3);
+    }
+
+    #[test]
+    fn optimize_async_all_workers_complete() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../experiments/base/standard.yaml");
+        let yaml = format!(
+            r#"
+name: test_async_all_complete
+base: {}
+seed: 42
+budget: 6
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 50.0]
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  initial_points: 2
+  threads: 3
+"#,
+            base.display()
+        );
+        let config: OptConfig = serde_yaml::from_str(&yaml).unwrap();
+        let result = optimize(&config).unwrap();
+        assert!(
+            result.trials.len() >= 2,
+            "expected at least initial trials, got {}",
+            result.trials.len()
+        );
+        assert!(result.best_index < result.trials.len());
+        assert!(!result.pareto_indices.is_empty());
+        for trial in &result.trials {
+            assert!(
+                trial.objectives.iter().all(|v| v.is_finite()),
+                "non-finite objective in trial {}",
+                trial.trial_index
+            );
+        }
+    }
+
+    #[test]
+    fn suggest_next_point_with_pending_returns_valid_point() {
+        use crate::config::ParameterSpec;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("x".to_string(), 0.5);
+        let all_params = vec![params];
+        let all_objectives = vec![vec![0.8]];
+
+        let mut pending_params = BTreeMap::new();
+        pending_params.insert("x".to_string(), 0.7);
+        let pending = vec![pending_params];
+
+        let mut parameters = BTreeMap::new();
+        parameters.insert(
+            "x".to_string(),
+            ParameterSpec::Float {
+                bounds: [0.0, 1.0],
+                log_scale: false,
+            },
+        );
+        let space = crate::config::SearchSpace { parameters };
+        let indices = ParamIndices {
+            cont: vec![0],
+            cat: vec![],
+            cat_n_levels: vec![],
+        };
+        let objectives = vec![crate::config::ObjectiveSpec {
+            metric: "match_quality".to_string(),
+            direction: crate::config::Direction::Maximize,
+        }];
+        let bo = BoConfig::default();
+
+        let result = suggest_next_point_with_pending(
+            &all_params,
+            &all_objectives,
+            &pending,
+            &space,
+            &indices,
+            &objectives,
+            &bo,
+            42,
+        );
+        assert!(
+            result.is_ok(),
+            "suggest_next_point_with_pending failed: {result:?}"
+        );
+        let point = result.unwrap();
+        assert!(
+            point.contains_key("x"),
+            "missing key 'x' in suggested point"
+        );
+        let val = point["x"];
+        assert!(
+            (0.0..=1.0).contains(&val),
+            "suggested value {val} out of bounds [0.0, 1.0]"
+        );
     }
 }

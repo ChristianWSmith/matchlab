@@ -734,7 +734,8 @@ bo:
   eta: 0.05
   threads: 4            # optional, concurrent experiment evaluations (default: num_cpus)
   k_dpp_candidates: 1000   # optional, DPP candidate pool size
-  gp_threads: 4            # optional, threads for GP hyperparameter optimization (default: same as threads)
+  gp:
+    threads: 4            # optional, threads for GP hyperparameter optimization (default: same as threads; only used when threads > 1)
 
 output:
   directory: results/optimization/
