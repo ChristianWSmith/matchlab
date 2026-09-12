@@ -1,0 +1,29 @@
+name: elo_kfactor_optimization
+base: experiments/base/standard.yaml
+seed: 42
+budget: 20
+
+search_space:
+  parameters:
+    experiment.rating.systems.0.k_factor:
+      type: float
+      bounds: [1.0, 100.0]
+    experiment.rating.systems.0.beta:
+      type: float
+      bounds: [100.0, 800.0]
+
+objectives:
+  - metric: match_quality
+    direction: maximize
+  - metric: rating_accuracy
+    direction: minimize
+
+bo:
+  initial_design: latin_hypercube
+  initial_points: 10
+  kernel: matern52
+  acquisition: ei
+
+output:
+  directory: results/optimization/
+  report: true

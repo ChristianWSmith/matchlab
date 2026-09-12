@@ -297,7 +297,9 @@ mod tests {
                 },
                 detection: None,
                 ranking: None,
-                metrics: vec!["match_quality".to_string()],
+                metrics: vec![crate::config::MetricEntry::Name(
+                    "match_quality".to_string(),
+                )],
                 objectives: None,
                 adversarial: None,
                 satisfaction: None,

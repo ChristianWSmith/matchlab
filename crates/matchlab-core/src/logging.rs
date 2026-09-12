@@ -38,10 +38,12 @@ pub fn init_logging_with_options(
         (None, false) => tracing_subscriber::fmt()
             .with_env_filter(env_filter)
             .with_target(true)
+            .with_writer(io::stderr)
             .try_init(),
         (None, true) => tracing_subscriber::fmt()
             .with_env_filter(env_filter)
             .with_target(true)
+            .with_writer(io::stderr)
             .json()
             .try_init(),
         (Some(path), false) => {
@@ -52,7 +54,11 @@ pub fn init_logging_with_options(
                 .with_target(true)
                 .with_filter(env_filter);
             Ok(tracing_subscriber::registry()
-                .with(tracing_subscriber::fmt::layer().with_target(true))
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_target(true)
+                        .with_writer(io::stderr),
+                )
                 .with(file_layer)
                 .try_init()?)
         }
@@ -67,7 +73,12 @@ pub fn init_logging_with_options(
                     EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level)),
                 );
             Ok(tracing_subscriber::registry()
-                .with(tracing_subscriber::fmt::layer().json().with_target(true))
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .with_target(true)
+                        .with_writer(io::stderr),
+                )
                 .with(file_layer)
                 .try_init()?)
         }

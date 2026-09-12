@@ -177,6 +177,7 @@ mod probe_tests {
             1e-6,
         );
         let (r, rd) = unscale(out.mu, out.phi);
-        println!("SINGLE-WIN REF => r={r} rd={rd} sigma={}", out.sigma);
+        assert!(r.is_finite(), "r should be finite");
+        assert!(rd.is_finite(), "rd should be finite");
     }
 }

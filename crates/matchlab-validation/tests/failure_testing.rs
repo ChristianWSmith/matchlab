@@ -472,7 +472,9 @@ fn empty_population_produces_zero_matches() {
             },
             detection: None,
             ranking: None,
-            metrics: vec!["match_quality".to_string()],
+            metrics: vec![matchlab_experiments::config::MetricEntry::Name(
+                "match_quality".to_string(),
+            )],
             objectives: None,
             adversarial: None,
             satisfaction: None,

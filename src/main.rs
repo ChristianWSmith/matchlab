@@ -50,6 +50,7 @@ fn main() -> ExitCode {
         Some("analyze") => analyze(&positional_args[2..]),
         Some("compare-stats") => compare_stats(&positional_args[2..]),
         Some("power") => power_cmd(&positional_args[2..]),
+        Some("optimize") => optimize_cmd(&positional_args[2..]),
         Some("--version") | Some("-V") => {
             println!("matchlab {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -83,6 +84,7 @@ fn print_help() {
     eprintln!("    analyze       Analyze a stored study result");
     eprintln!("    compare-stats Compare two study results statistically");
     eprintln!("    power         Compute power analysis");
+    eprintln!("    optimize      Bayesian hyperparameter optimization");
     eprintln!();
     eprintln!("OPTIONS:");
     eprintln!("    -h, --help    Print this help message");
@@ -91,6 +93,7 @@ fn print_help() {
     eprintln!("    --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)");
     eprintln!("    --log-file <PATH>  Write logs to a file in addition to stdout");
     eprintln!("    --json-logs   Output logs as JSON Lines (for tooling)");
+    eprintln!("    --json        Print command output as structured JSON");
     eprintln!(
         "    --threads <N> Number of threads for parallel study execution (default: num_cpus)"
     );
@@ -101,6 +104,7 @@ fn print_help() {
     eprintln!("    matchlab study experiments/studies/elo_vs_glicko.yaml --replicates 50");
     eprintln!("    matchlab compare results/elo.json results/glicko.json");
     eprintln!("    matchlab power --effect 10 --sd 15 --alpha 0.05 --power 0.80");
+    eprintln!("    matchlab optimize experiments/optimize/elo_kfactor.yaml --json");
 }
 fn compare(args: &[String]) -> ExitCode {
     let mut json_out = false;
@@ -552,4 +556,67 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
         parts.push(format!("matchmaker:{}", exp.matchmaking.script));
     }
     parts.join(", ")
+}
+fn optimize_cmd(args: &[String]) -> ExitCode {
+    let mut json_out = false;
+    let mut path: Option<String> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json_out = true,
+            p if !p.starts_with('-') => path = Some(p.to_string()),
+            _ => {}
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: matchlab optimize <optimize.yaml> [--json]");
+        return ExitCode::from(2);
+    };
+    let _span = tracing::info_span!("optimize_run", path = %path).entered();
+    let config = match matchlab_optimize::OptConfig::load(Path::new(&path)) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(path, error = %e, "failed to load optimization config");
+            eprintln!("load config failed: {path} — {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let result = match matchlab_optimize::optimize(&config) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, "optimization failed");
+            eprintln!("optimization failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let dir = &config.output.directory;
+    if let Err(e) = fs::create_dir_all(dir) {
+        eprintln!("create output dir failed: {dir} — {e}");
+        return ExitCode::from(1);
+    }
+    let json_path = Path::new(dir).join(format!("{}_optimization.json", result.name));
+    let json = match serde_json::to_string_pretty(&result) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("serialize result failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(e) = fs::write(&json_path, &json) {
+        eprintln!("write result failed: {} — {e}", json_path.display());
+        return ExitCode::from(1);
+    }
+    if json_out {
+        println!("{json}");
+        eprintln!("results → {}", json_path.display());
+    } else {
+        let best = &result.trials[result.best_index];
+        println!("optimization complete: {} trials", result.trials.len());
+        println!(
+            "best trial #{}: objectives = {:?}",
+            result.best_index, best.objectives
+        );
+        println!("pareto front: {} points", result.pareto_indices.len());
+        println!("results → {}", json_path.display());
+    }
+    ExitCode::SUCCESS
 }

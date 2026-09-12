@@ -49,8 +49,8 @@ impl ReproductionPackage {
         let mut lua_paths: Vec<String> = Vec::new();
         let value = serde_yaml::to_value(config).map_err(|e| format!("yaml error: {e}"))?;
         collect_lua_paths(&value, &mut lua_paths);
-        for name in &config.experiment.metrics {
-            lua_paths.push(format!("plugins/metrics/{name}.lua"));
+        for entry in &config.experiment.metrics {
+            lua_paths.push(entry.script_path());
         }
         lua_paths.sort();
         lua_paths.dedup();
