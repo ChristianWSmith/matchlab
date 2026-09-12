@@ -50,7 +50,7 @@ fn main() -> ExitCode {
         Some("analyze") => analyze(&positional_args[2..]),
         Some("compare-stats") => compare_stats(&positional_args[2..]),
         Some("power") => power_cmd(&positional_args[2..]),
-        Some("optimize") => optimize_cmd(&positional_args[2..]),
+        Some("optimize") => optimize_cmd(&positional_args[2..], threads),
         Some("--version") | Some("-V") => {
             println!("matchlab {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -557,38 +557,18 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     }
     parts.join(", ")
 }
-fn optimize_cmd(args: &[String]) -> ExitCode {
+fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
     let mut json_out = false;
     let mut path: Option<String> = None;
-    let mut threads: Option<usize> = None;
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
+    for arg in args {
+        match arg.as_str() {
             "--json" => json_out = true,
-            "--threads" => {
-                i += 1;
-                if i >= args.len() {
-                    eprintln!("--threads requires a numeric argument");
-                    return ExitCode::from(2);
-                }
-                match args[i].parse::<usize>() {
-                    Ok(n) if n > 0 => threads = Some(n),
-                    _ => {
-                        eprintln!(
-                            "--threads: invalid value '{}', must be a positive integer",
-                            args[i]
-                        );
-                        return ExitCode::from(2);
-                    }
-                }
-            }
             p if !p.starts_with('-') => path = Some(p.to_string()),
             _ => {}
         }
-        i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: matchlab optimize <optimize.yaml> [--json] [--threads N]");
+        eprintln!("usage: matchlab optimize <optimize.yaml> [--json]");
         return ExitCode::from(2);
     };
     let _span = tracing::info_span!("optimize_run", path = %path).entered();
@@ -600,9 +580,8 @@ fn optimize_cmd(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    if let Some(n) = threads {
-        config.bo.batch_size = Some(n);
-    }
+    config.bo.batch_size = Some(threads);
+    config.bo.gp_threads = Some(threads);
     let result = match matchlab_optimize::optimize(&config) {
         Ok(r) => r,
         Err(e) => {

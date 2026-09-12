@@ -2,7 +2,6 @@ use crate::acquisition::{AcquisitionKind, evaluate_acquisition, parego_scalarize
 use crate::config::{
     BoConfig, Direction, ObjectiveSpec, OptConfig, OptimizationResult, ParameterSpec, TrialResult,
 };
-use crate::dpp::k_dpp_sample;
 use crate::gp::{GaussianProcess, GpConfig};
 use crate::kernel::KernelKind;
 use crate::multiobj::ParetoFront;
@@ -496,88 +495,6 @@ fn dispatch_worker(
     });
 }
 
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-fn suggest_batch(
-    all_params: &[BTreeMap<String, f64>],
-    all_objectives: &[Vec<f64>],
-    space: &crate::config::SearchSpace,
-    indices: &ParamIndices,
-    objectives: &[ObjectiveSpec],
-    bo: &BoConfig,
-    batch_size: usize,
-    seed: u64,
-) -> Result<Vec<BTreeMap<String, f64>>, String> {
-    let param_order: Vec<String> = space.parameters.keys().cloned().collect();
-    let n_obj = objectives.len();
-    let kernel_kind = KernelKind::parse(&bo.kernel).map_err(|e| format!("invalid kernel: {e}"))?;
-    let acq_kind =
-        AcquisitionKind::parse(&bo.acquisition).map_err(|e| format!("invalid acquisition: {e}"))?;
-    let gp_cfg = gp_config_from_bo(bo, None);
-
-    let x_train = build_training_matrix(all_params, &param_order);
-    let directions: Vec<bool> = objectives
-        .iter()
-        .map(|o| o.direction == Direction::Maximize)
-        .collect();
-
-    let (gp, best_y) = if n_obj == 1 {
-        let y_train = build_single_objective(all_objectives, 0, directions[0]);
-        let params_gp = GaussianProcess::optimize_hyperparameters_with_config(
-            &x_train,
-            &y_train,
-            &indices.cont,
-            &indices.cat,
-            &indices.cat_n_levels,
-            kernel_kind,
-            seed,
-            &gp_cfg,
-        )?;
-        let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
-        let best_y = y_train.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        (gp, best_y)
-    } else {
-        let weights = parego_weights(n_obj, seed);
-        let eta = bo.eta();
-        let mut best_scalarized = f64::NEG_INFINITY;
-        for obj in all_objectives {
-            let s = parego_scalarize(obj, &weights, &directions, eta);
-            if s > best_scalarized {
-                best_scalarized = s;
-            }
-        }
-        let y_train = build_scalarized_objective(all_objectives, &weights, &directions, eta);
-        let params_gp = GaussianProcess::optimize_hyperparameters_with_config(
-            &x_train,
-            &y_train,
-            &indices.cont,
-            &indices.cat,
-            &indices.cat_n_levels,
-            kernel_kind,
-            seed,
-            &gp_cfg,
-        )?;
-        let gp = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)?;
-        (gp, best_scalarized)
-    };
-
-    let xi = bo.xi();
-    let beta = bo.ucb_beta();
-    let n_candidates = bo.k_dpp_candidates();
-
-    let candidates = random_candidates(space, n_candidates, seed);
-    let x_cand = build_training_matrix(&candidates, &param_order);
-    let scores = evaluate_acquisition(acq_kind, &gp, &x_cand, best_y, xi, beta);
-
-    let scores_vec: Vec<f64> = scores.to_vec();
-    let selected_indices = k_dpp_sample(&candidates, &scores_vec, &param_order, batch_size, seed);
-
-    Ok(selected_indices
-        .into_iter()
-        .map(|i| candidates[i].clone())
-        .collect())
-}
-
 #[allow(clippy::too_many_arguments)]
 fn suggest_next_point_with_pending(
     all_params: &[BTreeMap<String, f64>],
@@ -611,7 +528,7 @@ fn suggest_next_point_with_pending(
             build_scalarized_objective(all_objectives, &weights, &directions, eta)
         };
 
-        let gp_cfg = gp_config_from_bo(bo, None);
+        let gp_cfg = gp_config_from_bo(bo);
         if let Ok(params_gp) = GaussianProcess::optimize_hyperparameters_with_config(
             &x_train,
             &y_train,
@@ -636,10 +553,19 @@ fn suggest_next_point_with_pending(
                         };
                         augmented_objectives.push(vec![val]);
                     } else {
+                        let fantasy_obj: Vec<f64> = directions
+                            .iter()
+                            .map(|&maximize| {
+                                if maximize {
+                                    fantasy_means[i]
+                                } else {
+                                    -fantasy_means[i]
+                                }
+                            })
+                            .collect();
                         let weights = parego_weights(n_obj, seed + i as u64);
                         let eta = bo.eta();
-                        let scalarized =
-                            parego_scalarize(&[fantasy_means[i].abs()], &weights, &directions, eta);
+                        let scalarized = parego_scalarize(&fantasy_obj, &weights, &directions, eta);
                         augmented_objectives.push(vec![scalarized]);
                     }
                 }
@@ -658,7 +584,7 @@ fn suggest_next_point_with_pending(
     )
 }
 
-fn gp_config_from_bo(bo: &BoConfig, threads: Option<usize>) -> GpConfig {
+fn gp_config_from_bo(bo: &BoConfig) -> GpConfig {
     GpConfig {
         phase1_restarts: bo.gp_phase1_restarts(),
         phase1_inner_iters: bo.gp_phase1_inner_iters(),
@@ -666,7 +592,7 @@ fn gp_config_from_bo(bo: &BoConfig, threads: Option<usize>) -> GpConfig {
         phase2_restarts: bo.gp_phase2_restarts(),
         phase2_inner_iters: bo.gp_phase2_inner_iters(),
         phase2_perturbation: bo.gp_phase2_perturbation(),
-        threads,
+        threads: bo.gp_threads(),
     }
 }
 
@@ -711,7 +637,7 @@ fn suggest_next_point(
     let kernel_kind = KernelKind::parse(&bo.kernel).map_err(|e| format!("invalid kernel: {e}"))?;
     let acq_kind =
         AcquisitionKind::parse(&bo.acquisition).map_err(|e| format!("invalid acquisition: {e}"))?;
-    let gp_cfg = gp_config_from_bo(bo, None);
+    let gp_cfg = gp_config_from_bo(bo);
 
     let x_train = build_training_matrix(all_params, &param_order);
     let directions: Vec<bool> = objectives

@@ -417,6 +417,7 @@ optimize:
     gp_phase2_perturbation: <f64> # optional, phase 2 perturbation scale (default: 0.3)
     min_gp_training_points: <usize> # optional, minimum training points before using GP surrogate (default: 2)
     early_warning_failures: <u64>   # optional, log warning after N consecutive failures (default: 5)
+    gp_threads: <usize>            # optional, number of threads for GP hyperparameter optimization (default: num_cpus)
 
   output:                       # optional
     directory: <string>         #   default "results/optimization/"

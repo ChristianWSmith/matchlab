@@ -53,6 +53,8 @@ pub struct BoConfig {
     pub min_gp_training_points: Option<usize>,
     #[serde(default)]
     pub early_warning_failures: Option<u64>,
+    #[serde(default)]
+    pub gp_threads: Option<usize>,
 }
 
 impl Default for BoConfig {
@@ -76,6 +78,7 @@ impl Default for BoConfig {
             gp_phase2_perturbation: None,
             min_gp_training_points: None,
             early_warning_failures: None,
+            gp_threads: None,
         }
     }
 }
@@ -119,6 +122,9 @@ impl BoConfig {
     }
     pub fn early_warning_failures(&self) -> u64 {
         self.early_warning_failures.unwrap_or(5)
+    }
+    pub fn gp_threads(&self) -> Option<usize> {
+        self.gp_threads
     }
 }
 

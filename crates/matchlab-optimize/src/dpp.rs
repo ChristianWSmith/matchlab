@@ -68,7 +68,7 @@ fn compute_rbf_similarity(x: &Array2<f64>) -> Array2<f64> {
         .copied()
         .unwrap_or(1.0)
         .max(1e-10);
-    let bandwidth = median.ln().max(1e-10);
+    let bandwidth = median / 2.0;
 
     let mut sim = Array2::<f64>::zeros((n, n));
     for i in 0..n {

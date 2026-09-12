@@ -733,6 +733,7 @@ bo:
   eta: 0.05
   batch_size: 4            # optional, async batch evaluation (default: 1 = sequential)
   k_dpp_candidates: 1000   # optional, DPP candidate pool size
+  gp_threads: 4            # optional, threads for GP hyperparameter optimization (default: num_cpus)
 
 output:
   directory: results/optimization/
