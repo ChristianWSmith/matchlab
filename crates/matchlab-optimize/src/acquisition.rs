@@ -104,12 +104,22 @@ pub fn erfc(x: f64) -> f64 {
 }
 
 pub fn parego_scalarize(objectives: &[f64], weights: &[f64], directions: &[bool], eta: f64) -> f64 {
-    let mut s = 0.0;
+    let mut max_exp_arg = f64::NEG_INFINITY;
+    let mut exp_args = Vec::with_capacity(objectives.len());
     for (i, (&obj, &w)) in objectives.iter().zip(weights.iter()).enumerate() {
         let val = if directions[i] { obj } else { -obj };
-        s += w * (-val / eta).exp();
+        let _ = w;
+        let arg = -val / eta;
+        exp_args.push(arg);
+        if arg > max_exp_arg {
+            max_exp_arg = arg;
+        }
     }
-    -eta * s.ln()
+    let mut s = 0.0;
+    for (i, &w) in weights.iter().enumerate() {
+        s += w * (exp_args[i] - max_exp_arg).exp();
+    }
+    -eta * (max_exp_arg + s.ln())
 }
 
 pub fn parego_weights(n_objectives: usize, seed: u64) -> Vec<f64> {
