@@ -40,7 +40,7 @@ pub fn summary(values: &[f64]) -> Summary {
     let mean = valid.iter().sum::<f64>() / valid.len() as f64;
     let var = valid.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / valid.len() as f64;
     Summary {
-        n: values.len(),
+        n: valid.len(),
         mean,
         median: percentile(&sorted, 50.0),
         p75: percentile(&sorted, 75.0),
