@@ -67,6 +67,12 @@ Every experiment is fully reproducible given its config and seed:
   deterministic; two runs with the same seed produce identical results except
   for the wall-clock timestamp.
 
+**Note:** Bayesian optimization runs with `threads > 1` are not fully
+deterministic — parallel experiment evaluation means the optimization trajectory
+(which experiments are evaluated in which order) may vary across runs, though
+each individual experiment within the trajectory is still deterministic given
+the same seed. Pass `--threads 1` to preserve trajectory determinism.
+
 ---
 
 ## Quick start
@@ -127,7 +133,7 @@ matchlab package <manifest.yaml>       # Create a reproduction package
 matchlab analyze <result.json>         # Analyze a stored result
 matchlab compare-stats <study.json>... # Compare study results statistically
 matchlab power                         # Compute power analysis
-matchlab optimize <optimize.yaml>      # Bayesian hyperparameter optimization
+matchlab optimize <optimize.yaml> [--threads N] [--gp-threads N]  # Bayesian hyperparameter optimization
 ```
 
 CLI flags for controlling output:
@@ -139,6 +145,8 @@ CLI flags for controlling output:
 | `--log-file <PATH>` | Write logs to a file in addition to stdout |
 | `--json-logs` | Output logs as JSON Lines (for tooling) |
 | `--json` | Print output as structured JSON (tracing remains on stderr) |
+| `--threads <N>` | Number of threads for parallel execution (default: num_cpus); controls concurrent experiments in `study` and `optimize` |
+| `--gp-threads <N>` | GP hyperparameter threads for `optimize` (default: same as `--threads`) |
 
 ---
 
@@ -615,8 +623,9 @@ experiment exactly:
 2. Run the manifest: `cargo run -- run <manifest.yaml>`
 3. Verify the `config_hash` in the new JSON matches the recorded one.
 
-The only field that legitimately differs between identical runs is the
-`timestamp`.
+The only fields that legitimately differ between identical runs are the
+`timestamp`, and for optimization runs with `threads > 1`, the trial
+ordering (since concurrent evaluation is non-deterministic).
 
 You can also create a **reproduction package** that bundles the manifest,
 all referenced Lua scripts, and metadata:
@@ -668,10 +677,14 @@ matchlab optimize experiments/optimize/elo_kfactor.yaml --json
 
 1. **Initial design.** Latin Hypercube Sampling (or random) generates the first
    batch of parameter combinations.
-2. **Surrogate model.** A Gaussian Process fits the observed objective values.
-3. **Acquisition function.** The next point to evaluate is chosen by maximizing
-   an acquisition function (Expected Improvement, UCB, or PI).
-4. **Evaluation.** Each candidate is evaluated by running a full experiment.
+2. **Surrogate model.** A Gaussian Process fits the observed objective values (hyperparameters are optimized in parallel via rayon).
+3. **Acquisition function.** The next point(s) to evaluate are chosen by maximizing
+   an acquisition function (Expected Improvement, UCB, or PI). When `threads > 1`,
+   a k-DPP sampler selects a diverse batch of candidates from the top acquisition
+   scores.
+4. **Evaluation.** Each candidate is evaluated by running a full experiment. When
+   `threads > 1`, evaluations run concurrently via rayon, breaking full trajectory
+   determinism.
 5. **Repeat** steps 2–4 until the budget is exhausted.
 
 ### Kernel options
@@ -719,6 +732,10 @@ bo:
   acquisition: ei
   xi: 0.01
   eta: 0.05
+  threads: 4            # optional, concurrent experiment evaluations (default: num_cpus)
+  k_dpp_candidates: 1000   # optional, DPP candidate pool size
+  gp:
+    threads: 4            # optional, threads for GP hyperparameter optimization (default: same as threads; only used when threads > 1)
 
 output:
   directory: results/optimization/
@@ -796,7 +813,7 @@ crates/                   Rust crate workspace
   matchlab-experiments/   manifest parsing, config inheritance, runner, factorial design, replication
   matchlab-analysis/      statistics, Pareto, cohorts, reports, provenance
   matchlab-validation/    analytical-baseline regression tests (test-side only)
-  matchlab-optimize/      Bayesian hyperparameter optimization (GP, kernels, EI/UCB/PI, ParEGO)
+  matchlab-optimize/      Bayesian hyperparameter optimization (GP, kernels, EI/UCB/PI, ParEGO, k-DPP batch, rayon parallel)
 docs/                     Documentation
   manifest-schema.md      Complete manifest schema reference
   plugin-api.md           Plugin API contracts for all 7 types

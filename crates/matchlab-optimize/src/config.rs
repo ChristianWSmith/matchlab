@@ -31,8 +31,36 @@ pub struct BoConfig {
     pub eta: Option<f64>,
     #[serde(default)]
     pub ucb_beta: Option<f64>,
-    #[serde(default = "default_max_consecutive_failures")]
+    #[serde(default)]
     pub max_consecutive_failures: Option<u64>,
+    #[serde(default)]
+    pub threads: Option<usize>,
+    #[serde(default)]
+    pub k_dpp_candidates: Option<usize>,
+    #[serde(default)]
+    pub early_warning_failures: Option<u64>,
+    #[serde(default)]
+    pub gp: GpTuningConfig,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct GpTuningConfig {
+    #[serde(default)]
+    pub phase1_restarts: Option<u64>,
+    #[serde(default)]
+    pub phase1_inner_iters: Option<u64>,
+    #[serde(default)]
+    pub phase1_perturbation: Option<f64>,
+    #[serde(default)]
+    pub phase2_restarts: Option<u64>,
+    #[serde(default)]
+    pub phase2_inner_iters: Option<u64>,
+    #[serde(default)]
+    pub phase2_perturbation: Option<f64>,
+    #[serde(default)]
+    pub threads: Option<usize>,
+    #[serde(default)]
+    pub min_gp_training_points: Option<usize>,
 }
 
 impl Default for BoConfig {
@@ -45,8 +73,67 @@ impl Default for BoConfig {
             xi: None,
             eta: None,
             ucb_beta: None,
-            max_consecutive_failures: default_max_consecutive_failures(),
+            max_consecutive_failures: None,
+            threads: None,
+            k_dpp_candidates: None,
+            early_warning_failures: None,
+            gp: GpTuningConfig::default(),
         }
+    }
+}
+
+impl BoConfig {
+    pub fn xi(&self) -> f64 {
+        self.xi.unwrap_or(0.01)
+    }
+    pub fn eta(&self) -> f64 {
+        self.eta.unwrap_or(0.05)
+    }
+    pub fn ucb_beta(&self) -> f64 {
+        self.ucb_beta.unwrap_or(2.0)
+    }
+    pub fn max_consecutive_failures(&self) -> u64 {
+        self.max_consecutive_failures.unwrap_or(10)
+    }
+    pub fn k_dpp_candidates(&self) -> usize {
+        self.k_dpp_candidates.unwrap_or(1000)
+    }
+    pub fn early_warning_failures(&self) -> u64 {
+        self.early_warning_failures.unwrap_or(5)
+    }
+    pub fn threads(&self) -> usize {
+        self.threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+        })
+    }
+}
+
+impl GpTuningConfig {
+    pub fn phase1_restarts(&self) -> u64 {
+        self.phase1_restarts.unwrap_or(50)
+    }
+    pub fn phase1_inner_iters(&self) -> u64 {
+        self.phase1_inner_iters.unwrap_or(10)
+    }
+    pub fn phase1_perturbation(&self) -> f64 {
+        self.phase1_perturbation.unwrap_or(0.5)
+    }
+    pub fn phase2_restarts(&self) -> u64 {
+        self.phase2_restarts.unwrap_or(200)
+    }
+    pub fn phase2_inner_iters(&self) -> u64 {
+        self.phase2_inner_iters.unwrap_or(40)
+    }
+    pub fn phase2_perturbation(&self) -> f64 {
+        self.phase2_perturbation.unwrap_or(0.3)
+    }
+    pub fn threads(&self) -> Option<usize> {
+        self.threads
+    }
+    pub fn min_gp_training_points(&self) -> usize {
+        self.min_gp_training_points.unwrap_or(2)
     }
 }
 
@@ -62,10 +149,6 @@ fn default_kernel() -> String {
 fn default_acquisition() -> String {
     "ei".to_string()
 }
-fn default_max_consecutive_failures() -> Option<u64> {
-    Some(10)
-}
-
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct OptOutputSpec {
     #[serde(default = "default_opt_directory")]
@@ -247,7 +330,7 @@ objectives:
         assert!(config.bo.xi.is_none());
         assert!(config.bo.eta.is_none());
         assert!(config.bo.ucb_beta.is_none());
-        assert_eq!(config.bo.max_consecutive_failures, Some(10));
+        assert_eq!(config.bo.max_consecutive_failures, None);
     }
 
     #[test]
@@ -381,5 +464,43 @@ objectives:
 "#;
         let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(config.search_space.validate().is_ok());
+    }
+
+    #[test]
+    fn bo_config_parses_new_fields() {
+        let yaml = r#"
+name: test
+base: base.yaml
+seed: 1
+budget: 10
+search_space:
+  parameters: {}
+objectives:
+  - metric: match_quality
+    direction: maximize
+bo:
+  threads: 8
+  k_dpp_candidates: 500
+  early_warning_failures: 3
+  gp:
+    phase1_restarts: 20
+    phase1_inner_iters: 5
+    phase1_perturbation: 0.3
+    phase2_restarts: 100
+    phase2_inner_iters: 20
+    phase2_perturbation: 0.2
+    min_gp_training_points: 3
+"#;
+        let config: OptConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.bo.threads, Some(8));
+        assert_eq!(config.bo.k_dpp_candidates, Some(500));
+        assert_eq!(config.bo.early_warning_failures, Some(3));
+        assert_eq!(config.bo.gp.phase1_restarts, Some(20));
+        assert_eq!(config.bo.gp.phase1_inner_iters, Some(5));
+        assert_eq!(config.bo.gp.phase1_perturbation, Some(0.3));
+        assert_eq!(config.bo.gp.phase2_restarts, Some(100));
+        assert_eq!(config.bo.gp.phase2_inner_iters, Some(20));
+        assert_eq!(config.bo.gp.phase2_perturbation, Some(0.2));
+        assert_eq!(config.bo.gp.min_gp_training_points, Some(3));
     }
 }
