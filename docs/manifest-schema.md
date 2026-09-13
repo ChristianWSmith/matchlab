@@ -407,6 +407,18 @@ optimize:
     eta: <f64>                  #   optional, ParEGO scalarization (default: 0.05)
     ucb_beta: <f64>             #   optional, UCB exploration parameter (default: 2.0)
     max_consecutive_failures: <u64>  # optional, stop after N failed evaluations (default: 10)
+    threads: <usize>           #   optional, concurrent experiment evaluations (default: num_cpus via --threads CLI flag; 1 = sequential; >1 enables async parallel evaluation, non-deterministic trajectory)
+    k_dpp_candidates: <usize>  #   optional, k-DPP candidate pool size for diverse batch selection (default: 1000)
+    early_warning_failures: <u64>   # optional, log warning after N consecutive failures (default: 5)
+    gp:                         # optional, GP hyperparameter optimization settings
+      phase1_restarts: <u64>    #   optional, phase 1 random restarts (default: 50)
+      phase1_inner_iters: <u64> #   optional, phase 1 inner iterations per restart (default: 10)
+      phase1_perturbation: <f64> #  optional, phase 1 perturbation scale (default: 0.5)
+      phase2_restarts: <u64>    #   optional, phase 2 random restarts (default: 200)
+      phase2_inner_iters: <u64> #   optional, phase 2 inner iterations per restart (default: 40)
+      phase2_perturbation: <f64> #  optional, phase 2 perturbation scale (default: 0.3)
+      threads: <usize>         #   optional, threads for GP hyperparameter optimization (default: same as top-level threads; only used when threads > 1)
+      min_gp_training_points: <usize> # optional, minimum training points before using GP surrogate (default: 2)
 
   output:                       # optional
     directory: <string>         #   default "results/optimization/"

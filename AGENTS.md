@@ -49,7 +49,7 @@ matchlab/               # workspace root
     ├── matchlab-experiments/   # runner, YAML config, factorial design, counterfactual eval, replication
     ├── matchlab-analysis/      # statistics, Pareto, cohorts, reports, provenance
     ├── matchlab-validation/    # analytical-baseline regression tests (test-side references)
-    └── matchlab-optimize/      # Bayesian hyperparameter optimization (GP, EI, ParEGO)
+    └── matchlab-optimize/      # Bayesian hyperparameter optimization (GP, EI, ParEGO, k-DPP batch selection, parallelized via rayon)
 ```
 
 **Dependency flow** (each layer only depends on layers below it):
@@ -72,7 +72,7 @@ matchlab-loop          (depends on core + players + game + rating + matchmaking 
 matchlab-experiments   (depends on core + players + game + rating + matchmaking + loop + metrics)
 matchlab-analysis      (depends on core + metrics + experiments; objective when it exists)
 matchlab-validation    (depends on core + players + game + rating + matchmaking + loop + metrics + experiments; test-side references only)
-matchlab-optimize      (depends on experiments + metrics + ndarray)
+matchlab-optimize      (depends on experiments + metrics + ndarray + rayon)
 matchlab (binary)      (depends on experiments + analysis + optimize)
 ```
 
@@ -108,7 +108,7 @@ Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
 
-Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction.
+Every experiment is deterministic given its config + seed. The `SeedManager` derives separate seeds for population, games, arrivals, behavior, matchmaking, and the master world RNG from a single experiment seed. `ExperimentResult` records config hash + git commit for exact reproduction. Note: the CLI `--threads` flag defaults to `num_cpus`, so `matchlab optimize` runs in non-deterministic batch mode by default. Pass `--threads 1` to preserve full trajectory determinism. The underlying individual experiments remain deterministic given the same seed.
 
 ### 4. Multi-Scale Time
 
@@ -138,7 +138,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 
 The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/main.rs`. `cargo build --workspace`, `cargo test --workspace`, and `cargo check --workspace` all pass.
 
-- `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (luau, vendored); `[workspace.package]` sets `edition = "2024"`.
+- `[workspace.dependencies]` declares `serde` (derive), `serde_yaml 0.9`, `rand 0.8`, `rand_chacha 0.3`, `mlua 0.10` (luau, vendored), `rayon 1.10`; `[workspace.package]` sets `edition = "2024"`.
 - `src/main.rs` is the `matchlab` binary (`matchlab run`, `matchlab study`, `matchlab compare`, `matchlab optimize`); depends on `matchlab-experiments`, `matchlab-analysis`, and `matchlab-optimize`.
 - All algorithms are Lua scripts under `plugins/`. Rust holds types, traits, and thin `Lua*System` adapters — there are no inherent Rust algorithms.
 - The v0.1 build order (steps 1–12) and v0.2 experimental rigor features are complete.
@@ -163,14 +163,14 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | `matchlab-experiments` | YAML config, inheritance, factorial design, replication, counterfactual replay, study manifests |
 | `matchlab-analysis` | Statistics (CIs, effect sizes, power), Pareto, cohorts, reporting, provenance |
 | `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget) |
-| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate, 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, NDJSON checkpointing |
+| `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate (rayon-parallelized), 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, k-DPP batch selection, NDJSON checkpointing; async/batch mode when threads > 1 |
 
 ### CLI commands
 
 - `matchlab run <manifest.yaml>` — run a single experiment
 - `matchlab study <study.yaml> [--replicates N] [--json]` — run a multi-arm replicated study
 - `matchlab compare <result.json>... [--json]` — compare exported results
-- `matchlab optimize <optimize.yaml>` — Bayesian hyperparameter optimization
+- `matchlab optimize <optimize.yaml> [--threads N] [--gp-threads N]` — Bayesian hyperparameter optimization
 
 ---
 
