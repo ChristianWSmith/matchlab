@@ -567,7 +567,14 @@ fn dispatch_worker(
     let tx = tx.clone();
     rayon::spawn(move || {
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            evaluate_point(&config, &point, &search_space, &objectives, trial_index, seed)
+            evaluate_point(
+                &config,
+                &point,
+                &search_space,
+                &objectives,
+                trial_index,
+                seed,
+            )
         }))
         .unwrap_or_else(|_| Err(format!("worker panic on trial {trial_index}")));
         let _ = tx.send(WorkerMessage {
