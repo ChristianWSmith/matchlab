@@ -16,6 +16,7 @@ use rand::SeedableRng;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::mpsc;
 use tracing;
@@ -108,12 +109,14 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
             }
         }
     }
-    maybe_write_checkpoint(
-        &config.output,
-        &config.name,
-        &all_trial_results,
-        initial_n.saturating_sub(1),
-    );
+    if initial_n > 0 {
+        maybe_write_checkpoint(
+            &config.output,
+            &config.name,
+            &all_trial_results,
+            initial_n - 1,
+        );
+    }
 
     for t in initial_n..config.budget {
         let trial_idx = t;
@@ -306,12 +309,14 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
             }
         }
     }
-    maybe_write_checkpoint(
-        &config.output,
-        &config.name,
-        &all_trial_results,
-        initial_n.saturating_sub(1),
-    );
+    if initial_n > 0 {
+        maybe_write_checkpoint(
+            &config.output,
+            &config.name,
+            &all_trial_results,
+            initial_n - 1,
+        );
+    }
 
     let mut next_trial = initial_n;
     let mut pending: Vec<BTreeMap<String, f64>> = Vec::new();
@@ -409,6 +414,25 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                     config.seed,
                 );
                 tracing::info!(trial = msg.trial_index + 1, best, "trial completed");
+
+                if next_trial < config.budget {
+                    let point = suggest_and_dispatch(
+                        &all_params,
+                        &all_objectives,
+                        &pending,
+                        &config.search_space,
+                        &param_indices,
+                        &config.objectives,
+                        &config.bo,
+                        config.seed,
+                        next_trial,
+                        &base_config,
+                        &tx,
+                    )?;
+                    pending.push(point);
+                    next_trial += 1;
+                    pending_count += 1;
+                }
             }
             Err(e) => {
                 consecutive_failures += 1;
@@ -422,7 +446,14 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                     );
                     break;
                 }
+                if consecutive_failures >= config.bo.early_warning_failures() {
+                    tracing::warn!(
+                        consecutive_failures,
+                        "multiple consecutive evaluation failures"
+                    );
+                }
                 tracing::warn!(trial = msg.trial_index + 1, error = %e, "evaluation failed, retrying with random point");
+                let mut fallback_dispatched = false;
                 if next_trial < config.budget {
                     let mut pts = random_sample(
                         &config.search_space,
@@ -441,28 +472,34 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                         );
                         next_trial += 1;
                         pending_count += 1;
+                        fallback_dispatched = true;
                     }
                 }
-            }
-        }
 
-        if next_trial < config.budget {
-            let (point, inc) = suggest_and_dispatch(
-                &all_params,
-                &all_objectives,
-                &pending,
-                &config.search_space,
-                &param_indices,
-                &config.objectives,
-                &config.bo,
-                config.seed,
-                next_trial,
-                &base_config,
-                &tx,
-            )?;
-            pending.push(point);
-            next_trial += inc;
-            pending_count += inc as usize;
+                if next_trial < config.budget {
+                    let pending_for_suggest = if fallback_dispatched && !pending.is_empty() {
+                        &pending[..pending.len() - 1]
+                    } else {
+                        &pending
+                    };
+                    let point = suggest_and_dispatch(
+                        &all_params,
+                        &all_objectives,
+                        pending_for_suggest,
+                        &config.search_space,
+                        &param_indices,
+                        &config.objectives,
+                        &config.bo,
+                        config.seed,
+                        next_trial,
+                        &base_config,
+                        &tx,
+                    )?;
+                    pending.push(point);
+                    next_trial += 1;
+                    pending_count += 1;
+                }
+            }
         }
 
         if pending_count == 0 {
@@ -511,7 +548,10 @@ fn dispatch_worker(
     let objectives = objectives.to_vec();
     let tx = tx.clone();
     rayon::spawn(move || {
-        let result = evaluate_point(&config, &point, &objectives, trial_index, seed);
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            evaluate_point(&config, &point, &objectives, trial_index, seed)
+        }))
+        .unwrap_or_else(|_| Err(format!("worker panic on trial {trial_index}")));
         let _ = tx.send(WorkerMessage {
             trial_index,
             point,
@@ -622,7 +662,7 @@ fn suggest_and_dispatch(
     next_trial: u64,
     base_config: &ExperimentConfig,
     tx: &mpsc::Sender<WorkerMessage>,
-) -> Result<(BTreeMap<String, f64>, u64), String> {
+) -> Result<BTreeMap<String, f64>, String> {
     let point = if all_params.len() < bo.gp.min_gp_training_points() {
         let mut pts = random_sample(space, 1, seed + next_trial * SUGGEST_SEED_MULT);
         pts.pop().unwrap()
@@ -646,7 +686,7 @@ fn suggest_and_dispatch(
         seed + next_trial,
         tx,
     );
-    Ok((point, 1u64))
+    Ok(point)
 }
 
 fn gp_config_from_bo(bo: &BoConfig) -> GpConfig {

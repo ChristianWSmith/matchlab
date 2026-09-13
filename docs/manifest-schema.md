@@ -407,7 +407,7 @@ optimize:
     eta: <f64>                  #   optional, ParEGO scalarization (default: 0.05)
     ucb_beta: <f64>             #   optional, UCB exploration parameter (default: 2.0)
     max_consecutive_failures: <u64>  # optional, stop after N failed evaluations (default: 10)
-    threads: <usize>           #   optional, concurrent experiment evaluations (default: num_cpus via --threads CLI flag; 1 = sequential; >1 enables async parallel evaluation, non-deterministic trajectory)
+    threads: <usize>           #   optional, concurrent experiment evaluations (default: num_cpus; CLI --threads overrides; 1 = sequential; >1 enables async parallel evaluation, non-deterministic trajectory)
     k_dpp_candidates: <usize>  #   optional, k-DPP candidate pool size for diverse batch selection (default: 1000)
     early_warning_failures: <u64>   # optional, log warning after N consecutive failures (default: 5)
     gp:                         # optional, GP hyperparameter optimization settings

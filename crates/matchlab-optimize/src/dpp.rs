@@ -50,38 +50,39 @@ fn build_candidate_matrix(
 
 fn compute_rbf_similarity(x: &Array2<f64>) -> Array2<f64> {
     let n = x.nrows();
+    let d = x.ncols();
 
-    let mut median_sq_dist = Vec::new();
-    for i in 0..n.min(200) {
-        for j in (i + 1)..n.min(200) {
+    let mut sq_dists: Vec<f64> = Vec::with_capacity(n * (n - 1) / 2);
+    for i in 0..n {
+        for j in (i + 1)..n {
             let mut sq = 0.0;
-            for dim in 0..x.ncols() {
+            for dim in 0..d {
                 let diff = x[[i, dim]] - x[[j, dim]];
                 sq += diff * diff;
             }
-            median_sq_dist.push(sq);
+            sq_dists.push(sq);
         }
     }
-    median_sq_dist.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let median = median_sq_dist
-        .get(median_sq_dist.len() / 2)
+
+    let sample_limit = sq_dists.len().min(200 * 199 / 2);
+    let mut sample = sq_dists[..sample_limit].to_vec();
+    sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = sample
+        .get(sample.len() / 2)
         .copied()
         .unwrap_or(1.0)
         .max(1e-10);
     let bandwidth = median / 2.0;
 
     let mut sim = Array2::<f64>::zeros((n, n));
+    let mut idx = 0;
     for i in 0..n {
         sim[[i, i]] = 1.0;
         for j in (i + 1)..n {
-            let mut sq = 0.0;
-            for dim in 0..x.ncols() {
-                let diff = x[[i, dim]] - x[[j, dim]];
-                sq += diff * diff;
-            }
-            let val = (-sq / (2.0 * bandwidth)).exp();
+            let val = (-sq_dists[idx] / (2.0 * bandwidth)).exp();
             sim[[i, j]] = val;
             sim[[j, i]] = val;
+            idx += 1;
         }
     }
     sim
