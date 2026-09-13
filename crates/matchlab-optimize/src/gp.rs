@@ -202,6 +202,9 @@ impl GaussianProcess {
             }
         }
 
+        // Phase 2: refined search around best_params from phase 1.
+        // All restarts share the same starting point — inner iterations with
+        // independent random perturbations explore the local neighborhood.
         let phase2_pert = gp_config.phase2_perturbation;
         let phase2_inner = gp_config.phase2_inner_iters;
 

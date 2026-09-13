@@ -321,6 +321,13 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
     let (tx, rx) = mpsc::channel::<WorkerMessage>();
 
     let workers_to_dispatch = threads.min((config.budget - initial_n) as usize);
+    if workers_to_dispatch == 0 {
+        tracing::warn!(
+            budget = config.budget,
+            initial = initial_n,
+            "budget exhausted by initial points, no BO iterations"
+        );
+    }
     if all_params.len() >= config.bo.gp.min_gp_training_points() && workers_to_dispatch > 1 {
         let batch_points = suggest_batch(
             &all_params,
@@ -488,6 +495,10 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
     })
 }
 
+/// Dispatch experiment evaluation on the global rayon pool.
+/// This is intentionally separate from the GP hyperparameter pool (gp.threads)
+/// to avoid contention between experiment evaluation and GP fitting.
+/// The CLI always sets gp.threads = Some(threads), so GP gets an isolated pool.
 fn dispatch_worker(
     base_config: &ExperimentConfig,
     point: BTreeMap<String, f64>,
@@ -835,13 +846,8 @@ fn suggest_batch(
     let x_cand = build_training_matrix(&candidates, &param_order);
     let scores = evaluate_acquisition(acq_kind, &gp, &x_cand, best_scalarized, xi, beta);
 
-    let selected = dpp::k_dpp_sample(
-        &candidates,
-        scores.as_slice().unwrap(),
-        &param_order,
-        n_select,
-        seed,
-    );
+    let score_vec = scores.to_vec();
+    let selected = dpp::k_dpp_sample(&candidates, &score_vec, &param_order, n_select, seed);
 
     Ok(selected
         .into_iter()

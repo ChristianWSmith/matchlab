@@ -574,8 +574,12 @@ fn parse_optimize_args(args: &[String]) -> OptimizeArgs {
         match args[i].as_str() {
             "--json" => json_out = true,
             "--gp-threads" => {
-                i += 1;
-                gp_threads = args.get(i).and_then(|s| s.parse().ok());
+                if let Some(next) = args.get(i + 1) {
+                    if let Ok(n) = next.parse::<usize>() {
+                        gp_threads = Some(n);
+                        i += 1;
+                    }
+                }
             }
             p if !p.starts_with('-') => path = Some(p.to_string()),
             _ => {}
@@ -679,7 +683,11 @@ mod tests {
         let args = vec![s("--gp-threads"), s("config.yaml")];
         let parsed = parse_optimize_args(&args);
         assert!(parsed.gp_threads.is_none());
-        assert!(parsed.path.is_none(), "non-numeric value consumed as gp-threads value, no path left");
+        assert_eq!(
+            parsed.path.as_deref(),
+            Some("config.yaml"),
+            "non-numeric value should fall through to path"
+        );
     }
 
     #[test]
