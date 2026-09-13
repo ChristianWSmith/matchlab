@@ -55,7 +55,8 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
 
     local b
     if delta * delta > phi * phi + v then
-        b = math.log(delta * delta - phi * phi - v)
+        local arg = delta * delta - phi * phi - v
+        b = arg > 0.0 and math.log(arg) or a
     else
         local k = 1
         while big_f(a - k * tau) < 0.0 do
@@ -67,6 +68,7 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
 
     local fa = big_f(a)
     local fb = big_f(b)
+    if not (fa == fa) or not (fb == fb) then return sigma end
     local a_val = a
     local b_val = b
     local max_iter = 100
@@ -76,6 +78,7 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
         if math.abs(denom) < 1e-15 then break end
         local c = a_val + (a_val - b_val) * fa / denom
         local fc = big_f(c)
+        if not (fc == fc) then break end
         if fc * fb <= 0.0 then
             a_val = b_val
             fa = fb
@@ -86,8 +89,9 @@ function new_volatility(sigma, delta, phi, v, tau, epsilon)
         fb = fc
     end
 
-    -- Converged x = ln(sigma^2); sigma' = exp(x/2) = exp((a+b)/4).
-    return math.exp((a_val + b_val) / 4.0)
+    local result = math.exp((a_val + b_val) / 4.0)
+    if not (result == result) or result <= 0.0 then return sigma end
+    return result
 end
 
 function scale(rating, rd)
@@ -114,6 +118,9 @@ function update_player(mu, phi, sigma, opponents, epsilon, tau)
     local v = 1.0 / v_inv
     local delta = v * delta_numer
     local sigma_prime = new_volatility(sigma, delta, phi, v, tau, epsilon)
+    if not (sigma_prime == sigma_prime) or sigma_prime <= 0.0 then
+        sigma_prime = sigma
+    end
     local phi_star = math.sqrt(phi * phi + sigma_prime * sigma_prime)
     local phi_prime = 1.0 / math.sqrt(1.0 / (phi_star * phi_star) + 1.0 / v)
     local mu_prime = mu + phi_prime * phi_prime * delta_numer

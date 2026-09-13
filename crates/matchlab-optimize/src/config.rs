@@ -188,6 +188,17 @@ impl SearchSpace {
         }
         Ok(())
     }
+
+    pub fn resolve_value(&self, name: &str, val: f64) -> serde_yaml::Value {
+        match self.parameters.get(name) {
+            Some(ParameterSpec::Categorical { values }) => {
+                let idx = val.round() as usize;
+                let s = values.get(idx).unwrap_or(&values[0]);
+                serde_yaml::Value::String(s.clone())
+            }
+            _ => serde_yaml::Value::Number(serde_yaml::Number::from(val)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

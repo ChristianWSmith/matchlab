@@ -33,23 +33,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build
-        run: cargo build --workspace
-
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Check
-        run: cargo check --workspace
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
       - name: Rustfmt
         run: cargo fmt --all -- --check
 
-      - name: Smoke test
-        run: cargo run -- run experiments/v0_1_basic.yaml
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Validate experiment YAML files
         if: runner.os == 'Linux'
@@ -69,5 +57,14 @@ jobs:
           fi
           echo "All experiment YAML files validated"
 
+      - name: Build
+        run: cargo build --workspace
+
       - name: Check documentation builds
         run: cargo doc --workspace --no-deps
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Smoke test
+        run: cargo run -- run experiments/v0_1_basic.yaml
