@@ -14,7 +14,7 @@ use ndarray::{Array1, Array2};
 use rand::Rng;
 use rand::SeedableRng;
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
@@ -319,7 +319,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
     }
 
     let mut next_trial = initial_n;
-    let mut pending: Vec<BTreeMap<String, f64>> = Vec::new();
+    let mut pending_indices: HashSet<u64> = HashSet::new();
     let mut pending_count = 0usize;
     let mut consecutive_failures = 0u64;
 
@@ -345,7 +345,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
             config.seed + next_trial * SUGGEST_SEED_MULT,
         )?;
         for point in batch_points {
-            pending.push(point.clone());
+            pending_indices.insert(next_trial);
             dispatch_worker(
                 &base_config,
                 point,
@@ -377,7 +377,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                     config.seed + next_trial * SUGGEST_SEED_MULT,
                 )?
             };
-            pending.push(point.clone());
+            pending_indices.insert(next_trial);
             dispatch_worker(
                 &base_config,
                 point,
@@ -400,7 +400,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                 all_params.push(msg.point.clone());
                 all_trial_results.push(trial_result);
                 pareto.update(&all_objectives, &directions);
-                pending.retain(|p| p != &msg.point);
+                pending_indices.remove(&msg.trial_index);
                 maybe_write_checkpoint(
                     &config.output,
                     &config.name,
@@ -416,10 +416,10 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                 tracing::info!(trial = msg.trial_index + 1, best, "trial completed");
 
                 if next_trial < config.budget {
-                    let point = suggest_and_dispatch(
+                    suggest_and_dispatch(
                         &all_params,
                         &all_objectives,
-                        &pending,
+                        &pending_indices,
                         &config.search_space,
                         &param_indices,
                         &config.objectives,
@@ -429,14 +429,14 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                         &base_config,
                         &tx,
                     )?;
-                    pending.push(point);
+                    pending_indices.insert(next_trial);
                     next_trial += 1;
                     pending_count += 1;
                 }
             }
             Err(e) => {
                 consecutive_failures += 1;
-                pending.retain(|p| p != &msg.point);
+                pending_indices.remove(&msg.trial_index);
                 let max_failures = config.bo.max_consecutive_failures();
                 if consecutive_failures >= max_failures {
                     tracing::error!(
@@ -453,7 +453,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                     );
                 }
                 tracing::warn!(trial = msg.trial_index + 1, error = %e, "evaluation failed, retrying with random point");
-                let mut fallback_dispatched = false;
+                let mut fallback_index: Option<u64> = None;
                 if next_trial < config.budget {
                     let mut pts = random_sample(
                         &config.search_space,
@@ -461,7 +461,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                         config.seed + msg.trial_index * FALLBACK_SEED_MULT,
                     );
                     if let Some(rand_point) = pts.pop() {
-                        pending.push(rand_point.clone());
+                        pending_indices.insert(next_trial);
                         dispatch_worker(
                             &base_config,
                             rand_point,
@@ -470,22 +470,26 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                             config.seed + next_trial + FALLBACK_SEED_OFFSET,
                             &tx,
                         );
+                        fallback_index = Some(next_trial);
                         next_trial += 1;
                         pending_count += 1;
-                        fallback_dispatched = true;
                     }
                 }
 
                 if next_trial < config.budget {
-                    let pending_for_suggest = if fallback_dispatched && !pending.is_empty() {
-                        &pending[..pending.len() - 1]
+                    let pending_for_suggest: HashSet<u64> = if let Some(fi) = fallback_index {
+                        pending_indices
+                            .iter()
+                            .copied()
+                            .filter(|&i| i != fi)
+                            .collect()
                     } else {
-                        &pending
+                        pending_indices.clone()
                     };
-                    let point = suggest_and_dispatch(
+                    suggest_and_dispatch(
                         &all_params,
                         &all_objectives,
-                        pending_for_suggest,
+                        &pending_for_suggest,
                         &config.search_space,
                         &param_indices,
                         &config.objectives,
@@ -495,7 +499,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                         &base_config,
                         &tx,
                     )?;
-                    pending.push(point);
+                    pending_indices.insert(next_trial);
                     next_trial += 1;
                     pending_count += 1;
                 }
@@ -536,6 +540,10 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
 /// This is intentionally separate from the GP hyperparameter pool (gp.threads)
 /// to avoid contention between experiment evaluation and GP fitting.
 /// The CLI always sets gp.threads = Some(threads), so GP gets an isolated pool.
+///
+/// Safety: The main thread always waits for all workers via `rx.recv()` until
+/// `pending_count == 0`, which only happens after all `tx` clones are dropped.
+/// This guarantees the global rayon pool stays alive for the duration.
 fn dispatch_worker(
     base_config: &ExperimentConfig,
     point: BTreeMap<String, f64>,
@@ -564,7 +572,7 @@ fn dispatch_worker(
 fn suggest_next_point_with_pending(
     all_params: &[BTreeMap<String, f64>],
     all_objectives: &[Vec<f64>],
-    pending: &[BTreeMap<String, f64>],
+    pending_indices: &HashSet<u64>,
     space: &crate::config::SearchSpace,
     indices: &ParamIndices,
     objectives: &[ObjectiveSpec],
@@ -578,60 +586,68 @@ fn suggest_next_point_with_pending(
     let mut augmented_params = all_params.to_vec();
     let mut augmented_objectives = all_objectives.to_vec();
 
-    if !pending.is_empty() && !all_params.is_empty() {
-        let x_train = build_training_matrix(all_params, &param_order);
-        let directions: Vec<bool> = objectives
+    if !pending_indices.is_empty() && !all_params.is_empty() {
+        let pending_points: Vec<BTreeMap<String, f64>> = pending_indices
             .iter()
-            .map(|o| o.direction == Direction::Maximize)
+            .filter_map(|&idx| all_params.get(idx as usize).cloned())
             .collect();
+        if !pending_points.is_empty() {
+            let x_train = build_training_matrix(all_params, &param_order);
+            let directions: Vec<bool> = objectives
+                .iter()
+                .map(|o| o.direction == Direction::Maximize)
+                .collect();
 
-        let y_train = if n_obj == 1 {
-            build_single_objective(all_objectives, 0, directions[0])
-        } else {
-            let weights = parego_weights(n_obj, seed);
-            let eta = bo.eta();
-            build_scalarized_objective(all_objectives, &weights, &directions, eta)
-        };
+            let y_train = if n_obj == 1 {
+                build_single_objective(all_objectives, 0, directions[0])
+            } else {
+                let weights = parego_weights(n_obj, seed);
+                let eta = bo.eta();
+                build_scalarized_objective(all_objectives, &weights, &directions, eta)
+            };
 
-        let gp_cfg = gp_config_from_bo(bo);
-        if let Ok(params_gp) = GaussianProcess::optimize_hyperparameters_with_config(
-            &x_train,
-            &y_train,
-            &indices.cont,
-            &indices.cat,
-            &indices.cat_n_levels,
-            kernel_kind,
-            seed,
-            &gp_cfg,
-        ) {
-            if let Ok(gp) = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont) {
-                let x_pending = build_training_matrix(pending, &param_order);
-                let (fantasy_means, _) = gp.predict(&x_pending);
-                for (i, point) in pending.iter().enumerate() {
-                    augmented_params.push(point.clone());
-                    if n_obj == 1 {
-                        let maximize = objectives[0].direction == Direction::Maximize;
-                        let val = if maximize {
-                            fantasy_means[i]
+            let gp_cfg = gp_config_from_bo(bo);
+            if let Ok(params_gp) = GaussianProcess::optimize_hyperparameters_with_config(
+                &x_train,
+                &y_train,
+                &indices.cont,
+                &indices.cat,
+                &indices.cat_n_levels,
+                kernel_kind,
+                seed,
+                &gp_cfg,
+            ) {
+                if let Ok(gp) = GaussianProcess::fit(&x_train, &y_train, &params_gp, &indices.cont)
+                {
+                    let x_pending = build_training_matrix(&pending_points, &param_order);
+                    let (fantasy_means, _) = gp.predict(&x_pending);
+                    for (i, point) in pending_points.iter().enumerate() {
+                        augmented_params.push(point.clone());
+                        if n_obj == 1 {
+                            let maximize = objectives[0].direction == Direction::Maximize;
+                            let val = if maximize {
+                                fantasy_means[i]
+                            } else {
+                                -fantasy_means[i]
+                            };
+                            augmented_objectives.push(vec![val]);
                         } else {
-                            -fantasy_means[i]
-                        };
-                        augmented_objectives.push(vec![val]);
-                    } else {
-                        let fantasy_obj: Vec<f64> = directions
-                            .iter()
-                            .map(|&maximize| {
-                                if maximize {
-                                    fantasy_means[i]
-                                } else {
-                                    -fantasy_means[i]
-                                }
-                            })
-                            .collect();
-                        let weights = parego_weights(n_obj, seed + i as u64);
-                        let eta = bo.eta();
-                        let scalarized = parego_scalarize(&fantasy_obj, &weights, &directions, eta);
-                        augmented_objectives.push(vec![scalarized]);
+                            let fantasy_obj: Vec<f64> = directions
+                                .iter()
+                                .map(|&maximize| {
+                                    if maximize {
+                                        fantasy_means[i]
+                                    } else {
+                                        -fantasy_means[i]
+                                    }
+                                })
+                                .collect();
+                            let weights = parego_weights(n_obj, seed + i as u64);
+                            let eta = bo.eta();
+                            let scalarized =
+                                parego_scalarize(&fantasy_obj, &weights, &directions, eta);
+                            augmented_objectives.push(vec![scalarized]);
+                        }
                     }
                 }
             }
@@ -653,7 +669,7 @@ fn suggest_next_point_with_pending(
 fn suggest_and_dispatch(
     all_params: &[BTreeMap<String, f64>],
     all_objectives: &[Vec<f64>],
-    pending: &[BTreeMap<String, f64>],
+    pending_indices: &HashSet<u64>,
     space: &crate::config::SearchSpace,
     indices: &ParamIndices,
     objectives: &[ObjectiveSpec],
@@ -670,7 +686,7 @@ fn suggest_and_dispatch(
         suggest_next_point_with_pending(
             all_params,
             all_objectives,
-            pending,
+            pending_indices,
             space,
             indices,
             objectives,
@@ -1408,9 +1424,8 @@ bo:
         let all_params = vec![params];
         let all_objectives = vec![vec![0.8]];
 
-        let mut pending_params = BTreeMap::new();
-        pending_params.insert("x".to_string(), 0.7);
-        let pending = vec![pending_params];
+        let mut pending_indices = HashSet::new();
+        pending_indices.insert(0);
 
         let mut parameters = BTreeMap::new();
         parameters.insert(
@@ -1435,7 +1450,7 @@ bo:
         let result = suggest_next_point_with_pending(
             &all_params,
             &all_objectives,
-            &pending,
+            &pending_indices,
             &space,
             &indices,
             &objectives,

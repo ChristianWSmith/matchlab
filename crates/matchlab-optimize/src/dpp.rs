@@ -64,8 +64,17 @@ fn compute_rbf_similarity(x: &Array2<f64>) -> Array2<f64> {
         }
     }
 
-    let sample_limit = sq_dists.len().min(200 * 199 / 2);
-    let mut sample = sq_dists[..sample_limit].to_vec();
+    // Compute median squared distance for RBF bandwidth.
+    // For small n (≤1000 candidates, ≤~500K pairs), sort all distances directly.
+    // For large n, sample the first 200*(200-1)/2 ≈ 19900 pairs — candidates come from
+    // random_candidates (uniform random), so early pairs are an unbiased sample.
+    let total_pairs = sq_dists.len();
+    let sample_limit = total_pairs.min(200 * 199 / 2);
+    let mut sample = if total_pairs <= 200 * 199 / 2 {
+        sq_dists.clone()
+    } else {
+        sq_dists[..sample_limit].to_vec()
+    };
     sample.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = sample
         .get(sample.len() / 2)
@@ -108,6 +117,11 @@ fn sequential_greedy_dpp(
                 continue;
             }
 
+            // diversity_penalty shrinks when the candidate is similar to already-selected items.
+            // If it underflows to 0.0, the floor makes it 1e-10 — effectively "pick randomly
+            // among the remaining" since the score contribution becomes negligible. This is
+            // intentional: a candidate too similar to everything selected should not be chosen
+            // for diversity, but we still need a winner.
             let mut diversity_penalty = 1.0;
             for &s in &selected {
                 diversity_penalty *= 1.0 - similarity[[j, s]];

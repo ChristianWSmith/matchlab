@@ -171,8 +171,8 @@ impl GaussianProcess {
         };
 
         // Phase 1: parallel random restarts for coarse exploration.
-        // Seed layout: phase 1 uses seed + i * 1000, phase 2 uses seed + i * 2000 + 50_000.
-        // Safe as long as phase1_restarts < 50_000 / 1000 = 50 (well above typical usage).
+        // Seed layout: phase 1 uses seed + i * 100, phase 2 uses seed + i * 100 + 10_000_000.
+        // The 10M gap is safe for up to 100,000 phase-1 restarts.
         let phase1_n = gp_config.phase1_restarts;
         let phase1_results: Vec<(KernelParams, f64)> = if let Some(n_threads) = gp_config.threads {
             let pool = rayon::ThreadPoolBuilder::new()
@@ -182,13 +182,13 @@ impl GaussianProcess {
             pool.install(|| {
                 (0..phase1_n)
                     .into_par_iter()
-                    .map(|i| run_phase1(seed.wrapping_add(i * 1000)))
+                    .map(|i| run_phase1(seed.wrapping_add(i * 100)))
                     .collect()
             })
         } else {
             (0..phase1_n)
                 .into_par_iter()
-                .map(|i| run_phase1(seed.wrapping_add(i * 1000)))
+                .map(|i| run_phase1(seed.wrapping_add(i * 100)))
                 .collect()
         };
 
@@ -258,13 +258,13 @@ impl GaussianProcess {
             pool.install(|| {
                 (0..phase2_n)
                     .into_par_iter()
-                    .map(|i| run_phase2(seed.wrapping_add(i * 2000 + 50_000), &best_params))
+                    .map(|i| run_phase2(seed.wrapping_add(i * 100 + 10_000_000), &best_params))
                     .collect()
             })
         } else {
             (0..phase2_n)
                 .into_par_iter()
-                .map(|i| run_phase2(seed.wrapping_add(i * 2000 + 50_000), &best_params))
+                .map(|i| run_phase2(seed.wrapping_add(i * 100 + 10_000_000), &best_params))
                 .collect()
         };
 
