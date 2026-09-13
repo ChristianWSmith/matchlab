@@ -12,7 +12,8 @@ pub struct Summary {
     pub stddev: f64,
 }
 pub fn summary(values: &[f64]) -> Summary {
-    if values.is_empty() {
+    let valid: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if valid.is_empty() {
         return Summary {
             n: 0,
             mean: 0.0,
@@ -24,10 +25,10 @@ pub fn summary(values: &[f64]) -> Summary {
             stddev: 0.0,
         };
     }
-    let mut sorted = values.to_vec();
+    let mut sorted = valid.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
+    let mean = valid.iter().sum::<f64>() / valid.len() as f64;
+    let var = valid.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / valid.len() as f64;
     Summary {
         n: values.len(),
         mean,
