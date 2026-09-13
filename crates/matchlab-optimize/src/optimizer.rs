@@ -1,6 +1,7 @@
 use crate::acquisition::{AcquisitionKind, evaluate_acquisition, parego_scalarize, parego_weights};
 use crate::config::{
-    BoConfig, Direction, ObjectiveSpec, OptConfig, OptimizationResult, ParameterSpec, TrialResult,
+    BoConfig, Direction, ObjectiveSpec, OptConfig, OptimizationResult, ParameterSpec, SearchSpace,
+    TrialResult,
 };
 use crate::dpp;
 use crate::gp::{GaussianProcess, GpConfig};
@@ -79,6 +80,7 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
             let result = evaluate_point(
                 &base_config,
                 point,
+                &config.search_space,
                 &config.objectives,
                 trial_idx,
                 config.seed + trial_idx,
@@ -148,6 +150,7 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
         match evaluate_point(
             &base_config,
             &next_point,
+            &config.search_space,
             &config.objectives,
             trial_idx,
             config.seed + trial_idx,
@@ -194,6 +197,7 @@ fn optimize_sequential(config: &OptConfig) -> Result<OptimizationResult, String>
                     if let Ok((obj_vals, trial_result)) = evaluate_point(
                         &base_config,
                         &rand_point,
+                        &config.search_space,
                         &config.objectives,
                         trial_idx,
                         config.seed + trial_idx + FALLBACK_SEED_OFFSET,
@@ -280,6 +284,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
             let result = evaluate_point(
                 &base_config,
                 point,
+                &config.search_space,
                 &config.objectives,
                 trial_idx,
                 config.seed + trial_idx,
@@ -349,6 +354,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
             dispatch_worker(
                 &base_config,
                 point,
+                &config.search_space,
                 &config.objectives,
                 next_trial,
                 config.seed + next_trial,
@@ -381,6 +387,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
             dispatch_worker(
                 &base_config,
                 point,
+                &config.search_space,
                 &config.objectives,
                 next_trial,
                 config.seed + next_trial,
@@ -465,6 +472,7 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
                         dispatch_worker(
                             &base_config,
                             rand_point,
+                            &config.search_space,
                             &config.objectives,
                             next_trial,
                             config.seed + next_trial + FALLBACK_SEED_OFFSET,
@@ -547,17 +555,19 @@ fn optimize_async(config: &OptConfig, threads: usize) -> Result<OptimizationResu
 fn dispatch_worker(
     base_config: &ExperimentConfig,
     point: BTreeMap<String, f64>,
+    search_space: &SearchSpace,
     objectives: &[ObjectiveSpec],
     trial_index: u64,
     seed: u64,
     tx: &mpsc::Sender<WorkerMessage>,
 ) {
     let config = base_config.clone();
+    let search_space = search_space.clone();
     let objectives = objectives.to_vec();
     let tx = tx.clone();
     rayon::spawn(move || {
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            evaluate_point(&config, &point, &objectives, trial_index, seed)
+            evaluate_point(&config, &point, &search_space, &objectives, trial_index, seed)
         }))
         .unwrap_or_else(|_| Err(format!("worker panic on trial {trial_index}")));
         let _ = tx.send(WorkerMessage {
@@ -697,6 +707,7 @@ fn suggest_and_dispatch(
     dispatch_worker(
         base_config,
         point.clone(),
+        space,
         objectives,
         next_trial,
         seed + next_trial,
@@ -975,6 +986,7 @@ fn random_candidates(
 fn evaluate_point(
     base_config: &ExperimentConfig,
     point: &BTreeMap<String, f64>,
+    search_space: &SearchSpace,
     objectives: &[ObjectiveSpec],
     trial_index: u64,
     seed: u64,
@@ -983,7 +995,8 @@ fn evaluate_point(
     config.experiment.seed = seed;
 
     for (name, &val) in point {
-        apply_parameter(&mut config, name, val);
+        let yaml_val = search_space.resolve_value(name, val);
+        matchlab_experiments::factorial::set_nested_value(&mut config, name, yaml_val);
     }
 
     let result = ExperimentRunner::run(&config)?;
@@ -996,7 +1009,7 @@ fn evaluate_point(
     let params_yaml: BTreeMap<String, serde_yaml::Value> = point
         .iter()
         .map(|(k, &v)| {
-            let yaml_val = serde_yaml::Value::Number(serde_yaml::Number::from(v));
+            let yaml_val = search_space.resolve_value(k, v);
             (k.clone(), yaml_val)
         })
         .collect();
@@ -1011,11 +1024,6 @@ fn evaluate_point(
     };
 
     Ok((obj_vals, trial))
-}
-
-fn apply_parameter(config: &mut ExperimentConfig, path: &str, val: f64) {
-    let yaml_val = serde_yaml::Value::Number(serde_yaml::Number::from(val));
-    matchlab_experiments::factorial::set_nested_value(config, path, yaml_val);
 }
 
 fn extract_metric_value(
