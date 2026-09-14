@@ -277,8 +277,8 @@ experiment:
     max_queue_time: 60.0
 
   rating:
-    systems:
-      - script: plugins/rating/elo.lua
+    system:
+      script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
@@ -318,8 +318,8 @@ experiment:
   name: glicko_comparison        # everything from base/standard.yaml
                                  # is inherited except what you override:
   rating:
-    systems:
-      - script: plugins/rating/glicko2.lua
+    system:
+      script: plugins/rating/glicko2.lua
 ```
 
 The shipped `experiments/base/standard.yaml` defines a mixed population of
@@ -417,7 +417,7 @@ the full plugin API contract, see [`docs/plugin-api.md`](docs/plugin-api.md).
 | `elo.lua` | Classic Elo on a logistic scale (`divisor = β·ln 10`) consistent with the game model | `k_factor`, `initial_rating`, `beta` |
 | `glicko2.lua` | Full Glicko-2 (Glickman 2012): RD plus volatility, Newton–Raphson iteration. Verified against the paper's worked example (r′=1464.06, RD′=151.52, σ′=0.05999) | `initial_rating`, `initial_rd`, `initial_volatility`, `tau`, `epsilon` |
 | `trueskill.lua` | TrueSkill (Herbrich, Minka, Graepel): each player is N(μ, σ²), truncated-Gaussian conditioning with draw margin | `initial_mean`, `initial_variance`, `beta`, `dynamics`, `draw_probability` |
-| `flat.lua` | Fixed points for a win/loss — a baseline that shows why adaptive systems are needed | `win_points`, `loss_points`, `initial_rating` |
+| `flatpoints.lua` | Fixed points for a win/loss — a baseline that shows why adaptive systems are needed | `win_points`, `loss_points`, `initial_rating` |
 | `decay_elo.lua` | **Novel, no Rust equivalent.** Elo plus idle decay: absent players drift back toward the initial rating | `k_factor`, `initial_rating`, `beta`, `decay_rate` |
 | `bradley_terry.lua` | Bradley-Terry pairwise comparison model: P(i>j) = sigmoid(r_i - r_j) | `initial_rating`, `learning_rate` |
 | `thurstone.lua` | Thurstone-Mosteller: P(i>j) = Φ((μ_i - μ_j)/√(σ_i² + σ_j²)) | `initial_rating`, `initial_sigma`, `learning_rate` |
@@ -714,10 +714,10 @@ budget: 50
 
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.systems.0.name:
+    experiment.rating.system.name:
       type: categorical
       values: [elo, glicko2, trueskill]
 

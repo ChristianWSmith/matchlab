@@ -45,11 +45,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [match_quality, rating_accuracy]
   cohorts: []
   duration:
@@ -98,7 +98,7 @@ fn run_experiment() -> matchlab_experiments::ExperimentResult {
         &mut matchlab_core::rng::SimRng::from_seed(seeds.population_seed),
     );
     let population = pop.0.into_iter().zip(pop.1).collect();
-    let rating = registry::from_name(
+    let rating = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )
@@ -302,11 +302,11 @@ experiment:
     batch_interval: 1
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [rating_accuracy]
   cohorts: []
   duration:

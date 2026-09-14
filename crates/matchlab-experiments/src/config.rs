@@ -140,7 +140,7 @@ fn default_matchmaker_script() -> String {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RatingSpec {
-    pub systems: Vec<RatingSystemSpec>,
+    pub system: RatingSystemSpec,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RatingSystemSpec {
@@ -332,11 +332,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -375,13 +375,15 @@ experiment:
             .get("batch_interval")
             .and_then(|v| v.as_u64());
         assert_eq!(batch, Some(10));
-        assert_eq!(config.experiment.rating.systems.len(), 1);
         assert_eq!(
-            config.experiment.rating.systems[0].name,
+            config.experiment.rating.system.name,
             Some("elo".to_string())
         );
         assert_eq!(
-            config.experiment.rating.systems[0]
+            config
+                .experiment
+                .rating
+                .system
                 .params
                 .get("k_factor")
                 .and_then(|v| v.as_f64()),
@@ -422,11 +424,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics:
     - match_quality
   cohorts: []
@@ -474,11 +476,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [match_quality]
   cohorts: []
   duration:
@@ -532,11 +534,11 @@ experiment:
     max_queue_time: 60.0
     tiers: [[5.0, 25.0], [10.0, 50.0]]
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   detection:
     enabled: true
     script: plugins/detection/smurf.lua
@@ -631,11 +633,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: []
   cohorts: []
   duration:

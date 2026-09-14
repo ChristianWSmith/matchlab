@@ -97,7 +97,7 @@ A "smurf" is not a player type or boolean flag — it is the combination of high
 
 Every algorithm is a trait implementation, and every implementation is a Lua
 script under `plugins/` (there are no inherent Rust algorithms):
-- `RatingSystem` (trait) — `plugins/rating/` (elo, glicko2, trueskill, flat, …)
+- `RatingSystem` (trait) — `plugins/rating/` (elo, glicko2, trueskill, flatpoints, …)
 - `OutcomeModel` (trait) — `plugins/game/` (logistic, variance, composition, …)
 - `Matchmaker` (trait) — `plugins/matchmaking/` (batch, expanding_window, …)
 - `MetricCollector` (trait) — `plugins/metrics/` (one script per metric)
@@ -220,17 +220,20 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
   `plugins/<layer>/` implementing a per-layer contract (see each crate's
   `lua.rs`). Rust holds the types, the event loop, and thin
   trait adapters (`*::lua::Lua*System`); there are **no inherent Rust
-  algorithms**. Manifests reference systems by `script:` path. Scripts receive
-  `config` (YAML params) + a persistent `context` table (passed by reference,
-  stored in the VM) and may draw deterministically via `matchlab.rng_*`.
+  algorithms**. Manifests reference systems by `script:` — bare names like
+  `elo` resolve via filesystem to `plugins/rating/elo.lua`; full paths also
+  work. Scripts receive `config` (YAML params) + a persistent `context` table
+  (passed by reference, stored in the VM) and may draw deterministically via
+  `matchlab.rng_*`.
 - **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`
   via `matchlab.rng_*`. Scripts receive only observable data, never
   `PlayerReality` (the outcome model and metric scripts get the ground-truth
   skill binding / reality fields — metrics are the legitimate reality reader).
-- **Adding a system** = writing one `.lua` file implementing the layer's
-  contract and referencing it by path (or by `name:` for built-in rating
-  systems, which maps to a script). See `plugins/rating/decay_elo.lua` and
-  `plugins/metrics/avg_rating_gap.lua` for examples with no Rust equivalent.
+- **Adding a system** = writing one `.lua` file in the appropriate `plugins/`
+  directory and referencing it by name or path in the YAML manifest. The
+  filesystem is the registry — no Rust code changes are needed. See
+  `plugins/rating/decay_elo.lua` and `plugins/metrics/avg_rating_gap.lua`
+  for examples with no Rust equivalent.
 
 ---
 
@@ -240,7 +243,7 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
 |------|---------|
 | Core types (PlayerReality, World, etc.) | `crates/matchlab-core/src/` |
 | How events flow | `crates/matchlab-core/src/event.rs`, `src/lib.rs` (Simulation) |
-| Rating algorithm scripts | `plugins/rating/` (elo, flat, glicko2, trueskill, decay_elo) |
+| Rating algorithm scripts | `plugins/rating/` (elo, flatpoints, glicko2, trueskill, decay_elo) |
 | Matchmaker scripts | `plugins/matchmaking/` (batch, expanding_window, strict, hub_spoke) |
 | Metric collector scripts | `plugins/metrics/` (one per metric, incl. custom) |
 | Lua system contracts + adapter | `crates/matchlab-{trait}/src/lua.rs`, `crates/matchlab-lua/src/` |

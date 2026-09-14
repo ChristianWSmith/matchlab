@@ -231,23 +231,26 @@ end
 return M
 ```
 
-### Step 2: Register the metric
+### Step 2: Reference in manifest
 
-Add the metric name to the registry in `crates/matchlab-metrics/src/lua.rs`:
-
-```rust
-"my_metric" => "plugins/metrics/my_metric.lua",
-```
-
-### Step 3: Reference in manifest
+Place the script under `plugins/metrics/` and reference it by name:
 
 ```yaml
 metrics:
-  collectors:
-    - my_metric
+  - my_metric
 ```
 
-### Step 4: Test
+Or by full path for scripts outside the metrics directory:
+
+```yaml
+metrics:
+  - script: plugins/metrics/my_metric.lua
+    param1: value
+```
+
+No Rust code changes are needed — the filesystem is the registry.
+
+### Step 3: Test
 
 ```bash
 cargo test -p matchlab-metrics

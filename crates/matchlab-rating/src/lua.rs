@@ -19,7 +19,12 @@ pub struct LuaRatingSystem {
 }
 impl LuaRatingSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
-        let vm = LuaVm::load(path, params, &["initialize", "predict", "update"])?;
+        let vm = LuaVm::load_with_plugin_dir(
+            path,
+            params,
+            &["initialize", "predict", "update"],
+            "plugins/rating",
+        )?;
         let budget = vm
             .get_global::<Vec<String>>("information_budget")?
             .map(|names| names.iter().filter_map(|n| observation_type(n)).collect())
@@ -286,7 +291,7 @@ mod tests {
     #[test]
     fn flat_fixed_points() {
         let sys = LuaRatingSystem::load(
-            "plugins/rating/flat.lua",
+            "plugins/rating/flatpoints.lua",
             &params("win_points: 10.0\nloss_points: 10.0\ninitial_rating: 1000.0"),
         )
         .unwrap();

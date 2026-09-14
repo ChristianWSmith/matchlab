@@ -120,7 +120,7 @@ fn counterfactual_replay_matches_live_ratings() {
     let config = elo_config("det_cf", 42, 200, 500);
     let (_result, history) = ExperimentRunner::run_recording(&config, true).expect("recording run");
     let history = history.expect("history when recording");
-    let elo_system_for_cf = registry::from_name(
+    let elo_system_for_cf = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )
@@ -139,7 +139,7 @@ fn counterfactual_replay_matches_live_ratings() {
             "replay rating for player {pid} must be finite"
         );
     }
-    let elo_system_for_cf2 = registry::from_name(
+    let elo_system_for_cf2 = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )

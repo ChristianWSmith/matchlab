@@ -86,7 +86,7 @@ fn loop_level_winloss_sanitizes_rating_result() {
 #[test]
 fn loop_level_queue_snapshot_is_observations_only() {
     let metrics = MetricsEngine::new();
-    let rating = registry::from_name("elo", &elo_params()).expect("elo loads");
+    let rating = registry::from_script("elo", &elo_params()).expect("elo loads");
     let matchmaker =
         LuaMatchmaker::load("plugins/_test/spy_matchmaker.lua", &serde_yaml::Value::Null)
             .expect("spy matchmaker loads");
@@ -107,7 +107,7 @@ fn metric_snapshot_carries_ground_truth() {
         LuaMetricCollector::load("plugins/_test/spy_collector.lua", &serde_yaml::Value::Null)
             .expect("spy collector loads"),
     ));
-    let rating = registry::from_name("elo", &elo_params()).expect("elo loads");
+    let rating = registry::from_script("elo", &elo_params()).expect("elo loads");
     let matchmaker = LuaMatchmaker::load("plugins/matchmaking/batch.lua", &serde_yaml::Value::Null)
         .expect("batch loads");
     let mut loop_ = build_loop(rating, Box::new(matchmaker), metrics, 6, 9);

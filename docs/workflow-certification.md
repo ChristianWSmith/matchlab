@@ -100,11 +100,11 @@ experiment:
     max_queue_time: 60.0
 
   rating:
-    systems:
-      - script: plugins/rating/elo.lua
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      script: plugins/rating/elo.lua
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
 
   metrics:
     - match_quality
@@ -134,11 +134,11 @@ study:
       overrides: {}
     - name: glicko2
       overrides:
-        experiment.rating.systems.0.script: plugins/rating/glicko2.lua
-        experiment.rating.systems.0.initial_rating: 1000.0
-        experiment.rating.systems.0.initial_rd: 350.0
-        experiment.rating.systems.0.initial_volatility: 0.06
-        experiment.rating.systems.0.tau: 0.5
+        experiment.rating.system.script: plugins/rating/glicko2.lua
+        experiment.rating.system.initial_rating: 1000.0
+        experiment.rating.system.initial_rd: 350.0
+        experiment.rating.system.initial_volatility: 0.06
+        experiment.rating.system.tau: 0.5
   replication:
     count: 50
     strategy: crn

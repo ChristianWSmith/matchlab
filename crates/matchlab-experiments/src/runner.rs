@@ -6,7 +6,6 @@
 //! metric collectors into an `ExperimentResult`.
 use crate::config::{
     ArchetypeSpec, DistributionSpec, ExperimentConfig, GameSpec, MatchmakingSpec, RankingSpec,
-    RatingSystemSpec,
 };
 use crate::seed::{SeedManager, git_commit_hash, hash_config};
 use matchlab_core::match_::TeamComposition;
@@ -59,9 +58,9 @@ impl ExperimentRunner {
         );
         let population = generate_population(&config.experiment.population, seeds.population_seed);
         tracing::info!(size = population.len(), "population generated");
-        let rating_system = build_rating_system(&config.experiment.rating.systems)?;
+        let rating_system = build_rating_system(&config.experiment.rating.system)?;
         tracing::info!(
-            name = %config.experiment.rating.systems.first().and_then(|s| s.name.as_deref()).unwrap_or("custom"),
+            name = %config.experiment.rating.system.name.as_deref().unwrap_or("custom"),
             "rating system loaded"
         );
         let outcome_model = build_outcome_model(&config.experiment.game)?;
@@ -206,20 +205,15 @@ fn to_players_archetype(spec: &ArchetypeSpec) -> ArchetypeConfig {
     }
 }
 pub(crate) fn build_rating_system(
-    systems: &[RatingSystemSpec],
+    spec: &crate::config::RatingSystemSpec,
 ) -> Result<Box<dyn RatingSystem>, String> {
-    let spec = match systems.first() {
-        Some(s) => s,
-        None => return Err("rating.systems must declare at least one system".to_string()),
-    };
     let params = flatten_params(&spec.params);
-    if let Some(name) = &spec.name {
-        registry::from_name(name, &params)
-    } else if let Some(script) = &spec.script {
-        registry::from_script(script, &params)
-    } else {
-        Err("rating system must declare a `name` or `script`".to_string())
-    }
+    let script = spec
+        .script
+        .as_deref()
+        .or(spec.name.as_deref())
+        .ok_or_else(|| "rating system must declare a `name` or `script`".to_string())?;
+    registry::from_script(script, &params)
 }
 fn flatten_params(
     params: &std::collections::BTreeMap<String, serde_yaml::Value>,
@@ -258,10 +252,7 @@ pub(crate) fn register_metrics(
 ) -> Result<(), String> {
     for entry in entries {
         let (path, params) = match entry {
-            crate::config::MetricEntry::Name(name) => (
-                format!("plugins/metrics/{name}.lua"),
-                serde_yaml::Value::Null,
-            ),
+            crate::config::MetricEntry::Name(name) => (name.clone(), serde_yaml::Value::Null),
             crate::config::MetricEntry::Script { script, params } => {
                 let mut mapping = serde_yaml::Mapping::new();
                 for (k, v) in params {
@@ -398,11 +389,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - script: plugins/rating/elo.lua
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      script: plugins/rating/elo.lua
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -448,8 +439,8 @@ experiment:
     #[test]
     fn unknown_rating_system_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems[0].name = Some("bogus".to_string());
-        config.experiment.rating.systems[0].script = None;
+        config.experiment.rating.system.name = Some("bogus".to_string());
+        config.experiment.rating.system.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
@@ -462,9 +453,10 @@ experiment:
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
-    fn empty_rating_systems_is_rejected() {
+    fn rating_system_without_name_or_script_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems.clear();
+        config.experiment.rating.system.name = None;
+        config.experiment.rating.system.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]

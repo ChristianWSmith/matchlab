@@ -43,7 +43,7 @@ fn run_loop(
     noise: f64,
     max_matches: u64,
 ) -> (u64, HashMap<String, MetricResult>) {
-    let rating = registry::from_name("elo", &elo_params()).expect("elo loads");
+    let rating = registry::from_script("elo", &elo_params()).expect("elo loads");
     let outcome = LuaOutcomeModel::load(
         "plugins/game/logistic.lua",
         &params(&format!("beta: 400.0\nnoise: {noise}")),

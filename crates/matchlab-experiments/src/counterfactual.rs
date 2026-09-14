@@ -244,7 +244,8 @@ mod tests {
         let params =
             serde_yaml::from_str("win_points: 10.0\nloss_points: 10.0\ninitial_rating: 1000.0")
                 .unwrap();
-        registry::from_script("plugins/rating/flat.lua", &params).expect("flat.lua loads")
+        registry::from_script("plugins/rating/flatpoints.lua", &params)
+            .expect("flatpoints.lua loads")
     }
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
@@ -374,11 +375,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [rating_accuracy]
   cohorts: []
   duration:

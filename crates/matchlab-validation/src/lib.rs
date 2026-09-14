@@ -181,11 +181,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [{metrics_list}]
   cohorts: []
   duration:
@@ -254,11 +254,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics: [{metrics_list}]
   cohorts: []
   duration:
@@ -328,7 +328,7 @@ pub fn build_loop_full(
     matchmaker_script: &str,
     matchmaker_params: &str,
 ) -> MatchLoop {
-    let rating = registry::from_name("elo", &elo_params()).expect("elo loads");
+    let rating = registry::from_script("elo", &elo_params()).expect("elo loads");
     let outcome = LuaOutcomeModel::load(
         game_script,
         &serde_yaml::from_str(game_params).expect("valid game params"),

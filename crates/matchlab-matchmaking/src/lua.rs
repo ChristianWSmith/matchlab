@@ -21,7 +21,8 @@ pub struct LuaMatchmaker {
 }
 impl LuaMatchmaker {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
-        let vm = LuaVm::load(path, params, &["find_matches"])?;
+        let vm =
+            LuaVm::load_with_plugin_dir(path, params, &["find_matches"], "plugins/matchmaking")?;
         tracing::info!(script = %vm.script_path(), "matchmaker loaded");
         Ok(Self { vm })
     }
