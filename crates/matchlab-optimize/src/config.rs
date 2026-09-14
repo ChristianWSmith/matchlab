@@ -305,10 +305,10 @@ seed: 42
 budget: 20
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.systems.0.name:
+    experiment.rating.system.name:
       type: categorical
       values: [elo, glicko2]
 objectives:
@@ -407,7 +407,7 @@ seed: 1
 budget: 10
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [100.0, 1.0]
 objectives:
@@ -427,7 +427,7 @@ seed: 1
 budget: 10
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [5.0, 5.0]
 objectives:
@@ -447,7 +447,7 @@ seed: 1
 budget: 10
 search_space:
   parameters:
-    experiment.rating.systems.0.name:
+    experiment.rating.system.name:
       type: categorical
       values: []
 objectives:
@@ -467,10 +467,10 @@ seed: 1
 budget: 10
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.systems.0.name:
+    experiment.rating.system.name:
       type: categorical
       values: [elo, glicko2]
 objectives:

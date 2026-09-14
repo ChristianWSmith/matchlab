@@ -6,7 +6,6 @@
 //! metric collectors into an `ExperimentResult`.
 use crate::config::{
     ArchetypeSpec, DistributionSpec, ExperimentConfig, GameSpec, MatchmakingSpec, RankingSpec,
-    RatingSystemSpec,
 };
 use crate::seed::{SeedManager, git_commit_hash, hash_config};
 use matchlab_core::match_::TeamComposition;
@@ -59,9 +58,9 @@ impl ExperimentRunner {
         );
         let population = generate_population(&config.experiment.population, seeds.population_seed);
         tracing::info!(size = population.len(), "population generated");
-        let rating_system = build_rating_system(&config.experiment.rating.systems)?;
+        let rating_system = build_rating_system(&config.experiment.rating.system)?;
         tracing::info!(
-            name = %config.experiment.rating.systems.first().and_then(|s| s.name.as_deref()).unwrap_or("custom"),
+            name = %config.experiment.rating.system.name.as_deref().unwrap_or("custom"),
             "rating system loaded"
         );
         let outcome_model = build_outcome_model(&config.experiment.game)?;
@@ -206,24 +205,8 @@ fn to_players_archetype(spec: &ArchetypeSpec) -> ArchetypeConfig {
     }
 }
 pub(crate) fn build_rating_system(
-    systems: &[RatingSystemSpec],
+    spec: &crate::config::RatingSystemSpec,
 ) -> Result<Box<dyn RatingSystem>, String> {
-    let spec = match systems.first() {
-        Some(s) => s,
-        None => return Err("rating.systems must declare at least one system".to_string()),
-    };
-    if systems.len() > 1 {
-        let name = spec
-            .name
-            .as_deref()
-            .or(spec.script.as_deref())
-            .unwrap_or("?");
-        tracing::warn!(
-            count = systems.len(),
-            first = name,
-            "rating.systems has multiple entries but only the first will be used"
-        );
-    }
     let params = flatten_params(&spec.params);
     let script = spec
         .script
@@ -406,11 +389,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - script: plugins/rating/elo.lua
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      script: plugins/rating/elo.lua
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -456,8 +439,8 @@ experiment:
     #[test]
     fn unknown_rating_system_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems[0].name = Some("bogus".to_string());
-        config.experiment.rating.systems[0].script = None;
+        config.experiment.rating.system.name = Some("bogus".to_string());
+        config.experiment.rating.system.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
@@ -470,9 +453,10 @@ experiment:
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
-    fn empty_rating_systems_is_rejected() {
+    fn rating_system_without_name_or_script_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.systems.clear();
+        config.experiment.rating.system.name = None;
+        config.experiment.rating.system.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]

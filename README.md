@@ -277,8 +277,8 @@ experiment:
     max_queue_time: 60.0
 
   rating:
-    systems:
-      - script: plugins/rating/elo.lua
+    system:
+      script: plugins/rating/elo.lua
         k_factor: 32.0
         initial_rating: 1000.0
         beta: 400.0
@@ -318,8 +318,8 @@ experiment:
   name: glicko_comparison        # everything from base/standard.yaml
                                  # is inherited except what you override:
   rating:
-    systems:
-      - script: plugins/rating/glicko2.lua
+    system:
+      script: plugins/rating/glicko2.lua
 ```
 
 The shipped `experiments/base/standard.yaml` defines a mixed population of
@@ -714,10 +714,10 @@ budget: 50
 
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.systems.0.name:
+    experiment.rating.system.name:
       type: categorical
       values: [elo, glicko2, trueskill]
 

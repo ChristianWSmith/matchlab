@@ -5,10 +5,10 @@ budget: 20
 
 search_space:
   parameters:
-    experiment.rating.systems.0.k_factor:
+    experiment.rating.system.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.systems.0.beta:
+    experiment.rating.system.beta:
       type: float
       bounds: [100.0, 800.0]
 

@@ -84,13 +84,13 @@ experiment:
     tiers: <list>
 
   rating:                       # required
-    systems:                    #   required, list of rating systems
-      - name: <string>          #     optional, fallback for script (display label + plugin identifier when script is absent)
-        script: <path>          #     script name or path (e.g. "elo" or "plugins/rating/elo.lua")
-        # Additional script params (flattened):
-        k_factor: <f64>
-        initial_rating: <f64>
-        beta: <f64>
+    system:                     #   required, single rating system
+      name: <string>            #     optional, fallback for script (display label + plugin identifier when script is absent)
+      script: <path>            #     script name or path (e.g. "elo" or "plugins/rating/elo.lua")
+      # Additional script params (flattened):
+      k_factor: <f64>
+      initial_rating: <f64>
+      beta: <f64>
 
   detection:                    # optional, absent = no detection
     enabled: <bool>             #   required
@@ -168,7 +168,7 @@ study:
   arms:                         # required, named arms
     - name: <string>            #   arm label
       overrides:                #   optional, dotted-path overrides
-        experiment.rating.systems.0.script: <path>
+        experiment.rating.system.script: <path>
   replication:                  # required
     count: <u64>                #   number of replicates
     strategy: <string>          #   independent, crn, or counterfactual
@@ -298,8 +298,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
+    system:
+      name: elo
   metrics:
     - match_quality
     - queue_time
@@ -360,7 +360,7 @@ study:
       overrides: {}
     - name: glicko2
       overrides:
-        experiment.rating.systems.0.name: glicko2
+        experiment.rating.system.name: glicko2
   replication:
     count: 50
     strategy: crn
@@ -435,13 +435,13 @@ Common paths:
 
 | Path | What it controls |
 |------|-----------------|
-| `experiment.rating.systems.0.k_factor` | Elo K-factor |
-| `experiment.rating.systems.0.beta` | Elo beta/divisor |
-| `experiment.rating.systems.0.initial_rating` | Starting rating |
-| `experiment.rating.systems.0.name` | Rating system choice (categorical) |
-| `experiment.rating.systems.0.initial_rd` | Glicko-2 initial RD |
-| `experiment.rating.systems.0.initial_volatility` | Glicko-2 initial volatility |
-| `experiment.rating.systems.0.tau` | Glicko-2 tau constraint |
+| `experiment.rating.system.k_factor` | Elo K-factor |
+| `experiment.rating.system.beta` | Elo beta/divisor |
+| `experiment.rating.system.initial_rating` | Starting rating |
+| `experiment.rating.system.name` | Rating system choice (categorical) |
+| `experiment.rating.system.initial_rd` | Glicko-2 initial RD |
+| `experiment.rating.system.initial_volatility` | Glicko-2 initial volatility |
+| `experiment.rating.system.tau` | Glicko-2 tau constraint |
 | `experiment.game.beta` | Outcome model logistic steepness |
 | `experiment.game.noise` | Outcome model noise |
 | `experiment.game.fatigue_decay_rate` | Fatigue decay rate |
@@ -462,10 +462,10 @@ optimize:
 
   search_space:
     parameters:
-      experiment.rating.systems.0.k_factor:
+      experiment.rating.system.k_factor:
         type: float
         bounds: [1.0, 100.0]
-      experiment.rating.systems.0.beta:
+      experiment.rating.system.beta:
         type: float
         bounds: [100.0, 800.0]
 

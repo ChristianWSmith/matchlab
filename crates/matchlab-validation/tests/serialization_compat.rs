@@ -52,11 +52,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+    system:
+      name: elo
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -108,12 +108,8 @@ fn experiment_config_round_trip_yaml() {
         back.experiment.output.directory
     );
     assert_eq!(
-        config.experiment.rating.systems.len(),
-        back.experiment.rating.systems.len()
-    );
-    assert_eq!(
-        config.experiment.rating.systems[0].name,
-        back.experiment.rating.systems[0].name
+        config.experiment.rating.system.name,
+        back.experiment.rating.system.name
     );
     assert_eq!(
         config.experiment.matchmaking.script,
@@ -489,9 +485,9 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    systems:
-      - name: elo
-        k_factor: 32.0
+    system:
+      name: elo
+      k_factor: 32.0
   metrics: []
   cohorts: []
   duration:

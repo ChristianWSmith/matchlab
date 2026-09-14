@@ -34,11 +34,11 @@ study:
       overrides: {}
     - name: glicko2
       overrides:
-        experiment.rating.systems.0.script: plugins/rating/glicko2.lua
-        experiment.rating.systems.0.initial_rating: 1000.0
-        experiment.rating.systems.0.initial_rd: 350.0
-        experiment.rating.systems.0.initial_volatility: 0.06
-        experiment.rating.systems.0.tau: 0.5
+        experiment.rating.system.script: plugins/rating/glicko2.lua
+        experiment.rating.system.initial_rating: 1000.0
+        experiment.rating.system.initial_rd: 350.0
+        experiment.rating.system.initial_volatility: 0.06
+        experiment.rating.system.tau: 0.5
   replication:
     count: 50
     strategy: crn
@@ -212,10 +212,10 @@ arms:
     overrides: {}
   - name: trueskill
     overrides:
-      experiment.rating.systems.0.script: plugins/rating/trueskill.lua
-      experiment.rating.systems.0.initial_rating: 1000.0
-      experiment.rating.systems.0.initial_variance: 122500.0
-      experiment.rating.systems.0.draw_probability: 0.1
+      experiment.rating.system.script: plugins/rating/trueskill.lua
+      experiment.rating.system.initial_rating: 1000.0
+      experiment.rating.system.initial_variance: 122500.0
+      experiment.rating.system.draw_probability: 0.1
 ```
 
 ### Change the Game Model
@@ -253,12 +253,12 @@ arms:
     overrides: {}
   - name: glicko2
     overrides:
-      experiment.rating.systems.0.script: plugins/rating/glicko2.lua
-      experiment.rating.systems.0.initial_rd: 350.0
+      experiment.rating.system.script: plugins/rating/glicko2.lua
+      experiment.rating.system.initial_rd: 350.0
   - name: trueskill
     overrides:
-      experiment.rating.systems.0.script: plugins/rating/trueskill.lua
-      experiment.rating.systems.0.initial_variance: 122500.0
+      experiment.rating.system.script: plugins/rating/trueskill.lua
+      experiment.rating.system.initial_variance: 122500.0
 ```
 
 ### Change the Population
