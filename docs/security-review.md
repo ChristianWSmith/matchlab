@@ -31,7 +31,7 @@ Lua scripts under `plugins/` are executed by the `mlua` crate (Luau, vendored). 
 
 ```
 plugins/
-├── rating/       # elo.lua, glicko2.lua, trueskill.lua, flat.lua, decay_elo.lua
+├── rating/       # elo.lua, glicko2.lua, trueskill.lua, flatpoints.lua, decay_elo.lua
 ├── game/         # logistic.lua, variance.lua, composition.lua, etc.
 ├── matchmaking/  # batch.lua, expanding_window.lua, strict.lua, etc.
 ├── metrics/      # rating_accuracy.lua, queue_time.lua, etc.

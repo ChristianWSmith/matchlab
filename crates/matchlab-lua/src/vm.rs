@@ -55,6 +55,42 @@ impl LuaVm {
             config_lua,
         })
     }
+    /// Load a script with name-or-path resolution within a plugin directory.
+    ///
+    /// `input` is tried first as a direct path; if the file does not exist,
+    /// `{plugin_dir}/{input}.lua` is tried. This lets manifests use bare names
+    /// like `"elo"` (resolved to `plugins/rating/elo.lua`) or full paths.
+    pub fn load_with_plugin_dir(
+        path: &str,
+        params: &serde_yaml::Value,
+        required: &[&str],
+        plugin_dir: &str,
+    ) -> Result<Self, String> {
+        let resolved = crate::resolve::resolve_plugin(path, plugin_dir)?;
+        let resolved_str = resolved.to_string_lossy().to_string();
+        validate::validate_script(&resolved_str, required)?;
+        tracing::debug!(script = %resolved_str, functions = ?required, "Lua script loaded and validated");
+        let source = std::fs::read_to_string(&resolved_str)
+            .map_err(|e| format!("cannot read {}: {}", resolved_str, e))?;
+        let lua = Lua::new();
+        lua.load(&source)
+            .exec()
+            .map_err(|e| format!("lua error in {}: {}", resolved_str, e))?;
+        rng::register(&lua)?;
+        let config = if params.is_null() {
+            context::empty()
+        } else {
+            params.clone()
+        };
+        let config_lua = context::yaml_to_lua(&lua, &config)
+            .map_err(|e| format!("config conversion failed: {}", e))?;
+        Ok(Self {
+            lua: Mutex::new(lua),
+            script_path: resolved_str,
+            config,
+            config_lua,
+        })
+    }
     pub fn script_path(&self) -> &str {
         &self.script_path
     }
@@ -268,6 +304,41 @@ mod tests {
         let p = write_temp("function a() return math.random() end");
         assert!(LuaVm::load(p.to_str().unwrap(), &params(&[]), &["a"]).is_err());
         let _ = std::fs::remove_file(&p);
+    }
+    #[test]
+    fn load_with_plugin_dir_resolves_by_name() {
+        let vm = LuaVm::load_with_plugin_dir(
+            "elo",
+            &params(&[("k_factor", 32.0)]),
+            &["initialize", "predict", "update"],
+            "plugins/rating",
+        )
+        .unwrap();
+        assert!(vm.script_path().contains("plugins/rating/elo.lua"));
+    }
+    #[test]
+    fn load_with_plugin_dir_resolves_by_path() {
+        let vm = LuaVm::load_with_plugin_dir(
+            "plugins/rating/elo.lua",
+            &params(&[("k_factor", 32.0)]),
+            &["initialize", "predict", "update"],
+            "plugins/rating",
+        )
+        .unwrap();
+        assert!(vm.script_path().contains("plugins/rating/elo.lua"));
+    }
+    #[test]
+    fn load_with_plugin_dir_errors_on_unknown() {
+        let result = LuaVm::load_with_plugin_dir(
+            "bogus",
+            &params(&[]),
+            &[],
+            "plugins/rating",
+        );
+        match result {
+            Ok(_) => panic!("expected error for unknown plugin"),
+            Err(err) => assert!(err.contains("bogus")),
+        }
     }
     #[test]
     fn rng_is_available_inside_guarded_call() {

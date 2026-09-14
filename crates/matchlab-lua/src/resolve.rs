@@ -54,6 +54,51 @@ pub fn resolve_script_path(path: &str) -> PathBuf {
     }
     workspace_root().join(path)
 }
+
+/// Resolve a plugin by name or path within a subsystem's plugin directory.
+///
+/// Resolution strategy:
+/// 1. Try `input` as a direct script path (works for full paths like
+///    `plugins/rating/elo.lua`).
+/// 2. Try `{plugin_dir}/{input}.lua` (works for bare names like `elo`).
+///
+/// Returns the first path that exists on disk, or an error listing what was
+/// tried.
+pub fn resolve_plugin(input: &str, plugin_dir: &str) -> Result<PathBuf, String> {
+    let as_path = resolve_script_path(input);
+    if as_path.exists() {
+        return Ok(as_path);
+    }
+    let named = resolve_script_path(&format!("{plugin_dir}/{input}.lua"));
+    if named.exists() {
+        return Ok(named);
+    }
+    Err(format!(
+        "cannot find plugin '{input}' (tried as path and as {plugin_dir}/{input}.lua)"
+    ))
+}
+
+/// List available plugin names in a subsystem's plugin directory.
+///
+/// Globs `{plugin_dir}/*.lua` under the workspace root and returns the file
+/// stems (e.g. `["elo", "glicko2", ...]`). Useful for error messages and
+/// help output.
+pub fn list_plugins(plugin_dir: &str) -> Vec<String> {
+    let dir = resolve_script_path(plugin_dir);
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "lua").unwrap_or(false))
+        .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .collect();
+    names.sort();
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +116,38 @@ mod tests {
     fn nonexistent_path_resolves_to_workspace_root() {
         let resolved = resolve_script_path("plugins/nonexistent/script.lua");
         assert!(resolved.ends_with("plugins/nonexistent/script.lua"));
+    }
+    #[test]
+    fn resolve_plugin_by_path() {
+        let resolved = resolve_plugin("plugins/rating/elo.lua", "plugins/rating").unwrap();
+        assert!(resolved.ends_with("plugins/rating/elo.lua"));
+    }
+    #[test]
+    fn resolve_plugin_by_name() {
+        let resolved = resolve_plugin("elo", "plugins/rating").unwrap();
+        assert!(resolved.ends_with("plugins/rating/elo.lua"));
+    }
+    #[test]
+    fn resolve_plugin_prefers_path_over_name() {
+        let resolved = resolve_plugin("plugins/rating/elo.lua", "plugins/rating").unwrap();
+        assert!(resolved.to_string_lossy().contains("plugins/rating/elo.lua"));
+    }
+    #[test]
+    fn resolve_plugin_unknown_returns_error() {
+        let err = resolve_plugin("bogus", "plugins/rating").unwrap_err();
+        assert!(err.contains("bogus"));
+        assert!(err.contains("plugins/rating/bogus.lua"));
+    }
+    #[test]
+    fn list_plugins_rating() {
+        let names = list_plugins("plugins/rating");
+        assert!(names.contains(&"elo".to_string()));
+        assert!(names.contains(&"glicko2".to_string()));
+        assert!(names.contains(&"trueskill".to_string()));
+    }
+    #[test]
+    fn list_plugins_nonexistent_dir() {
+        let names = list_plugins("plugins/nonexistent");
+        assert!(names.is_empty());
     }
 }

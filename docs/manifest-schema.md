@@ -85,8 +85,8 @@ experiment:
 
   rating:                       # required
     systems:                    #   required, list of rating systems
-      - name: <string>          #     optional, built-in name (elo, glicko2, etc.)
-        script: <path>          #     optional, explicit script path
+      - name: <string>          #     optional, display label (for results/comparison)
+        script: <path>          #     script name or path (e.g. "elo" or "plugins/rating/elo.lua")
         # Additional script params (flattened):
         k_factor: <f64>
         initial_rating: <f64>
@@ -249,7 +249,7 @@ The `skill_distribution` field accepts a tagged enum:
 |-------|---------|
 | Outcome models (`plugins/game/`) | `logistic.lua`, `variance.lua`, `composition.lua`, `performance.lua`, `fatigue.lua`, `momentum.lua` |
 | Matchmakers (`plugins/matchmaking/`) | `batch.lua`, `expanding_window.lua`, `strict.lua`, `hub_spoke.lua`, `random.lua` |
-| Rating systems (`plugins/rating/`) | `elo.lua`, `flat.lua`, `glicko2.lua`, `trueskill.lua`, `decay_elo.lua` |
+| Rating systems (`plugins/rating/`) | `elo.lua`, `flatpoints.lua`, `glicko2.lua`, `trueskill.lua`, `decay_elo.lua` |
 | Detection (`plugins/detection/`) | `smurf.lua` |
 | Ranking (`plugins/ranking/`) | `brackets.lua` |
 | Adversarial (`plugins/adversarial/`) | `afk.lua`, `deranker.lua`, `win_trader.lua`, `booster.lua`, `rating_farmer.lua` |

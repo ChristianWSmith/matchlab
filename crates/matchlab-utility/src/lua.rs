@@ -14,7 +14,7 @@ pub struct LuaSatisfactionModel {
 }
 impl LuaSatisfactionModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
-        let vm = LuaVm::load(
+        let vm = LuaVm::load_with_plugin_dir(
             path,
             params,
             &[
@@ -22,6 +22,7 @@ impl LuaSatisfactionModel {
                 "retention_probability",
                 "rematch_probability",
             ],
+            "plugins/utility",
         )?;
         tracing::info!(script = %vm.script_path(), "satisfaction model loaded");
         Ok(Self { vm })

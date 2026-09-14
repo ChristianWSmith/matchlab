@@ -25,7 +25,7 @@ pub struct LuaMetricCollector {
 }
 impl LuaMetricCollector {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
-        let vm = LuaVm::load(path, params, &["on_record", "compute"])?;
+        let vm = LuaVm::load_with_plugin_dir(path, params, &["on_record", "compute"], "plugins/metrics")?;
         let metric_name = vm
             .get_global::<String>("name")?
             .ok_or_else(|| format!("metric script {} must declare `name`", vm.script_path()))?;

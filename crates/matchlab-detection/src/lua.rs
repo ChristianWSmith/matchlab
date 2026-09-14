@@ -20,7 +20,7 @@ pub struct LuaDetectionSystem {
 }
 impl LuaDetectionSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
-        let vm = LuaVm::load(path, params, &["observe", "evaluate", "recommend_action"])?;
+        let vm = LuaVm::load_with_plugin_dir(path, params, &["observe", "evaluate", "recommend_action"], "plugins/detection")?;
         tracing::info!(script = %vm.script_path(), "detection system loaded");
         Ok(Self { vm })
     }

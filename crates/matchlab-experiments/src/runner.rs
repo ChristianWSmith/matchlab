@@ -213,13 +213,10 @@ pub(crate) fn build_rating_system(
         None => return Err("rating.systems must declare at least one system".to_string()),
     };
     let params = flatten_params(&spec.params);
-    if let Some(name) = &spec.name {
-        registry::from_name(name, &params)
-    } else if let Some(script) = &spec.script {
-        registry::from_script(script, &params)
-    } else {
-        Err("rating system must declare a `name` or `script`".to_string())
-    }
+    let script = spec.script.as_deref().or(spec.name.as_deref()).ok_or_else(
+        || "rating system must declare a `name` or `script`".to_string(),
+    )?;
+    registry::from_script(script, &params)
 }
 fn flatten_params(
     params: &std::collections::BTreeMap<String, serde_yaml::Value>,
@@ -258,10 +255,7 @@ pub(crate) fn register_metrics(
 ) -> Result<(), String> {
     for entry in entries {
         let (path, params) = match entry {
-            crate::config::MetricEntry::Name(name) => (
-                format!("plugins/metrics/{name}.lua"),
-                serde_yaml::Value::Null,
-            ),
+            crate::config::MetricEntry::Name(name) => (name.clone(), serde_yaml::Value::Null),
             crate::config::MetricEntry::Script { script, params } => {
                 let mut mapping = serde_yaml::Mapping::new();
                 for (k, v) in params {

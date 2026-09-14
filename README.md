@@ -417,7 +417,7 @@ the full plugin API contract, see [`docs/plugin-api.md`](docs/plugin-api.md).
 | `elo.lua` | Classic Elo on a logistic scale (`divisor = β·ln 10`) consistent with the game model | `k_factor`, `initial_rating`, `beta` |
 | `glicko2.lua` | Full Glicko-2 (Glickman 2012): RD plus volatility, Newton–Raphson iteration. Verified against the paper's worked example (r′=1464.06, RD′=151.52, σ′=0.05999) | `initial_rating`, `initial_rd`, `initial_volatility`, `tau`, `epsilon` |
 | `trueskill.lua` | TrueSkill (Herbrich, Minka, Graepel): each player is N(μ, σ²), truncated-Gaussian conditioning with draw margin | `initial_mean`, `initial_variance`, `beta`, `dynamics`, `draw_probability` |
-| `flat.lua` | Fixed points for a win/loss — a baseline that shows why adaptive systems are needed | `win_points`, `loss_points`, `initial_rating` |
+| `flatpoints.lua` | Fixed points for a win/loss — a baseline that shows why adaptive systems are needed | `win_points`, `loss_points`, `initial_rating` |
 | `decay_elo.lua` | **Novel, no Rust equivalent.** Elo plus idle decay: absent players drift back toward the initial rating | `k_factor`, `initial_rating`, `beta`, `decay_rate` |
 | `bradley_terry.lua` | Bradley-Terry pairwise comparison model: P(i>j) = sigmoid(r_i - r_j) | `initial_rating`, `learning_rate` |
 | `thurstone.lua` | Thurstone-Mosteller: P(i>j) = Φ((μ_i - μ_j)/√(σ_i² + σ_j²)) | `initial_rating`, `initial_sigma`, `learning_rate` |

@@ -1,4 +1,4 @@
--- plugins/rating/flat.lua
+-- plugins/rating/flatpoints.lua
 -- Fixed points for a win, fixed points for a loss. A baseline that
 -- demonstrates why adaptive systems are needed.
 -- config: win_points, loss_points, initial_rating
