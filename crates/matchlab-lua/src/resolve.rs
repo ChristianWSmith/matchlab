@@ -112,22 +112,23 @@ fn list_plugins_in_dir(plugin_dir: &str) -> Vec<String> {
     if !dir.is_dir() {
         return Vec::new();
     }
-    let mut names: Vec<String> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "lua")
-                .unwrap_or(false)
-        })
-        .filter_map(|e| {
-            e.path()
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-        })
-        .collect();
+    let mut names: Vec<String> = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "lua")
+                    .unwrap_or(false)
+            })
+            .filter_map(|e| {
+                e.path()
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+            })
+            .collect(),
+        Err(_) => return Vec::new(),
+    };
     names.sort();
     names
 }

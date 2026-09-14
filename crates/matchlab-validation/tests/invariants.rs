@@ -446,7 +446,7 @@ fn build_loop_with(
     script: &str,
     params: &str,
 ) -> MatchLoop {
-    let rating = registry::from_name(
+    let rating = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )
@@ -646,7 +646,7 @@ fn invariants_hold_across_config_seed_grid() {
         for (&size, &seed) in per_shape_sizes.iter().zip(per_shape_seeds.iter()) {
             let (a, metrics) = run_paired(shape, size, seed);
             check_run(shape, size, seed, &a, &metrics);
-            let rating = registry::from_name(
+            let rating = registry::from_script(
                 "elo",
                 &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n")
                     .unwrap(),

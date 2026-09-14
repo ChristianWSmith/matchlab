@@ -8,13 +8,6 @@ pub mod registry {
     ) -> Result<Box<dyn RatingSystem>, String> {
         Ok(Box::new(LuaRatingSystem::load(path, params)?))
     }
-    /// Load a rating system by name. Delegates to [`from_script`].
-    pub fn from_name(
-        name: &str,
-        params: &serde_yaml::Value,
-    ) -> Result<Box<dyn RatingSystem>, String> {
-        from_script(name, params)
-    }
 }
 #[cfg(test)]
 mod tests {
@@ -28,15 +21,7 @@ mod tests {
         assert_eq!(sys.rating(&state), 1200.0);
     }
     #[test]
-    fn from_name_resolves_builtin_scripts() {
-        let yaml =
-            serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1200.0\nbeta: 400.0\n").unwrap();
-        let sys = registry::from_name("elo", &yaml).expect("elo resolves");
-        let state = sys.initialize(matchlab_core::player::PlayerId(1));
-        assert_eq!(sys.rating(&state), 1200.0);
-    }
-    #[test]
-    fn from_script_resolves_by_path() {
+    fn from_script_resolves_by_name() {
         let yaml =
             serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1200.0\nbeta: 400.0\n").unwrap();
         let sys = registry::from_script("elo", &yaml).expect("elo resolves by name");
@@ -53,7 +38,7 @@ mod tests {
     #[test]
     fn unknown_name_errors() {
         let yaml = serde_yaml::from_str("{}").unwrap();
-        assert!(registry::from_name("bogus", &yaml).is_err());
+        assert!(registry::from_script("bogus", &yaml).is_err());
     }
     #[test]
     fn missing_script_errors() {

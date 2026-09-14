@@ -20,7 +20,7 @@ fn build_stack() -> (
     LuaOutcomeModel,
     LuaMatchmaker,
 ) {
-    let rating = registry::from_name(
+    let rating = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )

@@ -212,6 +212,18 @@ pub(crate) fn build_rating_system(
         Some(s) => s,
         None => return Err("rating.systems must declare at least one system".to_string()),
     };
+    if systems.len() > 1 {
+        let name = spec
+            .name
+            .as_deref()
+            .or(spec.script.as_deref())
+            .unwrap_or("?");
+        tracing::warn!(
+            count = systems.len(),
+            first = name,
+            "rating.systems has multiple entries but only the first will be used"
+        );
+    }
     let params = flatten_params(&spec.params);
     let script = spec
         .script

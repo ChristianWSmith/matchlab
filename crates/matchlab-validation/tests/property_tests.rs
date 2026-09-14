@@ -85,7 +85,7 @@ fn probability_monotonic() {
 /// (symmetry around 0 for the same player).
 #[test]
 fn rating_symmetry() {
-    let rating = registry::from_name("elo", &elo_params()).unwrap();
+    let rating = registry::from_script("elo", &elo_params()).unwrap();
     let players: Vec<PlayerObservation> = (0..40).map(|i| observation(i, 1000.0)).collect();
     for window in players.chunks(2) {
         let p_forward = rating.predict(
@@ -107,7 +107,7 @@ fn rating_symmetry() {
 /// P(B wins) = 1.0 for any pair of players.
 #[test]
 fn team_swap_complementary() {
-    let rating = registry::from_name("elo", &elo_params()).unwrap();
+    let rating = registry::from_script("elo", &elo_params()).unwrap();
     let mut ids = 0u64;
     let mut make_obs = |r: f64| -> PlayerObservation {
         ids += 1;
@@ -229,7 +229,7 @@ fn probability_bounds_post_loop() {
         metrics.contains_key("match_quality"),
         "match_quality must be computed"
     );
-    let rating = registry::from_name("elo", &elo_params()).unwrap();
+    let rating = registry::from_script("elo", &elo_params()).unwrap();
     let obs: Vec<PlayerObservation> = loop_
         .world
         .observations

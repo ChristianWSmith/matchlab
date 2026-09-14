@@ -328,7 +328,7 @@ pub fn build_loop_full(
     matchmaker_script: &str,
     matchmaker_params: &str,
 ) -> MatchLoop {
-    let rating = registry::from_name("elo", &elo_params()).expect("elo loads");
+    let rating = registry::from_script("elo", &elo_params()).expect("elo loads");
     let outcome = LuaOutcomeModel::load(
         game_script,
         &serde_yaml::from_str(game_params).expect("valid game params"),

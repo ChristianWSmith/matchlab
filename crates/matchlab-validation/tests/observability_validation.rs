@@ -98,7 +98,7 @@ fn run_experiment() -> matchlab_experiments::ExperimentResult {
         &mut matchlab_core::rng::SimRng::from_seed(seeds.population_seed),
     );
     let population = pop.0.into_iter().zip(pop.1).collect();
-    let rating = registry::from_name(
+    let rating = registry::from_script(
         "elo",
         &serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0\n").unwrap(),
     )
