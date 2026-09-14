@@ -213,13 +213,19 @@ impl FactorialDesign {
         configs
     }
 }
-fn descend<'a>(cursor: &'a mut Value, part: &str) -> Option<&'a mut Value> {
+fn descend_or_create<'a>(cursor: &'a mut Value, part: &str) -> &'a mut Value {
     if let Ok(idx) = part.parse::<usize>() {
-        cursor.as_sequence_mut().and_then(|seq| seq.get_mut(idx))
+        let seq = cursor
+            .as_sequence_mut()
+            .expect("expected sequence for index access");
+        while seq.len() <= idx {
+            seq.push(Value::Null);
+        }
+        &mut seq[idx]
     } else {
-        cursor
-            .as_mapping_mut()
-            .and_then(|m| m.get_mut(Value::String(part.to_string())))
+        let m = cursor.as_mapping_mut().expect("expected mapping");
+        m.entry(Value::String(part.to_string()))
+            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
     }
 }
 pub fn set_nested_value(config: &mut ExperimentConfig, path: &str, value: Value) {
@@ -239,7 +245,7 @@ pub fn set_nested_value(config: &mut ExperimentConfig, path: &str, value: Value)
                 m.insert(Value::String(part.to_string()), value.clone());
             }
         } else {
-            cursor = descend(cursor, part).expect("factorial path segment must exist in config");
+            cursor = descend_or_create(cursor, part);
         }
     }
     *config = serde_yaml::from_value(tree).expect("ExperimentConfig must deserialize from tree");
