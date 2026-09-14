@@ -30,30 +30,7 @@ impl LuaVm {
     /// The path is resolved against the workspace root; `math.random` is
     /// banned. Optionally validates a required-function list up front.
     pub fn load(path: &str, params: &serde_yaml::Value, required: &[&str]) -> Result<Self, String> {
-        let resolved = crate::resolve::resolve_script_path(path);
-        let resolved_str = resolved.to_string_lossy().to_string();
-        validate::validate_script(&resolved_str, required)?;
-        tracing::debug!(script = %resolved_str, functions = ?required, "Lua script loaded and validated");
-        let source = std::fs::read_to_string(&resolved_str)
-            .map_err(|e| format!("cannot read {}: {}", resolved_str, e))?;
-        let lua = Lua::new();
-        lua.load(&source)
-            .exec()
-            .map_err(|e| format!("lua error in {}: {}", resolved_str, e))?;
-        rng::register(&lua)?;
-        let config = if params.is_null() {
-            context::empty()
-        } else {
-            params.clone()
-        };
-        let config_lua = context::yaml_to_lua(&lua, &config)
-            .map_err(|e| format!("config conversion failed: {}", e))?;
-        Ok(Self {
-            lua: Mutex::new(lua),
-            script_path: resolved_str,
-            config,
-            config_lua,
-        })
+        Self::load_inner(crate::resolve::resolve_script_path(path), params, required)
     }
     /// Load a script with name-or-path resolution within a plugin directory.
     ///
@@ -66,7 +43,17 @@ impl LuaVm {
         required: &[&str],
         plugin_dir: &str,
     ) -> Result<Self, String> {
-        let resolved = crate::resolve::resolve_plugin(path, plugin_dir)?;
+        Self::load_inner(
+            crate::resolve::resolve_plugin(path, plugin_dir)?,
+            params,
+            required,
+        )
+    }
+    fn load_inner(
+        resolved: std::path::PathBuf,
+        params: &serde_yaml::Value,
+        required: &[&str],
+    ) -> Result<Self, String> {
         let resolved_str = resolved.to_string_lossy().to_string();
         validate::validate_script(&resolved_str, required)?;
         tracing::debug!(script = %resolved_str, functions = ?required, "Lua script loaded and validated");

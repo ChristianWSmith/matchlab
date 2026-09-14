@@ -85,7 +85,7 @@ experiment:
 
   rating:                       # required
     systems:                    #   required, list of rating systems
-      - name: <string>          #     optional, display label (for results/comparison)
+      - name: <string>          #     optional, fallback for script (display label + plugin identifier when script is absent)
         script: <path>          #     script name or path (e.g. "elo" or "plugins/rating/elo.lua")
         # Additional script params (flattened):
         k_factor: <f64>

@@ -1,12 +1,14 @@
 pub mod registry {
     use crate::lua::LuaRatingSystem;
     use crate::system::RatingSystem;
+    /// Load a rating system by script path or bare name (resolved via filesystem).
     pub fn from_script(
         path: &str,
         params: &serde_yaml::Value,
     ) -> Result<Box<dyn RatingSystem>, String> {
         Ok(Box::new(LuaRatingSystem::load(path, params)?))
     }
+    /// Load a rating system by name. Delegates to [`from_script`].
     pub fn from_name(
         name: &str,
         params: &serde_yaml::Value,
@@ -40,6 +42,13 @@ mod tests {
         let sys = registry::from_script("elo", &yaml).expect("elo resolves by name");
         let state = sys.initialize(matchlab_core::player::PlayerId(1));
         assert_eq!(sys.rating(&state), 1200.0);
+    }
+    #[test]
+    fn dummy_resolves_by_name() {
+        let yaml = serde_yaml::from_str("fixed_rating: 1500.0").unwrap();
+        let sys = registry::from_script("dummy", &yaml).expect("dummy resolves");
+        let state = sys.initialize(matchlab_core::player::PlayerId(1));
+        assert_eq!(sys.rating(&state), 1500.0);
     }
     #[test]
     fn unknown_name_errors() {

@@ -3,6 +3,7 @@
 //! The CLI runs from the workspace root, so a relative path works as-is. Crate
 //! unit tests run from crate directories, so we walk up to the workspace root
 //! (the first ancestor `Cargo.toml` declaring `[workspace]`) and resolve there.
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 /// The workspace root (cached): the nearest ancestor of the current directory
@@ -73,17 +74,40 @@ pub fn resolve_plugin(input: &str, plugin_dir: &str) -> Result<PathBuf, String> 
     if named.exists() {
         return Ok(named);
     }
+    let available = list_plugins_in_dir(plugin_dir);
     Err(format!(
-        "cannot find plugin '{input}' (tried as path and as {plugin_dir}/{input}.lua)"
+        "cannot find plugin '{input}' (tried as path and as {plugin_dir}/{input}.lua). Available in {plugin_dir}: {available:?}"
     ))
 }
 
-/// List available plugin names in a subsystem's plugin directory.
+const KNOWN_PLUGIN_DIRS: &[&str] = &[
+    "plugins/rating",
+    "plugins/game",
+    "plugins/matchmaking",
+    "plugins/metrics",
+    "plugins/detection",
+    "plugins/ranking",
+    "plugins/adversarial",
+    "plugins/utility",
+];
+
+/// List available plugin names across all known subsystem directories.
 ///
-/// Globs `{plugin_dir}/*.lua` under the workspace root and returns the file
-/// stems (e.g. `["elo", "glicko2", ...]`). Useful for error messages and
-/// help output.
-pub fn list_plugins(plugin_dir: &str) -> Vec<String> {
+/// Returns a map from subsystem directory (e.g. `"plugins/rating"`) to a
+/// sorted list of plugin names (file stems without `.lua`). Useful for help
+/// output and error messages.
+pub fn list_plugins() -> BTreeMap<String, Vec<String>> {
+    let mut result = BTreeMap::new();
+    for dir in KNOWN_PLUGIN_DIRS {
+        let names = list_plugins_in_dir(dir);
+        if !names.is_empty() {
+            result.insert(dir.to_string(), names);
+        }
+    }
+    result
+}
+
+fn list_plugins_in_dir(plugin_dir: &str) -> Vec<String> {
     let dir = resolve_script_path(plugin_dir);
     if !dir.is_dir() {
         return Vec::new();
@@ -152,15 +176,19 @@ mod tests {
         assert!(err.contains("plugins/rating/bogus.lua"));
     }
     #[test]
-    fn list_plugins_rating() {
-        let names = list_plugins("plugins/rating");
-        assert!(names.contains(&"elo".to_string()));
-        assert!(names.contains(&"glicko2".to_string()));
-        assert!(names.contains(&"trueskill".to_string()));
-    }
-    #[test]
-    fn list_plugins_nonexistent_dir() {
-        let names = list_plugins("plugins/nonexistent");
-        assert!(names.is_empty());
+    fn list_plugins_covers_all_subsystems() {
+        let all = list_plugins();
+        assert!(all.contains_key("plugins/rating"));
+        let rating = &all["plugins/rating"];
+        assert!(rating.contains(&"elo".to_string()));
+        assert!(rating.contains(&"glicko2".to_string()));
+        assert!(rating.contains(&"trueskill".to_string()));
+        assert!(all.contains_key("plugins/game"));
+        assert!(all.contains_key("plugins/matchmaking"));
+        assert!(all.contains_key("plugins/metrics"));
+        assert!(all.contains_key("plugins/detection"));
+        assert!(all.contains_key("plugins/ranking"));
+        assert!(all.contains_key("plugins/adversarial"));
+        assert!(all.contains_key("plugins/utility"));
     }
 }
