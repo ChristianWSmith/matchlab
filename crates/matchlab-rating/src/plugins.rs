@@ -26,6 +26,7 @@ pub mod registry {
                 "plugins/rating/bayesian_hierarchical.lua",
             ),
             ("decay_elo", "plugins/rating/decay_elo.lua"),
+            ("dummy", "plugins/rating/dummy.lua"),
         ]
     }
     /// Resolve a rating system by script path.
