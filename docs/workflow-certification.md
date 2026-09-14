@@ -102,9 +102,9 @@ experiment:
   rating:
     system:
       script: plugins/rating/elo.lua
-        k_factor: 32.0
-        initial_rating: 1000.0
-        beta: 400.0
+      k_factor: 32.0
+      initial_rating: 1000.0
+      beta: 400.0
 
   metrics:
     - match_quality
