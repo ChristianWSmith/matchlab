@@ -194,7 +194,11 @@ impl SearchSpace {
             Some(ParameterSpec::Categorical { values }) => {
                 let idx = val.round() as usize;
                 let s = values.get(idx).unwrap_or(&values[0]);
-                serde_yaml::Value::String(s.clone())
+                match s.as_str() {
+                    "true" => serde_yaml::Value::Bool(true),
+                    "false" => serde_yaml::Value::Bool(false),
+                    _ => serde_yaml::Value::String(s.clone()),
+                }
             }
             _ => serde_yaml::Value::Number(serde_yaml::Number::from(val)),
         }
