@@ -213,9 +213,11 @@ pub(crate) fn build_rating_system(
         None => return Err("rating.systems must declare at least one system".to_string()),
     };
     let params = flatten_params(&spec.params);
-    let script = spec.script.as_deref().or(spec.name.as_deref()).ok_or_else(
-        || "rating system must declare a `name` or `script`".to_string(),
-    )?;
+    let script = spec
+        .script
+        .as_deref()
+        .or(spec.name.as_deref())
+        .ok_or_else(|| "rating system must declare a `name` or `script`".to_string())?;
     registry::from_script(script, &params)
 }
 fn flatten_params(

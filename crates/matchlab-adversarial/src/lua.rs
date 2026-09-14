@@ -21,7 +21,12 @@ pub struct LuaAdversarialAgent {
 }
 impl LuaAdversarialAgent {
     pub fn load(path: &str, params: &serde_yaml::Value, player: PlayerId) -> Result<Self, String> {
-        let vm = LuaVm::load_with_plugin_dir(path, params, &["tick", "objective"], "plugins/adversarial")?;
+        let vm = LuaVm::load_with_plugin_dir(
+            path,
+            params,
+            &["tick", "objective"],
+            "plugins/adversarial",
+        )?;
         let objective = read_objective(&vm, player)?;
         tracing::info!(script = %vm.script_path(), player = player.0, ?objective, "adversarial agent loaded");
         Ok(Self { vm, objective })

@@ -244,7 +244,8 @@ mod tests {
         let params =
             serde_yaml::from_str("win_points: 10.0\nloss_points: 10.0\ninitial_rating: 1000.0")
                 .unwrap();
-        registry::from_script("plugins/rating/flatpoints.lua", &params).expect("flatpoints.lua loads")
+        registry::from_script("plugins/rating/flatpoints.lua", &params)
+            .expect("flatpoints.lua loads")
     }
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {

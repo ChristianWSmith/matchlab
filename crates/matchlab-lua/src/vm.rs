@@ -329,12 +329,7 @@ mod tests {
     }
     #[test]
     fn load_with_plugin_dir_errors_on_unknown() {
-        let result = LuaVm::load_with_plugin_dir(
-            "bogus",
-            &params(&[]),
-            &[],
-            "plugins/rating",
-        );
+        let result = LuaVm::load_with_plugin_dir("bogus", &params(&[]), &[], "plugins/rating");
         match result {
             Ok(_) => panic!("expected error for unknown plugin"),
             Err(err) => assert!(err.contains("bogus")),

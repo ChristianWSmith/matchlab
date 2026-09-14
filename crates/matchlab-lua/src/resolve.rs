@@ -92,8 +92,17 @@ pub fn list_plugins(plugin_dir: &str) -> Vec<String> {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "lua").unwrap_or(false))
-        .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "lua")
+                .unwrap_or(false)
+        })
+        .filter_map(|e| {
+            e.path()
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+        })
         .collect();
     names.sort();
     names
@@ -130,7 +139,11 @@ mod tests {
     #[test]
     fn resolve_plugin_prefers_path_over_name() {
         let resolved = resolve_plugin("plugins/rating/elo.lua", "plugins/rating").unwrap();
-        assert!(resolved.to_string_lossy().contains("plugins/rating/elo.lua"));
+        assert!(
+            resolved
+                .to_string_lossy()
+                .contains("plugins/rating/elo.lua")
+        );
     }
     #[test]
     fn resolve_plugin_unknown_returns_error() {
