@@ -76,7 +76,8 @@ fn draw_summary_bar_chart(
     let max_val = means.iter().cloned().fold(f64::MIN, f64::max);
     let min_val = means.iter().cloned().fold(f64::MAX, f64::min);
     let y_range = if (max_val - min_val).abs() < 1e-12 {
-        0.0..max_val * 1.2
+        let upper = if max_val.abs() < 1e-12 { 1.0 } else { max_val * 1.2 };
+        0.0..upper
     } else {
         (min_val - (max_val - min_val) * 0.1)..(max_val + (max_val - min_val) * 0.1)
     };
@@ -132,7 +133,8 @@ fn draw_time_series(
     let max_val = bucket_means.iter().cloned().fold(f64::MIN, f64::max);
     let min_val = bucket_means.iter().cloned().fold(f64::MAX, f64::min);
     let y_range = if (max_val - min_val).abs() < 1e-12 {
-        0.0..max_val * 1.2
+        let upper = if max_val.abs() < 1e-12 { 1.0 } else { max_val * 1.2 };
+        0.0..upper
     } else {
         (min_val - (max_val - min_val) * 0.1)..(max_val + (max_val - min_val) * 0.1)
     };
@@ -181,7 +183,7 @@ fn draw_histogram(
         return Ok(());
     }
 
-    let max_count = buckets.iter().map(|(_, c)| *c).max().unwrap_or(1) as f64;
+    let max_count = buckets.iter().map(|(_, c)| *c).max().unwrap_or(1).max(1) as f64;
     let bar_count = buckets.len();
     let y_range = 0.0..(max_count * 1.1);
 
