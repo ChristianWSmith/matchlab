@@ -63,6 +63,9 @@ fn draw_summary_bar_chart(
     directory: &str,
     experiment_name: &str,
 ) -> Result<(), String> {
+    if metrics.is_empty() {
+        return Ok(());
+    }
     let path = Path::new(directory).join(format!("{experiment_name}_metrics.png"));
     let root = BitMapBackend::new(&path, (800, 500)).into_drawing_area();
     root.fill(&WHITE)

@@ -121,7 +121,9 @@ fn allocate_counts(config: &PopulationConfig) -> Vec<u64> {
     }
     let size = config.size;
     let total_weight: f64 = config.archetypes.iter().map(|a| a.proportion).sum();
-    let total_weight = if total_weight <= 0.0 { 1.0 } else { total_weight };
+    if total_weight <= 0.0 {
+        return vec![0u64; config.archetypes.len()];
+    }
     let mut floors: Vec<u64> = Vec::with_capacity(config.archetypes.len());
     let mut remainders: Vec<f64> = Vec::with_capacity(config.archetypes.len());
     let mut total_floor = 0u64;
