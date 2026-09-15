@@ -134,7 +134,7 @@ experiment:
     );
 }
 #[test]
-fn missing_required_field_duration_produces_useful_error() {
+fn missing_duration_uses_default() {
     let yaml = r#"
 experiment:
   name: no_duration
@@ -167,8 +167,9 @@ experiment:
     plots: false
     report: false
 "#;
-    let err = serde_yaml::from_str::<ExperimentConfig>(yaml);
-    assert!(err.is_err(), "missing 'duration' field must fail");
+    let config = serde_yaml::from_str::<ExperimentConfig>(yaml).expect("missing 'duration' should use default");
+    assert_eq!(config.experiment.duration.matches, 100_000);
+    assert!((config.experiment.duration.max_time - 604_800.0).abs() < 1e-6);
 }
 #[test]
 fn missing_required_field_output_produces_useful_error() {
