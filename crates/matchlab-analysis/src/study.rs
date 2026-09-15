@@ -182,6 +182,9 @@ pub fn compute_study_stats(study: &StudyResult, cfg: &StudyReportConfig) -> Stud
 /// metrics only (scalarizable per).
 pub fn generate_study_report(study: &StudyResult, cfg: &StudyReportConfig) -> String {
     let stats = compute_study_stats(study, cfg);
+    generate_study_report_from_stats(study, &stats)
+}
+pub fn generate_study_report_from_stats(study: &StudyResult, stats: &StudyStats) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {} — study\n\n", study.name));
     out.push_str(&format!(
@@ -224,7 +227,10 @@ pub fn generate_study_report(study: &StudyResult, cfg: &StudyReportConfig) -> St
 /// The JSON report: the aggregate table plus per-arm distributions.
 pub fn generate_study_report_json(study: &StudyResult, cfg: &StudyReportConfig) -> String {
     let stats = compute_study_stats(study, cfg);
-    serde_json::to_string_pretty(&stats).expect("study stats serialize")
+    generate_study_report_json_from_stats(&stats)
+}
+pub fn generate_study_report_json_from_stats(stats: &StudyStats) -> String {
+    serde_json::to_string_pretty(stats).expect("study stats serialize")
 }
 /// Write the full `StudyResult` as `<study_id>.json` plus the aggregate
 /// `study_stats.json` under `directory`.

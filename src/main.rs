@@ -385,9 +385,11 @@ fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: 
             return ExitCode::from(1);
         }
     }
-    let config = matchlab_analysis::study::StudyReportConfig::default();
+    let cfg = matchlab_analysis::study::StudyReportConfig::default();
+    let stats = matchlab_analysis::study::compute_study_stats(study, &cfg);
+    let primary_ext = fmts.first().map(|f| f.to_string()).unwrap_or_else(|| "json".to_string());
     if json_out {
-        let report = matchlab_analysis::study::generate_study_report_json(study, &config);
+        let report = matchlab_analysis::study::generate_study_report_json_from_stats(&stats);
         println!("{report}");
         for arm in &study.arms {
             eprintln!(
@@ -395,12 +397,12 @@ fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: 
                 arm.name,
                 arm.replicates.len(),
                 Path::new(dir)
-                    .join(format!("{}.json", study.study_id))
+                    .join(format!("{}.{}", study.study_id, primary_ext))
                     .display()
             );
         }
     } else {
-        let report = matchlab_analysis::study::generate_study_report(study, &config);
+        let report = matchlab_analysis::study::generate_study_report_from_stats(study, &stats);
         println!("{report}");
         for arm in &study.arms {
             println!(
@@ -408,7 +410,7 @@ fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: 
                 arm.name,
                 arm.replicates.len(),
                 Path::new(dir)
-                    .join(format!("{}.json", study.study_id))
+                    .join(format!("{}.{}", study.study_id, primary_ext))
                     .display()
             );
         }

@@ -49,6 +49,6 @@ pub use result::{EffectSizeSummary, SampleSummary, StatisticalResult, Uncertaint
 pub use stats::{Summary, summary, summary_to_result};
 pub use study::{
     ArmMetricStat, PairEffect, StudyReportConfig, StudyStats, compute_study_stats,
-    generate_research_report, generate_study_report, generate_study_report_json,
-    write_study_result_json,
+    generate_research_report, generate_study_report, generate_study_report_from_stats,
+    generate_study_report_json, generate_study_report_json_from_stats, write_study_result_json,
 };
