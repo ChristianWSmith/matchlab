@@ -136,10 +136,7 @@ experiment:
             Some(10000),
             "population preserved from base"
         );
-        let rating = exp
-            .get("rating")
-            .and_then(Value::as_mapping)
-            .unwrap();
+        let rating = exp.get("rating").and_then(Value::as_mapping).unwrap();
         assert_eq!(
             rating.get("name").and_then(Value::as_str),
             Some("flatpoints")
@@ -152,10 +149,7 @@ experiment:
         let merged = deep_merge(base, over);
         let config: ExperimentConfig = serde_yaml::from_value(merged).unwrap();
         assert_eq!(config.experiment.name, "elo_only");
-        assert_eq!(
-            config.experiment.rating.name,
-            Some("elo".to_string())
-        );
+        assert_eq!(config.experiment.rating.name, Some("elo".to_string()));
         assert_eq!(
             config.experiment.metrics,
             vec![

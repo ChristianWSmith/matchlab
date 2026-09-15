@@ -25,7 +25,9 @@ impl std::str::FromStr for ArtifactFormat {
             "json" => Ok(ArtifactFormat::Json),
             "jsonl" => Ok(ArtifactFormat::Jsonl),
             "yaml" | "yml" => Ok(ArtifactFormat::Yaml),
-            other => Err(format!("unsupported format: {other} (expected json, jsonl, or yaml)")),
+            other => Err(format!(
+                "unsupported format: {other} (expected json, jsonl, or yaml)"
+            )),
         }
     }
 }

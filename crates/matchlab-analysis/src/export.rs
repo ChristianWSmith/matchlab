@@ -109,7 +109,11 @@ impl RawDataExporter {
 /// Write the full metrics result (`ExperimentResult`) as pretty JSON under
 /// `OutputSpec.directory`, per the ticket 10/11 pipeline.
 pub fn write_result_json(result: &ExperimentResult, directory: &str) -> io::Result<()> {
-    write_result_in_format(result, directory, &matchlab_experiments::formats::ArtifactFormat::Json)
+    write_result_in_format(
+        result,
+        directory,
+        &matchlab_experiments::formats::ArtifactFormat::Json,
+    )
 }
 /// Write the full metrics result in the specified format.
 pub fn write_result_in_format(

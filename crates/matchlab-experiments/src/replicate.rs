@@ -248,10 +248,9 @@ impl ReplicationRunner {
                                     let seed = arm_seed(spec.strategy, repl, arm_i as u64);
                                     let mut cfg = arms[arm_i].config.clone();
                                     cfg.experiment.seed = seed;
-                                    let system = crate::runner::build_rating_system(
-                                        &cfg.experiment.rating,
-                                    )
-                                    .expect("build rating system failed");
+                                    let system =
+                                        crate::runner::build_rating_system(&cfg.experiment.rating)
+                                            .expect("build rating system failed");
                                     let result = ReplayEngine::replay(
                                         history,
                                         system.as_ref(),

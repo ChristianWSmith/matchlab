@@ -105,10 +105,7 @@ fn experiment_config_round_trip_yaml() {
         config.experiment.output.directory,
         back.experiment.output.directory
     );
-    assert_eq!(
-        config.experiment.rating.name,
-        back.experiment.rating.name
-    );
+    assert_eq!(config.experiment.rating.name, back.experiment.rating.name);
     assert_eq!(
         config.experiment.matchmaking.script,
         back.experiment.matchmaking.script

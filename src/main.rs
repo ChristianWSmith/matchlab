@@ -260,7 +260,8 @@ fn run(manifest_args: &[String], threads: Option<usize>) -> ExitCode {
         }
     }
     if config.experiment.output.plots {
-        if let Err(e) = matchlab_analysis::plots::generate_plots(&result.metrics, dir, &result.name) {
+        if let Err(e) = matchlab_analysis::plots::generate_plots(&result.metrics, dir, &result.name)
+        {
             tracing::error!(dir, error = %e, "failed to generate plots");
             eprintln!("generate plots failed: {dir} — {e}");
         }
@@ -270,7 +271,10 @@ fn run(manifest_args: &[String], threads: Option<usize>) -> ExitCode {
         .utility_score
         .map(|s| format!(", utility {s:.4}"))
         .unwrap_or_default();
-    let primary_ext = formats.first().map(|f| f.to_string()).unwrap_or_else(|| "json".to_string());
+    let primary_ext = formats
+        .first()
+        .map(|f| f.to_string())
+        .unwrap_or_else(|| "json".to_string());
     if config.experiment.output.report {
         let report = matchlab_analysis::report::generate_report(&result);
         let report_path = Path::new(dir).join(format!("{}.md", result.name));
@@ -308,7 +312,8 @@ fn run_replicated(
     spec: &matchlab_experiments::ReplicationSpec,
     threads: Option<usize>,
 ) -> ExitCode {
-    let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let threads =
+        threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let study = match matchlab_experiments::ReplicationRunner::run_single(config, spec, threads) {
         Ok(s) => s,
         Err(e) => {
@@ -316,7 +321,12 @@ fn run_replicated(
             return ExitCode::from(1);
         }
     };
-    finish_study(&study, &config.experiment.output.directory, false, &config.experiment.output.formats)
+    finish_study(
+        &study,
+        &config.experiment.output.directory,
+        false,
+        &config.experiment.output.formats,
+    )
 }
 fn study(args: &[String], threads: Option<usize>) -> ExitCode {
     let mut json_out = false;
@@ -358,7 +368,8 @@ fn study(args: &[String], threads: Option<usize>) -> ExitCode {
     if let Some(n) = replicates_override {
         config.study.replication.count = n;
     }
-    let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let threads =
+        threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let result = match matchlab_experiments::study::StudyRunner::run(&config, threads) {
         Ok(r) => r,
         Err(e) => {
@@ -367,13 +378,21 @@ fn study(args: &[String], threads: Option<usize>) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    finish_study(&result, &config.study.output.directory, json_out, &config.study.output.formats)
+    finish_study(
+        &result,
+        &config.study.output.directory,
+        json_out,
+        &config.study.output.formats,
+    )
 }
-fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: bool, formats: &[String]) -> ExitCode {
-    let fmts: Vec<matchlab_experiments::formats::ArtifactFormat> = formats
-        .iter()
-        .filter_map(|s| s.parse().ok())
-        .collect();
+fn finish_study(
+    study: &matchlab_experiments::StudyResult,
+    dir: &str,
+    json_out: bool,
+    formats: &[String],
+) -> ExitCode {
+    let fmts: Vec<matchlab_experiments::formats::ArtifactFormat> =
+        formats.iter().filter_map(|s| s.parse().ok()).collect();
     let fmts = if fmts.is_empty() {
         vec![matchlab_experiments::formats::ArtifactFormat::Json]
     } else {
@@ -387,7 +406,10 @@ fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: 
     }
     let cfg = matchlab_analysis::study::StudyReportConfig::default();
     let stats = matchlab_analysis::study::compute_study_stats(study, &cfg);
-    let primary_ext = fmts.first().map(|f| f.to_string()).unwrap_or_else(|| "json".to_string());
+    let primary_ext = fmts
+        .first()
+        .map(|f| f.to_string())
+        .unwrap_or_else(|| "json".to_string());
     if json_out {
         let report = matchlab_analysis::study::generate_study_report_json_from_stats(&stats);
         println!("{report}");

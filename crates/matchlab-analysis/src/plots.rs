@@ -8,8 +8,7 @@ pub fn generate_plots(
     directory: &str,
     experiment_name: &str,
 ) -> Result<(), String> {
-    std::fs::create_dir_all(directory)
-        .map_err(|e| format!("create plot directory: {e}"))?;
+    std::fs::create_dir_all(directory).map_err(|e| format!("create plot directory: {e}"))?;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         generate_plots_inner(metrics, directory, experiment_name)
@@ -27,7 +26,6 @@ fn generate_plots_inner(
     directory: &str,
     experiment_name: &str,
 ) -> Result<(), String> {
-
     let summary_metrics: Vec<(&str, f64)> = metrics
         .iter()
         .filter_map(|(k, v)| match v {
@@ -44,12 +42,17 @@ fn generate_plots_inner(
 
     for (name, result) in metrics {
         if let MetricResult::TimeSeries { bucket_means } = result {
-            if let Err(e) = draw_time_series(bucket_means, directory, &format!("{experiment_name}_{name}")) {
+            if let Err(e) = draw_time_series(
+                bucket_means,
+                directory,
+                &format!("{experiment_name}_{name}"),
+            ) {
                 return Err(format!("time series {name}: {e}"));
             }
         }
         if let MetricResult::Histogram { buckets } = result {
-            if let Err(e) = draw_histogram(buckets, directory, &format!("{experiment_name}_{name}")) {
+            if let Err(e) = draw_histogram(buckets, directory, &format!("{experiment_name}_{name}"))
+            {
                 return Err(format!("histogram {name}: {e}"));
             }
         }
@@ -76,7 +79,11 @@ fn draw_summary_bar_chart(
     let max_val = means.iter().cloned().fold(f64::MIN, f64::max);
     let min_val = means.iter().cloned().fold(f64::MAX, f64::min);
     let y_range = if (max_val - min_val).abs() < 1e-12 {
-        let upper = if max_val.abs() < 1e-12 { 1.0 } else { max_val * 1.2 };
+        let upper = if max_val.abs() < 1e-12 {
+            1.0
+        } else {
+            max_val * 1.2
+        };
         0.0..upper
     } else {
         (min_val - (max_val - min_val) * 0.1)..(max_val + (max_val - min_val) * 0.1)
@@ -96,7 +103,10 @@ fn draw_summary_bar_chart(
         .configure_mesh()
         .x_labels(n)
         .x_label_formatter(&|x| {
-            metrics.get(*x).map(|(name, _)| (*name).to_string()).unwrap_or_default()
+            metrics
+                .get(*x)
+                .map(|(name, _)| (*name).to_string())
+                .unwrap_or_default()
         })
         .label_style(("sans-serif", 12))
         .draw()
@@ -111,16 +121,11 @@ fn draw_summary_bar_chart(
         }))
         .map_err(|e| format!("draw bars: {e}"))?;
 
-    root.present()
-        .map_err(|e| format!("save plot: {e}"))?;
+    root.present().map_err(|e| format!("save plot: {e}"))?;
     Ok(())
 }
 
-fn draw_time_series(
-    bucket_means: &[f64],
-    directory: &str,
-    name: &str,
-) -> Result<(), String> {
+fn draw_time_series(bucket_means: &[f64], directory: &str, name: &str) -> Result<(), String> {
     let path = Path::new(directory).join(format!("{name}.png"));
     let root = BitMapBackend::new(&path, (800, 400)).into_drawing_area();
     root.fill(&WHITE)
@@ -133,20 +138,25 @@ fn draw_time_series(
     let max_val = bucket_means.iter().cloned().fold(f64::MIN, f64::max);
     let min_val = bucket_means.iter().cloned().fold(f64::MAX, f64::min);
     let y_range = if (max_val - min_val).abs() < 1e-12 {
-        let upper = if max_val.abs() < 1e-12 { 1.0 } else { max_val * 1.2 };
+        let upper = if max_val.abs() < 1e-12 {
+            1.0
+        } else {
+            max_val * 1.2
+        };
         0.0..upper
     } else {
         (min_val - (max_val - min_val) * 0.1)..(max_val + (max_val - min_val) * 0.1)
     };
 
     let n = bucket_means.len();
-    let data: Vec<(usize, f64)> = bucket_means.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    let data: Vec<(usize, f64)> = bucket_means
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (i, v))
+        .collect();
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(
-            format!("{name}"),
-            ("sans-serif", 18).into_font(),
-        )
+        .caption(format!("{name}"), ("sans-serif", 18).into_font())
         .x_label_area_size(35)
         .y_label_area_size(40)
         .build_cartesian_2d(0usize..n, y_range)
@@ -164,16 +174,11 @@ fn draw_time_series(
         .draw_series(LineSeries::new(data, &BLUE))
         .map_err(|e| format!("draw series: {e}"))?;
 
-    root.present()
-        .map_err(|e| format!("save plot: {e}"))?;
+    root.present().map_err(|e| format!("save plot: {e}"))?;
     Ok(())
 }
 
-fn draw_histogram(
-    buckets: &[(f64, u64)],
-    directory: &str,
-    name: &str,
-) -> Result<(), String> {
+fn draw_histogram(buckets: &[(f64, u64)], directory: &str, name: &str) -> Result<(), String> {
     let path = Path::new(directory).join(format!("{name}.png"));
     let root = BitMapBackend::new(&path, (800, 400)).into_drawing_area();
     root.fill(&WHITE)
@@ -188,10 +193,7 @@ fn draw_histogram(
     let y_range = 0.0..(max_count * 1.1);
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(
-            format!("{name}"),
-            ("sans-serif", 18).into_font(),
-        )
+        .caption(format!("{name}"), ("sans-serif", 18).into_font())
         .x_label_area_size(35)
         .y_label_area_size(40)
         .build_cartesian_2d(0usize..bar_count, y_range)
@@ -201,7 +203,10 @@ fn draw_histogram(
         .configure_mesh()
         .x_labels(bar_count.min(10))
         .x_label_formatter(&|x| {
-            buckets.get(*x).map(|(edge, _)| format!("{edge:.1}")).unwrap_or_default()
+            buckets
+                .get(*x)
+                .map(|(edge, _)| format!("{edge:.1}"))
+                .unwrap_or_default()
         })
         .label_style(("sans-serif", 10))
         .draw()
@@ -216,7 +221,6 @@ fn draw_histogram(
         }))
         .map_err(|e| format!("draw bars: {e}"))?;
 
-    root.present()
-        .map_err(|e| format!("save plot: {e}"))?;
+    root.present().map_err(|e| format!("save plot: {e}"))?;
     Ok(())
 }

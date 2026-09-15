@@ -235,7 +235,11 @@ pub fn generate_study_report_json_from_stats(stats: &StudyStats) -> String {
 /// Write the full `StudyResult` as `<study_id>.json` plus the aggregate
 /// `study_stats.json` under `directory`.
 pub fn write_study_result_json(study: &StudyResult, directory: &str) -> std::io::Result<()> {
-    write_study_result_in_format(study, directory, &matchlab_experiments::formats::ArtifactFormat::Json)
+    write_study_result_in_format(
+        study,
+        directory,
+        &matchlab_experiments::formats::ArtifactFormat::Json,
+    )
 }
 /// Write the full `StudyResult` in the specified format.
 pub fn write_study_result_in_format(
@@ -251,10 +255,10 @@ pub fn write_study_result_in_format(
         ArtifactFormat::Yaml => "yaml",
     };
     let study_data = match format {
-        ArtifactFormat::Json => serde_json::to_string_pretty(study).map_err(std::io::Error::other)?,
-        ArtifactFormat::Jsonl => {
-            serde_json::to_string(study).map_err(std::io::Error::other)?
+        ArtifactFormat::Json => {
+            serde_json::to_string_pretty(study).map_err(std::io::Error::other)?
         }
+        ArtifactFormat::Jsonl => serde_json::to_string(study).map_err(std::io::Error::other)?,
         ArtifactFormat::Yaml => serde_yaml::to_string(study).map_err(std::io::Error::other)?,
     };
     let study_path = std::path::Path::new(directory).join(format!("{}.{}", study.study_id, ext));
@@ -267,7 +271,9 @@ pub fn write_study_result_in_format(
         },
     );
     let stats_data = match format {
-        ArtifactFormat::Json => serde_json::to_string_pretty(&stats).map_err(std::io::Error::other)?,
+        ArtifactFormat::Json => {
+            serde_json::to_string_pretty(&stats).map_err(std::io::Error::other)?
+        }
         ArtifactFormat::Jsonl => serde_json::to_string(&stats).map_err(std::io::Error::other)?,
         ArtifactFormat::Yaml => serde_yaml::to_string(&stats).map_err(std::io::Error::other)?,
     };

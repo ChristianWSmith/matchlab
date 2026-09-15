@@ -436,22 +436,22 @@ fn empty_population_produces_zero_matches() {
                 params: Default::default(),
             },
             rating: matchlab_experiments::config::RatingSpec {
-                    name: Some("elo".to_string()),
-                    script: None,
-                    params: [
-                        (
-                            "k_factor".to_string(),
-                            serde_yaml::Value::Number(32.0.into()),
-                        ),
-                        (
-                            "initial_rating".to_string(),
-                            serde_yaml::Value::Number(1000.0.into()),
-                        ),
-                        ("beta".to_string(), serde_yaml::Value::Number(400.0.into())),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
+                name: Some("elo".to_string()),
+                script: None,
+                params: [
+                    (
+                        "k_factor".to_string(),
+                        serde_yaml::Value::Number(32.0.into()),
+                    ),
+                    (
+                        "initial_rating".to_string(),
+                        serde_yaml::Value::Number(1000.0.into()),
+                    ),
+                    ("beta".to_string(), serde_yaml::Value::Number(400.0.into())),
+                ]
+                .into_iter()
+                .collect(),
+            },
             detection: None,
             ranking: None,
             metrics: vec![matchlab_experiments::config::MetricEntry::Name(

@@ -399,10 +399,7 @@ experiment:
             .get("batch_interval")
             .and_then(|v| v.as_u64());
         assert_eq!(batch, Some(10));
-        assert_eq!(
-            config.experiment.rating.name,
-            Some("elo".to_string())
-        );
+        assert_eq!(config.experiment.rating.name, Some("elo".to_string()));
         assert_eq!(
             config
                 .experiment

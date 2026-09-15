@@ -266,11 +266,7 @@ study:
             "experiment.rating.name",
             Value::String("flat".into()),
         );
-        set_nested_value(
-            &mut flat,
-            "experiment.rating.k_factor",
-            Value::from(10.0),
-        );
+        set_nested_value(&mut flat, "experiment.rating.k_factor", Value::from(10.0));
         assert_eq!(flat.experiment.rating.name.as_deref(), Some("flat"));
         assert_eq!(
             flat.experiment.rating.params["k_factor"],

@@ -375,10 +375,7 @@ mod tests {
         };
         let configs = design.generate_configs(&base());
         assert_eq!(configs.len(), 2);
-        assert_eq!(
-            configs[0].experiment.rating.name,
-            Some("elo".to_string())
-        );
+        assert_eq!(configs[0].experiment.rating.name, Some("elo".to_string()));
         assert_eq!(
             configs[1].experiment.rating.name,
             Some("flatpoints".to_string())
