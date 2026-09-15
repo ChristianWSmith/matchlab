@@ -76,7 +76,6 @@ experiment:
 
   population:
     size: 10000
-    seed: 42
     archetypes:
       - name: stable
         proportion: 1.0
@@ -134,11 +133,11 @@ study:
       overrides: {}
     - name: glicko2
       overrides:
-        experiment.rating.system.script: plugins/rating/glicko2.lua
-        experiment.rating.system.initial_rating: 1000.0
-        experiment.rating.system.initial_rd: 350.0
-        experiment.rating.system.initial_volatility: 0.06
-        experiment.rating.system.tau: 0.5
+        experiment.rating.script: plugins/rating/glicko2.lua
+        experiment.rating.initial_rating: 1000.0
+        experiment.rating.initial_rd: 350.0
+        experiment.rating.initial_volatility: 0.06
+        experiment.rating.tau: 0.5
   replication:
     count: 50
     strategy: crn

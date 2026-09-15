@@ -21,7 +21,6 @@ experiment:
   seed: 42
   population:
     size: 500
-    seed: 42
     archetypes:
       - name: stable
         proportion: 0.7
@@ -52,11 +51,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -107,10 +105,7 @@ fn experiment_config_round_trip_yaml() {
         config.experiment.output.directory,
         back.experiment.output.directory
     );
-    assert_eq!(
-        config.experiment.rating.system.name,
-        back.experiment.rating.system.name
-    );
+    assert_eq!(config.experiment.rating.name, back.experiment.rating.name);
     assert_eq!(
         config.experiment.matchmaking.script,
         back.experiment.matchmaking.script
@@ -468,7 +463,6 @@ experiment:
   seed: 1
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -485,9 +479,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:

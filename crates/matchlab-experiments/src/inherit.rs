@@ -77,7 +77,6 @@ experiment:
   seed: 42
   population:
     size: 10000
-    seed: 42
     archetypes:
       - name: stable
         proportion: 1.0
@@ -111,11 +110,10 @@ base: standard.yaml
 experiment:
   name: elo_only
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -124,7 +122,7 @@ experiment:
     fn merge_replaces_sequences_and_scalars_merges_maps() {
         let base: Value = serde_yaml::from_str(BASE).unwrap();
         let over: Value = serde_yaml::from_str(
-            "experiment:\n  name: x\n  seed: 7\n  rating:\n    system:\n      name: flatpoints\n",
+            "experiment:\n  name: x\n  seed: 7\n  rating:\n        name: flatpoints\n",
         )
         .unwrap();
         let merged = deep_merge(base, over);
@@ -138,13 +136,9 @@ experiment:
             Some(10000),
             "population preserved from base"
         );
-        let system = exp
-            .get("rating")
-            .and_then(|r| r.get("system"))
-            .and_then(Value::as_mapping)
-            .unwrap();
+        let rating = exp.get("rating").and_then(Value::as_mapping).unwrap();
         assert_eq!(
-            system.get("name").and_then(Value::as_str),
+            rating.get("name").and_then(Value::as_str),
             Some("flatpoints")
         );
     }
@@ -155,10 +149,7 @@ experiment:
         let merged = deep_merge(base, over);
         let config: ExperimentConfig = serde_yaml::from_value(merged).unwrap();
         assert_eq!(config.experiment.name, "elo_only");
-        assert_eq!(
-            config.experiment.rating.system.name,
-            Some("elo".to_string())
-        );
+        assert_eq!(config.experiment.rating.name, Some("elo".to_string()));
         assert_eq!(
             config.experiment.metrics,
             vec![

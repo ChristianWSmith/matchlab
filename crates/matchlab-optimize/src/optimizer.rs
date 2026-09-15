@@ -1213,7 +1213,7 @@ seed: 42
 budget: 3
 search_space:
   parameters:
-    experiment.rating.system.k_factor:
+    experiment.rating.k_factor:
       type: float
       bounds: [1.0, 50.0]
 objectives:
@@ -1253,7 +1253,7 @@ seed: 42
 budget: 2
 search_space:
   parameters:
-    experiment.rating.system.k_factor:
+    experiment.rating.k_factor:
       type: float
       bounds: [1.0, 50.0]
 objectives:
@@ -1303,7 +1303,7 @@ seed: 42
 budget: 4
 search_space:
   parameters:
-    experiment.rating.system.k_factor:
+    experiment.rating.k_factor:
       type: float
       bounds: [1.0, 50.0]
 objectives:
@@ -1399,7 +1399,7 @@ seed: 42
 budget: 6
 search_space:
   parameters:
-    experiment.rating.system.k_factor:
+    experiment.rating.k_factor:
       type: float
       bounds: [1.0, 50.0]
 objectives:

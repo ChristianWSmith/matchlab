@@ -103,7 +103,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 42
     archetypes:
       - name: stable
         proportion: 1.0
@@ -123,11 +122,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
   cohorts: []

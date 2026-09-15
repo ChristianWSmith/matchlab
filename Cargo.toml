@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.4.3"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -39,6 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 rayon = "1.10"
 chrono = "0.4"
 smallvec = "1"
+plotters = { version = "0.3", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "image", "line_series"] }
 
 [package]
 name = "matchlab"

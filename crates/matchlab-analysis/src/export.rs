@@ -109,9 +109,35 @@ impl RawDataExporter {
 /// Write the full metrics result (`ExperimentResult`) as pretty JSON under
 /// `OutputSpec.directory`, per the ticket 10/11 pipeline.
 pub fn write_result_json(result: &ExperimentResult, directory: &str) -> io::Result<()> {
+    write_result_in_format(
+        result,
+        directory,
+        &matchlab_experiments::formats::ArtifactFormat::Json,
+    )
+}
+/// Write the full metrics result in the specified format.
+pub fn write_result_in_format(
+    result: &ExperimentResult,
+    directory: &str,
+    format: &matchlab_experiments::formats::ArtifactFormat,
+) -> io::Result<()> {
+    use matchlab_experiments::formats::ArtifactFormat;
     std::fs::create_dir_all(directory)?;
-    let path = Path::new(directory).join(format!("{}.json", result.name));
-    let data = serde_json::to_string_pretty(result).map_err(io::Error::other)?;
+    let (data, ext) = match format {
+        ArtifactFormat::Json => (
+            serde_json::to_string_pretty(result).map_err(io::Error::other)?,
+            "json",
+        ),
+        ArtifactFormat::Jsonl => (
+            serde_json::to_string(result).map_err(io::Error::other)?,
+            "jsonl",
+        ),
+        ArtifactFormat::Yaml => (
+            serde_yaml::to_string(result).map_err(io::Error::other)?,
+            "yaml",
+        ),
+    };
+    let path = Path::new(directory).join(format!("{}.{}", result.name, ext));
     std::fs::write(path, data)
 }
 #[cfg(test)]
@@ -267,7 +293,6 @@ experiment:
   seed: 7
   population:
     size: 100
-    seed: 7
     archetypes:
       - name: stable
         proportion: 1.0
@@ -287,11 +312,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
     - queue_time

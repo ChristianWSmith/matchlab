@@ -52,7 +52,6 @@ experiment:
   seed: {seed}
   population:
     size: {size}
-    seed: {seed}
     archetypes:
       - name: stable
         proportion: 1.0
@@ -73,11 +72,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics: [rating_accuracy, match_quality, queue_time]
   cohorts: []
   duration:
@@ -104,7 +102,6 @@ experiment:
   seed: {seed}
   population:
     size: {size}
-    seed: {seed}
     archetypes:
       - name: stable
         proportion: 1.0
@@ -125,12 +122,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      script: plugins/rating/glicko2.lua
-      initial_rating: 1000.0
-      initial_rd: 350.0
-      initial_volatility: 0.06
-      tau: 0.5
+    script: plugins/rating/glicko2.lua
+    initial_rating: 1000.0
+    initial_rd: 350.0
+    initial_volatility: 0.06
+    tau: 0.5
   metrics: [rating_accuracy, match_quality, queue_time]
   cohorts: []
   duration:

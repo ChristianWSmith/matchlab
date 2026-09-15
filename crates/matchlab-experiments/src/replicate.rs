@@ -248,10 +248,9 @@ impl ReplicationRunner {
                                     let seed = arm_seed(spec.strategy, repl, arm_i as u64);
                                     let mut cfg = arms[arm_i].config.clone();
                                     cfg.experiment.seed = seed;
-                                    let system = crate::runner::build_rating_system(
-                                        &cfg.experiment.rating.system,
-                                    )
-                                    .expect("build rating system failed");
+                                    let system =
+                                        crate::runner::build_rating_system(&cfg.experiment.rating)
+                                            .expect("build rating system failed");
                                     let result = ReplayEngine::replay(
                                         history,
                                         system.as_ref(),
@@ -473,7 +472,6 @@ experiment:
   seed: 1
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: stable
         proportion: 1.0
@@ -493,11 +491,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics: [match_quality]
   cohorts: []
   duration:
@@ -688,7 +685,6 @@ experiment:
   seed: 1
   population:
     size: 16
-    seed: 1
     archetypes:
       - name: stable
         proportion: 1.0
@@ -708,12 +704,11 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: glicko2
-      initial_rating: 1000.0
-      initial_rd: 350.0
-      initial_volatility: 0.06
-      tau: 0.5
+    name: glicko2
+    initial_rating: 1000.0
+    initial_rd: 350.0
+    initial_volatility: 0.06
+    tau: 0.5
   metrics: [match_quality, rating_accuracy]
   cohorts: []
   duration:

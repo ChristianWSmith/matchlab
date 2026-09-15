@@ -58,9 +58,9 @@ impl ExperimentRunner {
         );
         let population = generate_population(&config.experiment.population, seeds.population_seed);
         tracing::info!(size = population.len(), "population generated");
-        let rating_system = build_rating_system(&config.experiment.rating.system)?;
+        let rating_system = build_rating_system(&config.experiment.rating)?;
         tracing::info!(
-            name = %config.experiment.rating.system.name.as_deref().unwrap_or("custom"),
+            name = %config.experiment.rating.name.as_deref().unwrap_or("custom"),
             "rating system loaded"
         );
         let outcome_model = build_outcome_model(&config.experiment.game)?;
@@ -205,7 +205,7 @@ fn to_players_archetype(spec: &ArchetypeSpec) -> ArchetypeConfig {
     }
 }
 pub(crate) fn build_rating_system(
-    spec: &crate::config::RatingSystemSpec,
+    spec: &crate::config::RatingSpec,
 ) -> Result<Box<dyn RatingSystem>, String> {
     let params = flatten_params(&spec.params);
     let script = spec
@@ -273,9 +273,6 @@ fn build_detection_system(
     let Some(spec) = spec else {
         return Ok(None);
     };
-    if !spec.enabled {
-        return Ok(None);
-    }
     let params = flatten_params(&spec.params);
     let detector = matchlab_detection::lua::LuaDetectionSystem::load(&spec.script, &params)?;
     tracing::info!(script = %spec.script, "detection system enabled");
@@ -322,9 +319,6 @@ fn build_satisfaction_model(
     let Some(spec) = spec else {
         return Ok(None);
     };
-    if !spec.enabled {
-        return Ok(None);
-    }
     let params = flatten_params(&spec.params);
     let model = matchlab_utility::lua::LuaSatisfactionModel::load(&spec.script, &params)?;
     tracing::info!(script = %spec.script, "satisfaction model enabled");
@@ -369,7 +363,6 @@ experiment:
   seed: 7
   population:
     size: 100
-    seed: 7
     archetypes:
       - name: stable
         proportion: 1.0
@@ -389,11 +382,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      script: plugins/rating/elo.lua
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    script: plugins/rating/elo.lua
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -439,8 +431,8 @@ experiment:
     #[test]
     fn unknown_rating_system_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.system.name = Some("bogus".to_string());
-        config.experiment.rating.system.script = None;
+        config.experiment.rating.name = Some("bogus".to_string());
+        config.experiment.rating.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]
@@ -455,8 +447,8 @@ experiment:
     #[test]
     fn rating_system_without_name_or_script_is_rejected() {
         let mut config = mini_config();
-        config.experiment.rating.system.name = None;
-        config.experiment.rating.system.script = None;
+        config.experiment.rating.name = None;
+        config.experiment.rating.script = None;
         assert!(ExperimentRunner::run(&config).is_err());
     }
     #[test]

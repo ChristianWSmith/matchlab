@@ -163,7 +163,7 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(b"k = 1\n").unwrap();
         let mut config: ExperimentConfig = serde_yaml::from_str(TINY_CONFIG).unwrap();
-        config.experiment.rating.system.script = Some(path.to_str().unwrap().to_string());
+        config.experiment.rating.script = Some(path.to_str().unwrap().to_string());
         let first = hash_config(&config);
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(b"k = 2\n").unwrap();
@@ -180,7 +180,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 42
     archetypes:
       - name: stable
         proportion: 1.0
@@ -200,11 +199,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
   cohorts: []

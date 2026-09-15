@@ -9,6 +9,28 @@ pub enum ArtifactFormat {
     Jsonl,
     Yaml,
 }
+impl std::fmt::Display for ArtifactFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArtifactFormat::Json => write!(f, "json"),
+            ArtifactFormat::Jsonl => write!(f, "jsonl"),
+            ArtifactFormat::Yaml => write!(f, "yaml"),
+        }
+    }
+}
+impl std::str::FromStr for ArtifactFormat {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "json" => Ok(ArtifactFormat::Json),
+            "jsonl" => Ok(ArtifactFormat::Jsonl),
+            "yaml" | "yml" => Ok(ArtifactFormat::Yaml),
+            other => Err(format!(
+                "unsupported format: {other} (expected json, jsonl, or yaml)"
+            )),
+        }
+    }
+}
 /// Configuration for artifact export formats.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExportConfig {

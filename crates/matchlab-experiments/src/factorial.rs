@@ -255,7 +255,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ArchetypeSpec, CohortSpec, DistributionSpec, DurationSpec, ExperimentSpec, GameSpec,
-        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, RatingSystemSpec, TeamSpecs,
+        MatchmakingSpec, OutputSpec, PopulationSpec, RatingSpec, TeamSpecs,
     };
     use std::collections::BTreeMap;
     fn base() -> ExperimentConfig {
@@ -266,7 +266,6 @@ mod tests {
                 seed: 42,
                 population: PopulationSpec {
                     size: 100,
-                    seed: 42,
                     archetypes: vec![ArchetypeSpec {
                         name: "stable".to_string(),
                         proportion: 1.0,
@@ -295,11 +294,9 @@ mod tests {
                     params: BTreeMap::new(),
                 },
                 rating: RatingSpec {
-                    system: RatingSystemSpec {
-                        name: Some("elo".to_string()),
-                        script: None,
-                        params: BTreeMap::new(),
-                    },
+                    name: Some("elo".to_string()),
+                    script: None,
+                    params: BTreeMap::new(),
                 },
                 detection: None,
                 ranking: None,
@@ -341,7 +338,7 @@ mod tests {
                     values: vec![Value::from(300.0), Value::from(400.0), Value::from(500.0)],
                 },
                 Factor {
-                    name: "experiment.rating.system.name".to_string(),
+                    name: "experiment.rating.name".to_string(),
                     values: vec![Value::from("elo"), Value::from("glicko2")],
                 },
             ],
@@ -372,18 +369,15 @@ mod tests {
     fn list_factor_applies_each_value() {
         let design = FactorialDesign {
             factors: vec![Factor {
-                name: "experiment.rating.system.name".to_string(),
+                name: "experiment.rating.name".to_string(),
                 values: vec![Value::from("elo"), Value::from("flatpoints")],
             }],
         };
         let configs = design.generate_configs(&base());
         assert_eq!(configs.len(), 2);
+        assert_eq!(configs[0].experiment.rating.name, Some("elo".to_string()));
         assert_eq!(
-            configs[0].experiment.rating.system.name,
-            Some("elo".to_string())
-        );
-        assert_eq!(
-            configs[1].experiment.rating.system.name,
+            configs[1].experiment.rating.name,
             Some("flatpoints".to_string())
         );
     }
@@ -401,7 +395,7 @@ mod tests {
         let design = FactorialDesign {
             factors: vec![
                 Factor {
-                    name: "experiment.rating.system.name".to_string(),
+                    name: "experiment.rating.name".to_string(),
                     values: vec![
                         Value::from("elo"),
                         Value::from("glicko2"),
@@ -427,7 +421,7 @@ mod tests {
             for suffix in suffixes {
                 let cfg = cell(&format!("feedback_{rating}_{suffix}.yaml"));
                 expected.push((
-                    cfg.experiment.rating.system.name.clone().unwrap(),
+                    cfg.experiment.rating.name.clone().unwrap(),
                     cfg.experiment.matchmaking.script.clone(),
                 ));
             }
@@ -436,7 +430,7 @@ mod tests {
             .iter()
             .map(|c| {
                 (
-                    c.experiment.rating.system.name.clone().unwrap_or_default(),
+                    c.experiment.rating.name.clone().unwrap_or_default(),
                     c.experiment.matchmaking.script.clone(),
                 )
             })

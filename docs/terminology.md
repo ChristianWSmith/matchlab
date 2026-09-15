@@ -26,10 +26,10 @@ A group of players assigned to one side of a match. Teams are defined by `TeamCo
 A specific combination of factor levels in an experiment. In a study with two rating systems and two matchmakers, there are four conditions (cells). Each condition is run as one or more independent replications.
 
 **Factor**
-An independent variable that is systematically varied across conditions. For example, `rating.system` and `matchmaking.script` are factors in a feedback-loop study.
+An independent variable that is systematically varied across conditions. For example, `rating` and `matchmaking.script` are factors in a feedback-loop study.
 
 **Level**
-A specific value assigned to a factor. For example, `elo` and `glicko2` are levels of the `rating.system` factor.
+A specific value assigned to a factor. For example, `elo` and `glicko2` are levels of the `rating` factor.
 
 **Replication**
 A single repeat of a condition with a different random seed. Replications quantify random variation and enable statistical inference. The number of replications per condition determines statistical power.

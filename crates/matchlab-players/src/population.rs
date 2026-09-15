@@ -113,18 +113,22 @@ impl PopulationGenerator {
         (realities, observations)
     }
 }
-/// Convert proportions into integer counts that sum exactly to `size` using the
-/// largest-remainder method (naive `truncate` can undershoot by one per archetype).
+/// Convert relative weights into integer counts that sum exactly to `size` using
+/// the largest-remainder method. Weights are normalized so they need not sum to 1.0.
 fn allocate_counts(config: &PopulationConfig) -> Vec<u64> {
     if config.archetypes.is_empty() {
         return Vec::new();
     }
     let size = config.size;
+    let total_weight: f64 = config.archetypes.iter().map(|a| a.proportion).sum();
+    if total_weight <= 0.0 {
+        return vec![0u64; config.archetypes.len()];
+    }
     let mut floors: Vec<u64> = Vec::with_capacity(config.archetypes.len());
     let mut remainders: Vec<f64> = Vec::with_capacity(config.archetypes.len());
     let mut total_floor = 0u64;
     for archetype in &config.archetypes {
-        let exact = archetype.proportion * size as f64;
+        let exact = (archetype.proportion / total_weight) * size as f64;
         let floor = exact.floor() as u64;
         total_floor += floor;
         floors.push(floor);
@@ -282,6 +286,55 @@ mod tests {
         let (realities, observations) = PopulationGenerator::generate(&config, &mut rng);
         assert_eq!(realities.len(), config.size as usize);
         assert_eq!(observations.len(), config.size as usize);
+    }
+    #[test]
+    fn non_normalized_weights_are_normalized_before_allocation() {
+        let archetypes = vec![
+            ArchetypeConfig {
+                name: "a".to_string(),
+                proportion: 3.0,
+                skill_distribution: DistributionConfig::Normal {
+                    mean: 500.0,
+                    stddev: 50.0,
+                },
+                skill_volatility: 5.0,
+                improvement_rate: 0.0,
+                play_frequency: 0.8,
+                session_length: 1800.0,
+                quit_probability: 0.01,
+                initial_rating: None,
+                role: None,
+                skill_dimensions: None,
+                correlation: None,
+                dynamics: None,
+            },
+            ArchetypeConfig {
+                name: "b".to_string(),
+                proportion: 1.0,
+                skill_distribution: DistributionConfig::Normal {
+                    mean: 500.0,
+                    stddev: 50.0,
+                },
+                skill_volatility: 5.0,
+                improvement_rate: 0.0,
+                play_frequency: 0.8,
+                session_length: 1800.0,
+                quit_probability: 0.01,
+                initial_rating: None,
+                role: None,
+                skill_dimensions: None,
+                correlation: None,
+                dynamics: None,
+            },
+        ];
+        let config = PopulationConfig {
+            size: 100,
+            archetypes,
+        };
+        let counts = allocate_counts(&config);
+        assert_eq!(counts.iter().sum::<u64>(), 100);
+        assert_eq!(counts[0], 75);
+        assert_eq!(counts[1], 25);
     }
     #[test]
     fn generation_is_deterministic_given_seed() {
