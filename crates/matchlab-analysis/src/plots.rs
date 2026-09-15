@@ -156,7 +156,7 @@ fn draw_time_series(bucket_means: &[f64], directory: &str, name: &str) -> Result
         .collect();
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(format!("{name}"), ("sans-serif", 18).into_font())
+        .caption(name, ("sans-serif", 18).into_font())
         .x_label_area_size(35)
         .y_label_area_size(40)
         .build_cartesian_2d(0usize..n, y_range)
@@ -193,7 +193,7 @@ fn draw_histogram(buckets: &[(f64, u64)], directory: &str, name: &str) -> Result
     let y_range = 0.0..(max_count * 1.1);
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(format!("{name}"), ("sans-serif", 18).into_font())
+        .caption(name, ("sans-serif", 18).into_font())
         .x_label_area_size(35)
         .y_label_area_size(40)
         .build_cartesian_2d(0usize..bar_count, y_range)
