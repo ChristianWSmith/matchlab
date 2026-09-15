@@ -321,7 +321,9 @@ pub struct OutputSpec {
     pub directory: String,
     #[serde(default = "default_formats")]
     pub formats: Vec<String>,
+    #[serde(default)]
     pub plots: bool,
+    #[serde(default)]
     pub report: bool,
 }
 #[cfg(test)]
@@ -336,7 +338,6 @@ experiment:
   seed: 42
   population:
     size: 10000
-    seed: 42
     archetypes:
       - name: stable
         proportion: 1.0
@@ -426,7 +427,6 @@ experiment:
   seed: 1
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -476,7 +476,6 @@ experiment:
   seed: 1
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -532,7 +531,6 @@ experiment:
   seed: 1
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -630,7 +628,6 @@ experiment:
   seed: 1
   population:
     size: 100
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0

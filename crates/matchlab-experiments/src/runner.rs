@@ -363,7 +363,6 @@ experiment:
   seed: 7
   population:
     size: 100
-    seed: 7
     archetypes:
       - name: stable
         proportion: 1.0

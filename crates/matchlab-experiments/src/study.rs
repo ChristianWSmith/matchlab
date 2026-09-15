@@ -125,7 +125,6 @@ experiment:
   seed: 1
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: stable
         proportion: 1.0

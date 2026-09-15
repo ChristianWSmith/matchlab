@@ -30,7 +30,6 @@ experiment:
   seed: 1
   population:
     size: 40
-    seed: 1
     archetypes:
       - name: stable
         proportion: 1.0
@@ -80,7 +79,6 @@ experiment:
   seed: 1
   population:
     size: 40
-    seed: 1
     archetypes:
       - name: stable
         proportion: 1.0

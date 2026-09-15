@@ -18,7 +18,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -63,7 +62,6 @@ experiment:
   name: no_seed
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -143,7 +141,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -181,7 +178,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -231,7 +227,6 @@ experiment:
   seed: "not_a_number"
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -277,7 +272,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -361,7 +355,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -534,7 +527,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -583,7 +575,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -631,7 +622,6 @@ experiment:
   seed: 42
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: killer
         proportion: 0.5
@@ -689,7 +679,6 @@ experiment:
   seed: 42
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: killer
         proportion: 1.0
@@ -738,7 +727,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -787,7 +775,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -834,7 +821,6 @@ experiment:
   seed: 42
   population:
     size: 10
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -875,7 +861,6 @@ experiment:
   seed: 42
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0
@@ -920,7 +905,6 @@ experiment:
   seed: 42
   population:
     size: 20
-    seed: 1
     archetypes:
       - name: a
         proportion: 1.0

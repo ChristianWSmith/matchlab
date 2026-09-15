@@ -52,7 +52,6 @@ experiment:
   seed: {seed}
   population:
     size: {size}
-    seed: {seed}
     archetypes:
       - name: stable
         proportion: 1.0
@@ -103,7 +102,6 @@ experiment:
   seed: {seed}
   population:
     size: {size}
-    seed: {seed}
     archetypes:
       - name: stable
         proportion: 1.0
