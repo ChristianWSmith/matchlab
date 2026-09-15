@@ -9,10 +9,9 @@ experiment:
     max_queue_time: 60.0
     max_skill_diff: 50.0
   rating:
-    system:
-      name: trueskill
-      initial_rating: 1000.0
-      initial_variance: 122500.0
-      beta: 400.0
-      dynamics: 0.0
-      draw_probability: 0.1
+    name: trueskill
+    initial_rating: 1000.0
+    initial_variance: 122500.0
+    beta: 400.0
+    dynamics: 0.0
+    draw_probability: 0.1

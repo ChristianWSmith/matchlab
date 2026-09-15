@@ -4,7 +4,6 @@ experiment:
   name: detection_test
   description: "Smurf detection on a population with a smurf archetype"
   detection:
-    enabled: true
     script: plugins/detection/smurf.lua
     min_games_before_action: 3
   metrics:

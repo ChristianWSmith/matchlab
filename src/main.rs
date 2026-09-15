@@ -31,8 +31,7 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    let threads =
-        threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let threads = threads;
     let level = log_level.unwrap_or_else(|| {
         if verbose {
             "debug".to_string()
@@ -217,7 +216,7 @@ fn package(args: &[String]) -> ExitCode {
     );
     ExitCode::SUCCESS
 }
-fn run(manifest_args: &[String], threads: usize) -> ExitCode {
+fn run(manifest_args: &[String], threads: Option<usize>) -> ExitCode {
     let Some(manifest) = manifest_args.first() else {
         eprintln!("usage: matchlab run <manifest.yaml>");
         return ExitCode::from(2);
@@ -242,16 +241,37 @@ fn run(manifest_args: &[String], threads: usize) -> ExitCode {
         }
     };
     let dir = &config.experiment.output.directory;
-    if let Err(e) = matchlab_analysis::export::write_result_json(&result, dir) {
-        tracing::error!(dir, error = %e, "failed to write metrics JSON");
-        eprintln!("write metrics JSON failed: {dir} — {e}");
-        return ExitCode::from(1);
+    let formats: Vec<matchlab_experiments::formats::ArtifactFormat> = config
+        .experiment
+        .output
+        .formats
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    let formats = if formats.is_empty() {
+        vec![matchlab_experiments::formats::ArtifactFormat::Json]
+    } else {
+        formats
+    };
+    for format in &formats {
+        if let Err(e) = matchlab_analysis::export::write_result_in_format(&result, dir, format) {
+            tracing::error!(dir, format = %format, error = %e, "failed to write result");
+            eprintln!("write result failed ({format}): {dir} — {e}");
+            return ExitCode::from(1);
+        }
+    }
+    if config.experiment.output.plots {
+        if let Err(e) = matchlab_analysis::plots::generate_plots(&result.metrics, dir, &result.name) {
+            tracing::error!(dir, error = %e, "failed to generate plots");
+            eprintln!("generate plots failed: {dir} — {e}");
+        }
     }
     let features = feature_summary(&config);
     let utility = result
         .utility_score
         .map(|s| format!(", utility {s:.4}"))
         .unwrap_or_default();
+    let primary_ext = formats.first().map(|f| f.to_string()).unwrap_or_else(|| "json".to_string());
     if config.experiment.output.report {
         let report = matchlab_analysis::report::generate_report(&result);
         let report_path = Path::new(dir).join(format!("{}.md", result.name));
@@ -275,7 +295,7 @@ fn run(manifest_args: &[String], threads: usize) -> ExitCode {
             result.simulated_time_secs,
             utility,
             Path::new(dir)
-                .join(format!("{}.json", result.name))
+                .join(format!("{}.{}", result.name, primary_ext))
                 .display()
         );
     }
@@ -287,8 +307,9 @@ fn run(manifest_args: &[String], threads: usize) -> ExitCode {
 fn run_replicated(
     config: &matchlab_experiments::ExperimentConfig,
     spec: &matchlab_experiments::ReplicationSpec,
-    threads: usize,
+    threads: Option<usize>,
 ) -> ExitCode {
+    let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let study = match matchlab_experiments::ReplicationRunner::run_single(config, spec, threads) {
         Ok(s) => s,
         Err(e) => {
@@ -296,9 +317,9 @@ fn run_replicated(
             return ExitCode::from(1);
         }
     };
-    finish_study(&study, &config.experiment.output.directory, false)
+    finish_study(&study, &config.experiment.output.directory, false, &config.experiment.output.formats)
 }
-fn study(args: &[String], threads: usize) -> ExitCode {
+fn study(args: &[String], threads: Option<usize>) -> ExitCode {
     let mut json_out = false;
     let mut replicates_override: Option<u64> = None;
     let mut path: Option<String> = None;
@@ -338,6 +359,7 @@ fn study(args: &[String], threads: usize) -> ExitCode {
     if let Some(n) = replicates_override {
         config.study.replication.count = n;
     }
+    let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
     let result = match matchlab_experiments::study::StudyRunner::run(&config, threads) {
         Ok(r) => r,
         Err(e) => {
@@ -346,12 +368,23 @@ fn study(args: &[String], threads: usize) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    finish_study(&result, &config.study.output.directory, json_out)
+    finish_study(&result, &config.study.output.directory, json_out, &config.study.output.formats)
 }
-fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: bool) -> ExitCode {
-    if let Err(e) = matchlab_analysis::study::write_study_result_json(study, dir) {
-        eprintln!("write study JSON failed: {dir} — {e}");
-        return ExitCode::from(1);
+fn finish_study(study: &matchlab_experiments::StudyResult, dir: &str, json_out: bool, formats: &[String]) -> ExitCode {
+    let fmts: Vec<matchlab_experiments::formats::ArtifactFormat> = formats
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    let fmts = if fmts.is_empty() {
+        vec![matchlab_experiments::formats::ArtifactFormat::Json]
+    } else {
+        fmts
+    };
+    for format in &fmts {
+        if let Err(e) = matchlab_analysis::study::write_study_result_in_format(study, dir, format) {
+            eprintln!("write study result failed ({format}): {dir} — {e}");
+            return ExitCode::from(1);
+        }
     }
     let config = matchlab_analysis::study::StudyReportConfig::default();
     if json_out {
@@ -528,7 +561,7 @@ fn power_cmd(args: &[String]) -> ExitCode {
 fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     let exp = &config.experiment;
     let mut parts: Vec<String> = Vec::new();
-    if exp.detection.as_ref().map(|d| d.enabled).unwrap_or(false) {
+    if exp.detection.is_some() {
         parts.push("detection".to_string());
     }
     if exp.ranking.is_some() {
@@ -542,12 +575,7 @@ fn feature_summary(config: &matchlab_experiments::ExperimentConfig) -> String {
     {
         parts.push("adversarial".to_string());
     }
-    if exp
-        .satisfaction
-        .as_ref()
-        .map(|s| s.enabled)
-        .unwrap_or(false)
-    {
+    if exp.satisfaction.is_some() {
         parts.push("satisfaction".to_string());
     }
     if exp.game.script != "plugins/game/logistic.lua" {
@@ -593,7 +621,7 @@ fn parse_optimize_args(args: &[String]) -> OptimizeArgs {
     }
 }
 
-fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
+fn optimize_cmd(args: &[String], threads: Option<usize>) -> ExitCode {
     let parsed = parse_optimize_args(args);
     let json_out = parsed.json_out;
     let Some(path) = parsed.path else {
@@ -609,8 +637,12 @@ fn optimize_cmd(args: &[String], threads: usize) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    config.bo.threads = Some(threads);
-    config.bo.gp.threads = parsed.gp_threads.or(Some(threads));
+    if let Some(t) = threads {
+        config.bo.threads = Some(t);
+    }
+    if threads.is_some() || parsed.gp_threads.is_some() {
+        config.bo.gp.threads = parsed.gp_threads.or(threads);
+    }
     let result = match matchlab_optimize::optimize(&config) {
         Ok(r) => r,
         Err(e) => {

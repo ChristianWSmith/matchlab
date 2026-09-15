@@ -35,9 +35,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -81,9 +80,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -116,9 +114,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -163,9 +160,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   output:
@@ -202,9 +198,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -253,9 +248,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -301,9 +295,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -385,9 +378,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics:
     - nonexistent_metric_xyz
   cohorts: []
@@ -418,7 +410,6 @@ fn empty_population_produces_zero_matches() {
             seed: 42,
             population: matchlab_experiments::config::PopulationSpec {
                 size: 0,
-                seed: 42,
                 archetypes: vec![matchlab_experiments::config::ArchetypeSpec {
                     name: "empty".to_string(),
                     proportion: 1.0,
@@ -452,7 +443,6 @@ fn empty_population_produces_zero_matches() {
                 params: Default::default(),
             },
             rating: matchlab_experiments::config::RatingSpec {
-                system: matchlab_experiments::config::RatingSystemSpec {
                     name: Some("elo".to_string()),
                     script: None,
                     params: [
@@ -469,7 +459,6 @@ fn empty_population_produces_zero_matches() {
                     .into_iter()
                     .collect(),
                 },
-            },
             detection: None,
             ranking: None,
             metrics: vec![matchlab_experiments::config::MetricEntry::Name(
@@ -563,9 +552,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -613,9 +601,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -672,9 +659,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -722,9 +708,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -819,9 +804,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: nonexistent_system_xyz
-      k_factor: 32.0
+    name: nonexistent_system_xyz
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -867,9 +851,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -909,9 +892,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -955,9 +937,8 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
+    name: elo
+    k_factor: 32.0
   metrics: []
   cohorts: []
   duration:
@@ -979,7 +960,7 @@ experiment:
 #[test]
 fn all_error_messages_are_non_empty() {
     let bad_configs = vec![
-        "experiment:\n  seed: 1\n  population:\n    size: 1\n    seed: 1\n    archetypes: []\n  game:\n    script: plugins/game/logistic.lua\n    beta: 400.0\n  matchmaking:\n    script: plugins/matchmaking/batch.lua\n    max_queue_time: 60.0\n  rating:\n    system: {}\n  metrics: []\n  cohorts: []\n  duration:\n    matches: 1\n    max_time: 1.0\n  output:\n    directory: results/\n    formats: [json]\n    plots: false\n    report: false",
+        "experiment:\n  seed: 1\n  population:\n    size: 1\n    archetypes: []\n  game:\n    script: plugins/game/logistic.lua\n    beta: 400.0\n  matchmaking:\n    script: plugins/matchmaking/batch.lua\n    max_queue_time: 60.0\n  rating:\n    system: {}\n  metrics: []\n  cohorts: []\n  duration:\n    matches: 1\n    max_time: 1.0\n  output:\n    directory: results/\n    formats: [json]\n    plots: false\n    report: false",
     ];
     for yaml in bad_configs {
         let err = serde_yaml::from_str::<ExperimentConfig>(yaml);

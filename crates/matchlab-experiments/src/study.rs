@@ -145,11 +145,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics: [match_quality]
   cohorts: []
   duration:
@@ -183,12 +182,12 @@ study:
   arms:
     - name: elo
       overrides:
-        experiment.rating.system.name: elo
+        experiment.rating.name: elo
     - name: flatpoints
       overrides:
-        experiment.rating.system.name: flatpoints
-        experiment.rating.system.win_points: 10.0
-        experiment.rating.system.loss_points: 10.0
+        experiment.rating.name: flatpoints
+        experiment.rating.win_points: 10.0
+        experiment.rating.loss_points: 10.0
   replication:
     count: 2
     strategy: crn
@@ -265,17 +264,17 @@ study:
         let mut flat = base_config.clone();
         set_nested_value(
             &mut flat,
-            "experiment.rating.system.name",
+            "experiment.rating.name",
             Value::String("flat".into()),
         );
         set_nested_value(
             &mut flat,
-            "experiment.rating.system.k_factor",
+            "experiment.rating.k_factor",
             Value::from(10.0),
         );
-        assert_eq!(flat.experiment.rating.system.name.as_deref(), Some("flat"));
+        assert_eq!(flat.experiment.rating.name.as_deref(), Some("flat"));
         assert_eq!(
-            flat.experiment.rating.system.params["k_factor"],
+            flat.experiment.rating.params["k_factor"],
             serde_yaml::Value::from(10.0)
         );
         assert_eq!(

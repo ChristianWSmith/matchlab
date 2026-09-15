@@ -338,7 +338,6 @@ player counts that always sum to the population size.
 ```yaml
 population:
   size: 10000
-  seed: 42
   archetypes:
     - name: stable            # the bulk of the ladder
       proportion: 0.60
@@ -714,10 +713,10 @@ budget: 50
 
 search_space:
   parameters:
-    experiment.rating.system.k_factor:
+    experiment.rating.k_factor:
       type: float
       bounds: [1.0, 100.0]
-    experiment.rating.system.name:
+    experiment.rating.name:
       type: categorical
       values: [elo, glicko2, trueskill]
 

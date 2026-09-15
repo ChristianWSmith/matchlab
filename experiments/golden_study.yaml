@@ -5,7 +5,6 @@ experiment:
 
   population:
     size: 2000
-    seed: 42
     archetypes:
       - name: stable
         proportion: 0.60
@@ -62,14 +61,12 @@ experiment:
     max_queue_time: 60.0
 
   rating:
-    system:
-      script: plugins/rating/elo.lua
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    script: plugins/rating/elo.lua
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
 
   detection:
-    enabled: true
     script: plugins/detection/smurf.lua
     min_games_before_action: 3
 
@@ -85,7 +82,6 @@ experiment:
       - { tier: radiant, division: 1, min: 2100, max: 100000 }
 
   satisfaction:
-    enabled: true
     script: plugins/utility/satisfaction.lua
     match_quality: 1.0
     queue_time_penalty: -0.01

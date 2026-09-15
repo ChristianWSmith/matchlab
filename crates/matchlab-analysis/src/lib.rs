@@ -15,6 +15,7 @@ pub mod multiple_comparisons;
 pub mod navigator;
 pub mod pareto;
 pub mod pareto_explorer;
+pub mod plots;
 pub mod power;
 pub mod query;
 pub mod report;

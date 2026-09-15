@@ -4,12 +4,13 @@ This document defines the complete schema for MatchLab experiment and study mani
 
 ## Overview
 
-MatchLab uses two manifest shapes:
+MatchLab uses three manifest shapes:
 
 1. **Experiment manifest** — runs a single simulation experiment
 2. **Study manifest** — runs a multi-arm comparative study with replications
+3. **Optimization manifest** — runs Bayesian hyperparameter optimization over an experiment
 
-Both are YAML files. An experiment manifest can declare `base:` to inherit from a base config.
+All are YAML files. An experiment manifest can declare `base:` to inherit from a base config.
 
 ## Configuration Inheritance
 
@@ -40,12 +41,11 @@ experiment:
   description: <string>         # optional
   seed: <u64>                   # required, master experiment seed
 
-  population:                   # required
-    size: <u64>                 #   total players to generate
-    seed: <u64>                 #   population generation seed
+  population:                   # optional, default size 1000
+    size: <u64>                 #   optional, default 1000; total players to generate
     archetypes:                 #   required, list of player archetypes
       - name: <string>          #     archetype identifier
-        proportion: <f64>       #     fraction of population (0.0-1.0)
+        proportion: <f64>       #     relative weight (0.0+); normalized to population size
         skill_distribution:     #     required, how skill is sampled
           type: normal          #     distribution type
           mean: <f64>           #     distribution parameter
@@ -80,20 +80,18 @@ experiment:
     script: <path>              #   optional, default plugins/matchmaking/batch.lua
     max_queue_time: <f64>       #   required, seconds
     # Additional script params (flattened):
-    batch_interval: <f64>
+    batch_interval: <f64>       #   optional, default 60
     tiers: <list>
 
   rating:                       # required
-    system:                     #   required, single rating system
-      name: <string>            #     optional, fallback for script (display label + plugin identifier when script is absent)
-      script: <path>            #     script name or path (e.g. "elo" or "plugins/rating/elo.lua")
-      # Additional script params (flattened):
-      k_factor: <f64>
-      initial_rating: <f64>
-      beta: <f64>
+    name: <string>              #   optional, resolves to plugins/rating/<name>.lua when script is absent
+    script: <path>              #   optional, explicit script path (takes priority over name)
+    # Additional script params (flattened):
+    k_factor: <f64>
+    initial_rating: <f64>
+    beta: <f64>
 
   detection:                    # optional, absent = no detection
-    enabled: <bool>             #   required
     script: <path>              #   optional, default plugins/detection/smurf.lua
     # Additional script params (flattened):
     min_games_before_action: <u64>
@@ -105,20 +103,20 @@ experiment:
     # Additional script params (flattened):
     brackets: <list>
 
-  metrics:                      # required, list of metric names or scripts
+  metrics:                      # optional, default [match_quality, queue_time, rating_accuracy]
     - <string>                  #   a metric name (e.g. "match_quality")
     # OR:
     - script: <path>            #   a custom metric script path
-      param1: <value>           #   optional script params
+      param1: <value>           #   optional script params (flattened)
 
   objectives:                   # optional, absent = no utility score
-    match_quality: <f64>        #   all optional, weight values
-    queue_time: <f64>
-    rating_accuracy: <f64>
-    convergence_speed: <f64>
-    smurf_damage: <f64>
-    false_positive_rate: <f64>
-    streak_frustration: <f64>
+    match_quality: <f64>        #   default 1.0
+    queue_time: <f64>           #   default 0.5
+    rating_accuracy: <f64>      #   default 1.0
+    convergence_speed: <f64>    #   default 0.8
+    smurf_damage: <f64>         #   default 2.0
+    false_positive_rate: <f64>  #   default 1.5
+    streak_frustration: <f64>   #   default 0.3
 
   adversarial:                  # optional, absent = no adversarial agents
     agents:
@@ -129,24 +127,23 @@ experiment:
         target_rating: <f64>
 
   satisfaction:                 # optional, absent = no satisfaction model
-    enabled: <bool>             #   required
     script: <path>              #   optional, default plugins/utility/satisfaction.lua
     # Additional script params (flattened):
     match_quality: <f64>
     queue_time_penalty: <f64>
 
-  cohorts:                      # required, use [] when unused
+  cohorts:                      # optional, default []
     - name: <string>            #   cohort label
       filter:                   #   required, filter definition
         type: <string>          #     filter type
 
-  duration:                     # required
+  duration:                     # optional, default {matches: 100000, max_time: 604800.0}
     matches: <u64>              #   maximum matches to complete
     max_time: <f64>             #   maximum simulation time in seconds
 
-  output:                       # required
-    directory: <string>         #   output directory
-    formats:                    #   required, currently only "json"
+  output:                       # optional, defaults shown below
+    directory: <string>         #   optional, default "results/"
+    formats:                    #   optional, default ["json"], supported: json, jsonl, yaml
       - <string>
     plots: <bool>               #   whether to generate plots
     report: <bool>              #   whether to generate Markdown report
@@ -168,18 +165,18 @@ study:
   arms:                         # required, named arms
     - name: <string>            #   arm label
       overrides:                #   optional, dotted-path overrides
-        experiment.rating.system.script: <path>
+        experiment.rating.script: <path>
   replication:                  # required
     count: <u64>                #   number of replicates
     strategy: <string>          #   independent, crn, or counterfactual
     base_seed: <u64>            #   optional, default 42
-  metrics:                      # optional, overrides base metrics
+  metrics:                      # required, replaces base metrics (omit = no metrics collected)
     - <string>
-  cohorts:                      # optional, overrides base cohorts
+  cohorts:                      # required, replaces base cohorts (omit = no cohorts)
     - name: <string>
       filter:
         type: <string>
-  estimand: <string>            # optional, declared primary estimand
+  estimand: <string>            # optional, advisory label stored in metadata (does not affect analysis)
   output:                       # required
     directory: <string>
     formats:                    #   optional, default ["json"]
@@ -240,6 +237,8 @@ The `skill_distribution` field accepts a tagged enum:
 | `streaks` | Win/loss streak distribution |
 | `population_health` | Overall population distribution health |
 | `smurf` | Smurf detection and damage metrics |
+| `avg_rating_gap` | Mean absolute deviation of participant ratings from cohort average |
+| `custom_metric` | Example custom metric script |
 
 ---
 
@@ -249,7 +248,7 @@ The `skill_distribution` field accepts a tagged enum:
 |-------|---------|
 | Outcome models (`plugins/game/`) | `logistic.lua`, `variance.lua`, `composition.lua`, `performance.lua`, `fatigue.lua`, `momentum.lua` |
 | Matchmakers (`plugins/matchmaking/`) | `batch.lua`, `expanding_window.lua`, `strict.lua`, `hub_spoke.lua`, `random.lua` |
-| Rating systems (`plugins/rating/`) | `elo.lua`, `flatpoints.lua`, `glicko2.lua`, `trueskill.lua`, `decay_elo.lua` |
+| Rating systems (`plugins/rating/`) | `elo.lua`, `flatpoints.lua`, `glicko2.lua`, `trueskill.lua`, `decay_elo.lua`, `whr.lua`, `thurstone.lua`, `bradley_terry.lua`, `massey.lua`, `colley.lua`, `openskill.lua`, `rank_centrality.lua`, `pagerank.lua`, `bayesian_logistic.lua`, `bayesian_hierarchical.lua`, `trueskill_through_time.lua`, `dummy.lua` |
 | Detection (`plugins/detection/`) | `smurf.lua` |
 | Ranking (`plugins/ranking/`) | `brackets.lua` |
 | Adversarial (`plugins/adversarial/`) | `afk.lua`, `deranker.lua`, `win_trader.lua`, `booster.lua`, `rating_farmer.lua` |
@@ -266,7 +265,7 @@ The `skill_distribution` field accepts a tagged enum:
 | `matchmaking.max_queue_time` | seconds | Maximum allowed queue wait |
 | `population.archetypes[].session_length` | seconds | Average session duration |
 | Skill values | points | Rating scale (typically centered at 1000) |
-| `population.archetypes[].proportion` | fraction | 0.0 to 1.0, must sum to 1.0 |
+| `population.archetypes[].proportion` | relative weight | 0.0+; normalized to population size |
 
 ---
 
@@ -278,7 +277,6 @@ experiment:
   seed: 42
   population:
     size: 10000
-    seed: 42
     archetypes:
       - name: flat
         proportion: 1.0
@@ -298,8 +296,7 @@ experiment:
     script: plugins/matchmaking/batch.lua
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
+    name: elo
   metrics:
     - match_quality
     - queue_time
@@ -360,7 +357,7 @@ study:
       overrides: {}
     - name: glicko2
       overrides:
-        experiment.rating.system.name: glicko2
+        experiment.rating.name: glicko2
   replication:
     count: 50
     strategy: crn
@@ -417,7 +414,7 @@ optimize:
       phase2_restarts: <u64>    #   optional, phase 2 random restarts (default: 200)
       phase2_inner_iters: <u64> #   optional, phase 2 inner iterations per restart (default: 40)
       phase2_perturbation: <f64> #  optional, phase 2 perturbation scale (default: 0.3)
-      threads: <usize>         #   optional, threads for GP hyperparameter optimization (default: same as top-level threads; only used when threads > 1)
+      threads: <usize>         #   optional, default None (sequential); CLI --threads sets this automatically
       min_gp_training_points: <usize> # optional, minimum training points before using GP surrogate (default: 2)
 
   output:                       # optional
@@ -435,13 +432,13 @@ Common paths:
 
 | Path | What it controls |
 |------|-----------------|
-| `experiment.rating.system.k_factor` | Elo K-factor |
-| `experiment.rating.system.beta` | Elo beta/divisor |
-| `experiment.rating.system.initial_rating` | Starting rating |
-| `experiment.rating.system.name` | Rating system choice (categorical) |
-| `experiment.rating.system.initial_rd` | Glicko-2 initial RD |
-| `experiment.rating.system.initial_volatility` | Glicko-2 initial volatility |
-| `experiment.rating.system.tau` | Glicko-2 tau constraint |
+| `experiment.rating.k_factor` | Elo K-factor |
+| `experiment.rating.beta` | Elo beta/divisor |
+| `experiment.rating.initial_rating` | Starting rating |
+| `experiment.rating.name` | Rating system choice (categorical) |
+| `experiment.rating.initial_rd` | Glicko-2 initial RD |
+| `experiment.rating.initial_volatility` | Glicko-2 initial volatility |
+| `experiment.rating.tau` | Glicko-2 tau constraint |
 | `experiment.game.beta` | Outcome model logistic steepness |
 | `experiment.game.noise` | Outcome model noise |
 | `experiment.game.fatigue_decay_rate` | Fatigue decay rate |
@@ -462,10 +459,10 @@ optimize:
 
   search_space:
     parameters:
-      experiment.rating.system.k_factor:
+      experiment.rating.k_factor:
         type: float
         bounds: [1.0, 100.0]
-      experiment.rating.system.beta:
+      experiment.rating.beta:
         type: float
         bounds: [100.0, 800.0]
 

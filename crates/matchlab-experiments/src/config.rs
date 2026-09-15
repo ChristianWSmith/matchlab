@@ -24,6 +24,7 @@ pub struct ExperimentSpec {
     pub detection: Option<DetectionSpec>,
     #[serde(default)]
     pub ranking: Option<RankingSpec>,
+    #[serde(default = "default_metrics")]
     pub metrics: Vec<MetricEntry>,
     #[serde(default)]
     pub objectives: Option<ObjectiveWeightsSpec>,
@@ -31,7 +32,9 @@ pub struct ExperimentSpec {
     pub adversarial: Option<AdversarialSpec>,
     #[serde(default)]
     pub satisfaction: Option<SatisfactionSpec>,
+    #[serde(default)]
     pub cohorts: Vec<CohortSpec>,
+    #[serde(default)]
     pub duration: DurationSpec,
     pub output: OutputSpec,
     /// Embedded `replication:` block (spec §13.8,): when present, the
@@ -41,9 +44,12 @@ pub struct ExperimentSpec {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PopulationSpec {
+    #[serde(default = "default_population_size")]
     pub size: u64,
-    pub seed: u64,
     pub archetypes: Vec<ArchetypeSpec>,
+}
+fn default_population_size() -> u64 {
+    1000
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ArchetypeSpec {
@@ -126,6 +132,19 @@ pub struct GameSpec {
 fn default_outcome_script() -> String {
     "plugins/game/logistic.lua".to_string()
 }
+fn default_metrics() -> Vec<MetricEntry> {
+    vec![
+        MetricEntry::Name("match_quality".to_string()),
+        MetricEntry::Name("queue_time".to_string()),
+        MetricEntry::Name("rating_accuracy".to_string()),
+    ]
+}
+fn default_output_directory() -> String {
+    "results/".to_string()
+}
+fn default_formats() -> Vec<String> {
+    vec!["json".to_string()]
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MatchmakingSpec {
     /// Path to the Lua matchmaker script (e.g. plugins/matchmaking/batch.lua).
@@ -140,10 +159,6 @@ fn default_matchmaker_script() -> String {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RatingSpec {
-    pub system: RatingSystemSpec,
-}
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RatingSystemSpec {
     /// Optional label; when present it resolves to a built-in script
     /// (e.g. "elo" → plugins/rating/elo.lua). When absent, `script` is used.
     #[serde(default)]
@@ -156,7 +171,6 @@ pub struct RatingSystemSpec {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DetectionSpec {
-    pub enabled: bool,
     /// Path to the Lua detection script (e.g. plugins/detection/smurf.lua).
     #[serde(default = "default_detection_script")]
     pub script: String,
@@ -194,7 +208,6 @@ pub struct AdversarialAgentSpec {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SatisfactionSpec {
-    pub enabled: bool,
     /// Path to the Lua satisfaction script (e.g. plugins/utility/satisfaction.lua).
     #[serde(default = "default_satisfaction_script")]
     pub script: String,
@@ -253,6 +266,14 @@ pub struct DurationSpec {
     pub matches: u64,
     pub max_time: f64,
 }
+impl Default for DurationSpec {
+    fn default() -> Self {
+        DurationSpec {
+            matches: 100_000,
+            max_time: 604_800.0,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -260,6 +281,7 @@ pub enum MetricEntry {
     Name(String),
     Script {
         script: String,
+        #[serde(flatten)]
         #[serde(default)]
         params: BTreeMap<String, serde_yaml::Value>,
     },
@@ -295,7 +317,9 @@ impl MetricEntry {
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OutputSpec {
+    #[serde(default = "default_output_directory")]
     pub directory: String,
+    #[serde(default = "default_formats")]
     pub formats: Vec<String>,
     pub plots: bool,
     pub report: bool,
@@ -332,11 +356,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
     - queue_time
@@ -376,14 +399,13 @@ experiment:
             .and_then(|v| v.as_u64());
         assert_eq!(batch, Some(10));
         assert_eq!(
-            config.experiment.rating.system.name,
+            config.experiment.rating.name,
             Some("elo".to_string())
         );
         assert_eq!(
             config
                 .experiment
                 .rating
-                .system
                 .params
                 .get("k_factor")
                 .and_then(|v| v.as_f64()),
@@ -424,11 +446,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics:
     - match_quality
   cohorts: []
@@ -476,11 +497,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics: [match_quality]
   cohorts: []
   duration:
@@ -534,13 +554,11 @@ experiment:
     max_queue_time: 60.0
     tiers: [[5.0, 25.0], [10.0, 50.0]]
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   detection:
-    enabled: true
     script: plugins/detection/smurf.lua
     min_games_before_action: 3
   ranking:
@@ -553,7 +571,6 @@ experiment:
         player: 1
         go_afk_probability: 0.5
   satisfaction:
-    enabled: true
     script: plugins/utility/satisfaction.lua
     match_quality: 1.0
     queue_time_penalty: -0.01
@@ -585,7 +602,7 @@ experiment:
             config.experiment.matchmaking.script,
             "plugins/matchmaking/expanding_window.lua"
         );
-        assert!(config.experiment.detection.as_ref().unwrap().enabled);
+        assert!(config.experiment.detection.is_some());
         assert_eq!(
             config
                 .experiment
@@ -602,7 +619,7 @@ experiment:
             config.experiment.adversarial.as_ref().unwrap().agents.len(),
             1
         );
-        assert!(config.experiment.satisfaction.as_ref().unwrap().enabled);
+        assert!(config.experiment.satisfaction.is_some());
         assert!(config.experiment.objectives.is_some());
     }
     #[test]
@@ -633,11 +650,10 @@ experiment:
     batch_interval: 10
     max_queue_time: 60.0
   rating:
-    system:
-      name: elo
-      k_factor: 32.0
-      initial_rating: 1000.0
-      beta: 400.0
+    name: elo
+    k_factor: 32.0
+    initial_rating: 1000.0
+    beta: 400.0
   metrics: []
   cohorts: []
   duration:

@@ -9,10 +9,9 @@ experiment:
     max_queue_time: 60.0
     max_skill_diff: 50.0
   rating:
-    system:
-      name: glicko2
-      initial_rating: 1000.0
-      initial_rd: 350.0
-      initial_volatility: 0.06
-      tau: 0.5
-      epsilon: 0.000001
+    name: glicko2
+    initial_rating: 1000.0
+    initial_rd: 350.0
+    initial_volatility: 0.06
+    tau: 0.5
+    epsilon: 0.000001

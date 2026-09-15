@@ -229,23 +229,47 @@ pub fn generate_study_report_json(study: &StudyResult, cfg: &StudyReportConfig) 
 /// Write the full `StudyResult` as `<study_id>.json` plus the aggregate
 /// `study_stats.json` under `directory`.
 pub fn write_study_result_json(study: &StudyResult, directory: &str) -> std::io::Result<()> {
+    write_study_result_in_format(study, directory, &matchlab_experiments::formats::ArtifactFormat::Json)
+}
+/// Write the full `StudyResult` in the specified format.
+pub fn write_study_result_in_format(
+    study: &StudyResult,
+    directory: &str,
+    format: &matchlab_experiments::formats::ArtifactFormat,
+) -> std::io::Result<()> {
+    use matchlab_experiments::formats::ArtifactFormat;
     std::fs::create_dir_all(directory)?;
-    let study_path = std::path::Path::new(directory).join(format!("{}.json", study.study_id));
-    std::fs::write(
-        &study_path,
-        serde_json::to_string_pretty(study).map_err(std::io::Error::other)?,
-    )?;
-    let stats_path = std::path::Path::new(directory).join("study_stats.json");
-    std::fs::write(
-        &stats_path,
-        generate_study_report_json(
-            study,
-            &StudyReportConfig {
-                seed: 0,
-                ..StudyReportConfig::default()
-            },
-        ),
-    )?;
+    let ext = match format {
+        ArtifactFormat::Json => "json",
+        ArtifactFormat::Jsonl => "jsonl",
+        ArtifactFormat::Yaml => "yaml",
+    };
+    let study_data = match format {
+        ArtifactFormat::Json => serde_json::to_string_pretty(study).map_err(std::io::Error::other)?,
+        ArtifactFormat::Jsonl => {
+            let value = serde_json::to_value(study).map_err(std::io::Error::other)?;
+            let mut lines = Vec::new();
+            if let serde_json::Value::Object(map) = value {
+                for (k, v) in map {
+                    let line = serde_json::json!({ k: v });
+                    lines.push(serde_json::to_string(&line).map_err(std::io::Error::other)?);
+                }
+            }
+            lines.join("\n")
+        }
+        ArtifactFormat::Yaml => serde_yaml::to_string(study).map_err(std::io::Error::other)?,
+    };
+    let study_path = std::path::Path::new(directory).join(format!("{}.{}", study.study_id, ext));
+    std::fs::write(&study_path, study_data)?;
+    let stats_json = generate_study_report_json(
+        study,
+        &StudyReportConfig {
+            seed: 0,
+            ..StudyReportConfig::default()
+        },
+    );
+    let stats_path = std::path::Path::new(directory).join(format!("study_stats.{ext}"));
+    std::fs::write(&stats_path, stats_json)?;
     tracing::info!(directory, "study result written");
     Ok(())
 }
