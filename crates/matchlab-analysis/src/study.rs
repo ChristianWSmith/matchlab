@@ -247,29 +247,26 @@ pub fn write_study_result_in_format(
     let study_data = match format {
         ArtifactFormat::Json => serde_json::to_string_pretty(study).map_err(std::io::Error::other)?,
         ArtifactFormat::Jsonl => {
-            let value = serde_json::to_value(study).map_err(std::io::Error::other)?;
-            let mut lines = Vec::new();
-            if let serde_json::Value::Object(map) = value {
-                for (k, v) in map {
-                    let line = serde_json::json!({ k: v });
-                    lines.push(serde_json::to_string(&line).map_err(std::io::Error::other)?);
-                }
-            }
-            lines.join("\n")
+            serde_json::to_string(study).map_err(std::io::Error::other)?
         }
         ArtifactFormat::Yaml => serde_yaml::to_string(study).map_err(std::io::Error::other)?,
     };
     let study_path = std::path::Path::new(directory).join(format!("{}.{}", study.study_id, ext));
     std::fs::write(&study_path, study_data)?;
-    let stats_json = generate_study_report_json(
+    let stats = compute_study_stats(
         study,
         &StudyReportConfig {
             seed: 0,
             ..StudyReportConfig::default()
         },
     );
+    let stats_data = match format {
+        ArtifactFormat::Json => serde_json::to_string_pretty(&stats).map_err(std::io::Error::other)?,
+        ArtifactFormat::Jsonl => serde_json::to_string(&stats).map_err(std::io::Error::other)?,
+        ArtifactFormat::Yaml => serde_yaml::to_string(&stats).map_err(std::io::Error::other)?,
+    };
     let stats_path = std::path::Path::new(directory).join(format!("study_stats.{ext}"));
-    std::fs::write(&stats_path, stats_json)?;
+    std::fs::write(&stats_path, stats_data)?;
     tracing::info!(directory, "study result written");
     Ok(())
 }

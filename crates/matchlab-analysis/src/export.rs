@@ -124,17 +124,10 @@ pub fn write_result_in_format(
             serde_json::to_string_pretty(result).map_err(io::Error::other)?,
             "json",
         ),
-        ArtifactFormat::Jsonl => {
-            let value = serde_json::to_value(result).map_err(io::Error::other)?;
-            let mut lines = Vec::new();
-            if let serde_json::Value::Object(map) = value {
-                for (k, v) in map {
-                    let line = serde_json::json!({ k: v });
-                    lines.push(serde_json::to_string(&line).map_err(io::Error::other)?);
-                }
-            }
-            (lines.join("\n"), "jsonl")
-        }
+        ArtifactFormat::Jsonl => (
+            serde_json::to_string(result).map_err(io::Error::other)?,
+            "jsonl",
+        ),
         ArtifactFormat::Yaml => (
             serde_yaml::to_string(result).map_err(io::Error::other)?,
             "yaml",

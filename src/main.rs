@@ -31,7 +31,6 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    let threads = threads;
     let level = log_level.unwrap_or_else(|| {
         if verbose {
             "debug".to_string()
