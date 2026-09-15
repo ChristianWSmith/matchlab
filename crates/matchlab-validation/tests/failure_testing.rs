@@ -167,7 +167,8 @@ experiment:
     plots: false
     report: false
 "#;
-    let config = serde_yaml::from_str::<ExperimentConfig>(yaml).expect("missing 'duration' should use default");
+    let config = serde_yaml::from_str::<ExperimentConfig>(yaml)
+        .expect("missing 'duration' should use default");
     assert_eq!(config.experiment.duration.matches, 100_000);
     assert!((config.experiment.duration.max_time - 604_800.0).abs() < 1e-6);
 }
