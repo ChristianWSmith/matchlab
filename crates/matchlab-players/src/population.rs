@@ -52,7 +52,13 @@ impl PopulationGenerator {
                     if n_dims > 0 {
                         overall /= n_dims as f64;
                     }
-                    (SkillVector { dimensions }, overall)
+                    (
+                        SkillVector {
+                            dimensions,
+                            ..Default::default()
+                        },
+                        overall,
+                    )
                 } else {
                     let val = sample_distribution(&archetype.skill_distribution, rng);
                     (SkillVector::one_dimensional(val), val)

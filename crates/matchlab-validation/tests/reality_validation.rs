@@ -203,7 +203,10 @@ fn multidim_overall_is_mean_across_dimensions() {
     dims.insert("a".to_string(), 100.0);
     dims.insert("b".to_string(), 200.0);
     dims.insert("c".to_string(), 300.0);
-    let sv = SkillVector { dimensions: dims };
+    let sv = SkillVector {
+        dimensions: dims,
+        ..Default::default()
+    };
     assert!((sv.overall() - 200.0).abs() < 1e-9);
 }
 #[test]

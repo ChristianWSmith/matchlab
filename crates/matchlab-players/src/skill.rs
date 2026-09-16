@@ -22,6 +22,7 @@ impl SkillProcess {
         }
         SkillVector {
             dimensions: new_dims,
+            ..Default::default()
         }
     }
 }

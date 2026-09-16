@@ -14,7 +14,10 @@ fn make_world_with_multidim_skill() -> World {
             dims.insert("aim".to_string(), 1500.0);
             dims.insert("movement".to_string(), 1100.0);
             dims.insert("game_sense".to_string(), 1300.0);
-            SkillVector { dimensions: dims }
+            SkillVector {
+                dimensions: dims,
+                ..Default::default()
+            }
         },
         skill_volatility: 5.0,
         improvement_rate: 0.0,

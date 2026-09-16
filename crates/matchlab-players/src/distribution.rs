@@ -86,7 +86,10 @@ pub fn draw_skill_vector(dist: &SkillDistribution, rng: &mut SimRng) -> SkillVec
                     (m.name.clone(), val)
                 })
                 .collect();
-            SkillVector { dimensions }
+            SkillVector {
+                dimensions,
+                ..Default::default()
+            }
         }
         SkillDistribution::MultivariateNormal {
             means,
@@ -101,7 +104,10 @@ pub fn draw_skill_vector(dist: &SkillDistribution, rng: &mut SimRng) -> SkillVec
                 .zip(values)
                 .map(|(name, val)| (name.clone(), val))
                 .collect();
-            SkillVector { dimensions }
+            SkillVector {
+                dimensions,
+                ..Default::default()
+            }
         }
     }
 }

@@ -26,6 +26,7 @@ fn zero_dimensional_skill() {
     use matchlab_core::player::SkillVector;
     let sv = SkillVector {
         dimensions: std::collections::HashMap::new(),
+        ..Default::default()
     };
     assert_eq!(sv.overall(), 0.0);
 }

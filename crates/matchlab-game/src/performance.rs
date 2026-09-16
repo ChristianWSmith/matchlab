@@ -59,7 +59,10 @@ impl PerformanceModel for GaussianNoiseModel {
                 (dim.clone(), val + noise)
             })
             .collect();
-        SkillVector { dimensions }
+        SkillVector {
+            dimensions,
+            ..Default::default()
+        }
     }
 }
 /// Deterministic performance model: realized = latent (no noise).
@@ -143,7 +146,10 @@ mod tests {
         let mut dims = std::collections::HashMap::new();
         dims.insert("a".to_string(), 100.0);
         dims.insert("b".to_string(), 200.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let ctx = PerformanceContext::default();
         let mut rng = SimRng::from_seed(42);
         let perf = model.realize(&sv, &ctx, &mut rng);

@@ -124,7 +124,7 @@ Every experiment is deterministic given its config + seed. The `SeedManager` der
 | `PlayerId(u64)` | Newtype player identifier |
 | `MatchId(u64)` | Newtype match identifier |
 | `SimRng` | Deterministic RNG wrapper (`SmallRng` seeded from `u64`) |
-| `SkillVector` | Named dimensions map (`HashMap<String, f64>`); v0.1 uses 1D |
+| `SkillVector` | Named dimensions map (`HashMap<String, f64>`); inline `Option<f64>` fast path for 1D |
 | `PlayerReality` | Full ground truth — never exposed to algorithms |
 | `PlayerObservation` | What algorithms see — rating, RD, games_played, etc. |
 | `MatchResult` | Winner, teams, scores, per-player performances |
@@ -162,7 +162,7 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | `matchlab-utility` | SatisfactionModel trait, Lua satisfaction script |
 | `matchlab-experiments` | YAML config, inheritance, factorial design, replication, counterfactual replay, study manifests |
 | `matchlab-analysis` | Statistics (CIs, effect sizes, power), Pareto, cohorts, reporting, provenance |
-| `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget) |
+| `matchlab-validation` | Analytical-baseline regression tests (Elo, Glicko-2, TrueSkill, matchmaking, invariants, metamorphic, info-budget), performance micro-benchmarks |
 | `matchlab-optimize` | Bayesian hyperparameter optimization: GP surrogate (rayon-parallelized), 4 kernels (Matern 5/2, 3/2, RBF, RQ), 3 acquisition functions (EI, UCB, PI), ParEGO multi-objective, Latin Hypercube sampling, k-DPP batch selection, NDJSON checkpointing; async/batch mode when threads > 1 |
 
 ### CLI commands

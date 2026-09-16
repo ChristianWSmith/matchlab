@@ -104,11 +104,13 @@ mod tests {
             dimensions: [("a".to_string(), 100.0), ("b".to_string(), 100.0)]
                 .into_iter()
                 .collect(),
+            ..Default::default()
         };
         let p2 = SkillVector {
             dimensions: [("a".to_string(), 100.0), ("b".to_string(), 300.0)]
                 .into_iter()
                 .collect(),
+            ..Default::default()
         };
         let players = vec![p1, p2];
         assert!((model.team_strength(&players, &ctx) - 250.0).abs() < 1e-9);

@@ -26,12 +26,17 @@ impl Queue {
             .map(|pos| self.entries.remove(pos))
     }
     pub fn remove_batch(&mut self, player_ids: &[PlayerId]) -> Vec<QueueEntry> {
-        let mut removed = Vec::new();
-        for &pid in player_ids {
-            if let Some(entry) = self.remove(pid) {
+        let id_set: std::collections::HashSet<PlayerId> = player_ids.iter().copied().collect();
+        let mut removed = Vec::with_capacity(player_ids.len());
+        let mut kept = Vec::with_capacity(self.entries.len());
+        for entry in self.entries.drain(..) {
+            if id_set.contains(&entry.player_id) {
                 removed.push(entry);
+            } else {
+                kept.push(entry);
             }
         }
+        self.entries = kept;
         removed
     }
     pub fn waiting_time(&self, player_id: PlayerId, now: SimTime) -> Option<SimTime> {
