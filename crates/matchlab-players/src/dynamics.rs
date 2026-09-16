@@ -49,10 +49,7 @@ impl SkillDynamics for LinearDynamics {
                 (dim.clone(), val + drift + noise)
             })
             .collect();
-        SkillVector {
-            dimensions,
-            ..Default::default()
-        }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// Experience-dependent dynamics: improvement rate decreases with games played,
@@ -84,10 +81,7 @@ impl SkillDynamics for ExperienceDynamics {
                 (dim.clone(), val + effective_rate + noise)
             })
             .collect();
-        SkillVector {
-            dimensions,
-            ..Default::default()
-        }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// Decay dynamics: skill declines after periods of inactivity.
@@ -120,10 +114,7 @@ impl SkillDynamics for DecayDynamics {
                 (dim.clone(), decayed.max(self.min_skill))
             })
             .collect();
-        SkillVector {
-            dimensions,
-            ..Default::default()
-        }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// No-op dynamics: skill remains stationary.

@@ -48,10 +48,7 @@ mod tests {
         ] {
             dims.insert(d.to_string(), 1200.0);
         }
-        let multi = SkillVector {
-            dimensions: dims,
-            ..Default::default()
-        };
+        let multi = SkillVector::multidimensional(dims);
         let single = SkillVector::one_dimensional(1200.0);
         assert_limiting_case_eq(|| multi.overall(), || single.overall(), 1e-9);
     }

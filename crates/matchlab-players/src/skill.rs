@@ -20,10 +20,7 @@ impl SkillProcess {
             let noise = rng.sample_normal(0.0, self.volatility);
             new_dims.insert(dim.clone(), (val + self.improvement_rate + noise).max(0.0));
         }
-        SkillVector {
-            dimensions: new_dims,
-            ..Default::default()
-        }
+        SkillVector::multidimensional(new_dims)
     }
 }
 #[cfg(test)]

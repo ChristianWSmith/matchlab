@@ -73,7 +73,7 @@ pub struct SkillVector {
     /// For multidimensional: {"aim": 1500, "movement": 1100, ...}
     pub dimensions: HashMap<String, f64>,
     /// Fast path for 1D: avoids HashMap iteration in overall().
-    pub inline_value: Option<f64>,
+    pub(crate) inline_value: Option<f64>,
 }
 impl SkillVector {
     pub fn one_dimensional(value: f64) -> Self {

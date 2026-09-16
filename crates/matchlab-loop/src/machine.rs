@@ -150,18 +150,19 @@ pub fn handle_player_join(
 ) -> Vec<Box<dyn matchlab_core::event::Event>> {
     let join = downcast::<matchlab_core::event::PlayerJoinEvent>(event).expect("PlayerJoinEvent");
     let pid = join.player_id;
-    if let Some((reality, observation)) = state.population.remove(&pid) {
-        world.add_player(reality, observation);
-        tracing::debug!(player_id = pid.0, "player joined simulation");
-        if let Some(o) = world.observations.get_mut(&pid) {
-            o.queue_joined_at = Some(world.time);
+    match state.population.get(&pid) {
+        Some((reality, observation)) => {
+            world.add_player(reality.clone(), observation.clone());
+            tracing::debug!(player_id = pid.0, "player joined simulation");
+            if let Some(o) = world.observations.get_mut(&pid) {
+                o.queue_joined_at = Some(world.time);
+            }
+            vec![Box::new(matchlab_core::event::PlayerQueueEvent {
+                time: world.time,
+                player_id: pid,
+            })]
         }
-        vec![Box::new(matchlab_core::event::PlayerQueueEvent {
-            time: world.time,
-            player_id: pid,
-        })]
-    } else {
-        Vec::new()
+        None => Vec::new(),
     }
 }
 pub fn handle_player_queue(
