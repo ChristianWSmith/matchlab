@@ -1,0 +1,14 @@
+study:
+  name: smoke_study
+  base: experiment.yaml
+  arms:
+    - name: elo
+      overrides: {}
+  replication:
+    count: 1
+    strategy: crn
+    base_seed: 1
+  metrics: [match_quality]
+  cohorts: []
+  output:
+    directory: smoke/output/study

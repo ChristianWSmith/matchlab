@@ -5,20 +5,8 @@
 -- config: beta, dimension_weights = { dim -> weight }, synergy_bonus
 
 function effective_skill(o, config)
-    if not o.skill_vector or next(o.skill_vector) == nil then
-        return o.rating
-    end
-    local weighted, weight_sum = 0.0, 0.0
-    for dim, val in pairs(o.skill_vector) do
-        local w = 1.0
-        if config.dimension_weights ~= nil and config.dimension_weights[dim] ~= nil then
-            w = config.dimension_weights[dim]
-        end
-        weighted = weighted + val * w
-        weight_sum = weight_sum + w
-    end
-    if weight_sum == 0.0 then return o.rating end
-    return weighted / weight_sum
+    assert(o.skill_overall, "skill_overall must be present on observation")
+    return o.skill_overall
 end
 
 function team_effective(team, config)

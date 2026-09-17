@@ -1,0 +1,3 @@
+# Force LF line endings for all text files to ensure cross-platform
+# determinism of config hashes (hash_config reads script file contents).
+* text=auto eol=lf

@@ -59,26 +59,41 @@ impl SkillDimension {
         }
     }
 }
+
 /// Multidimensional skill represented as a named-dimension map.
 ///
 /// v0.1 uses a single `overall` dimension, but the type supports N dimensions so
 /// later work can ask whether a 1D rating represents multidimensional skill.
 ///
 /// adds per-dimension metadata (scale, bounds) and normalization.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SkillVector {
     /// Map of skill dimension name → value.
     /// For 1D: {"overall": 1200.0}
     /// For multidimensional: {"aim": 1500, "movement": 1100, ...}
-    pub dimensions: HashMap<String, f64>,
+    pub(crate) dimensions: HashMap<String, f64>,
+    /// Fast path for 1D: avoids HashMap iteration in overall().
+    pub(crate) inline_value: Option<f64>,
 }
 impl SkillVector {
     pub fn one_dimensional(value: f64) -> Self {
         let mut dimensions = HashMap::new();
         dimensions.insert("overall".to_string(), value);
-        Self { dimensions }
+        Self {
+            dimensions,
+            inline_value: Some(value),
+        }
+    }
+    pub fn multidimensional(dimensions: HashMap<String, f64>) -> Self {
+        Self {
+            dimensions,
+            inline_value: None,
+        }
     }
     pub fn overall(&self) -> f64 {
+        if let Some(v) = self.inline_value {
+            return v;
+        }
         if self.dimensions.is_empty() {
             return 0.0;
         }
@@ -134,7 +149,10 @@ impl SkillVector {
                 }
             })
             .collect();
-        Self { dimensions }
+        Self {
+            dimensions,
+            inline_value: None,
+        }
     }
     /// Validate that all dimension values are within their configured bounds.
     pub fn validate(&self, config: &HashMap<String, SkillDimension>) -> Result<(), String> {
@@ -156,6 +174,15 @@ impl SkillVector {
     /// Iterator over dimension names.
     pub fn dimension_names(&self) -> impl Iterator<Item = &str> {
         self.dimensions.keys().map(String::as_str)
+    }
+    pub fn iter_dimensions(&self) -> impl Iterator<Item = (&str, f64)> {
+        self.dimensions.iter().map(|(k, &v)| (k.as_str(), v))
+    }
+    pub fn get_dimension(&self, key: &str) -> Option<f64> {
+        self.dimensions.get(key).copied()
+    }
+    pub fn contains_dimension(&self, key: &str) -> bool {
+        self.dimensions.contains_key(key)
     }
 }
 /// Lightweight visible rank, kept inside `player.rs` so core stays free of a
@@ -245,7 +272,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("aim".to_string(), 1500.0);
         dims.insert("movement".to_string(), 1100.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         assert_eq!(sv.overall(), 1300.0);
     }
     #[test]
@@ -253,7 +283,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("aim".to_string(), 100.0);
         dims.insert("movement".to_string(), 200.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let mut weights = HashMap::new();
         weights.insert("aim".to_string(), 3.0);
         let weighted = sv.weighted_overall(&weights);
@@ -264,7 +297,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("a".to_string(), 800.0);
         dims.insert("b".to_string(), 1200.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let equal = sv.weighted_overall(&HashMap::new());
         assert!((equal - sv.overall()).abs() < 1e-9);
     }
@@ -272,6 +308,7 @@ mod tests {
     fn empty_skillvector_overall_is_zero() {
         let sv = SkillVector {
             dimensions: HashMap::new(),
+            ..Default::default()
         };
         assert_eq!(sv.overall(), 0.0);
         assert_eq!(sv.weighted_overall(&HashMap::new()), 0.0);
@@ -297,7 +334,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("a".to_string(), 1.0);
         dims.insert("b".to_string(), 2.0);
-        let sv2 = SkillVector { dimensions: dims };
+        let sv2 = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         assert_eq!(sv2.ndim(), 2);
     }
     #[test]
@@ -311,7 +351,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("aim".to_string(), 1500.0);
         dims.insert("movement".to_string(), 1100.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let mut config = HashMap::new();
         config.insert(
             "aim".to_string(),
@@ -337,7 +380,10 @@ mod tests {
     fn normalize_out_of_bounds_clamps() {
         let mut dims = HashMap::new();
         dims.insert("x".to_string(), 3000.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let mut config = HashMap::new();
         config.insert(
             "x".to_string(),
@@ -358,7 +404,10 @@ mod tests {
         let mut dims = HashMap::new();
         dims.insert("aim".to_string(), 1500.0);
         dims.insert("movement".to_string(), 1100.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let mut config = HashMap::new();
         config.insert(
             "aim".to_string(),
@@ -391,7 +440,10 @@ mod tests {
     fn validate_catches_out_of_bounds() {
         let mut dims = HashMap::new();
         dims.insert("aim".to_string(), 3000.0);
-        let sv = SkillVector { dimensions: dims };
+        let sv = SkillVector {
+            dimensions: dims,
+            ..Default::default()
+        };
         let mut config = HashMap::new();
         config.insert(
             "aim".to_string(),
@@ -425,5 +477,20 @@ mod tests {
         assert_eq!(sv.dimensions["overall"], 1200.0);
         let names: Vec<&str> = sv.dimension_names().collect();
         assert_eq!(names, vec!["overall"]);
+    }
+    #[test]
+    fn multidimensional_sets_inline_value_none() {
+        let mut dims = HashMap::new();
+        dims.insert("aim".to_string(), 1500.0);
+        dims.insert("movement".to_string(), 1100.0);
+        let sv = SkillVector::multidimensional(dims);
+        assert!(sv.inline_value.is_none());
+        assert_eq!(sv.overall(), 1300.0);
+    }
+    #[test]
+    fn one_dimensional_sets_inline_value_some() {
+        let sv = SkillVector::one_dimensional(1200.0);
+        assert_eq!(sv.inline_value, Some(1200.0));
+        assert_eq!(sv.overall(), 1200.0);
     }
 }

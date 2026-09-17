@@ -62,8 +62,8 @@ pub fn observation_to_table(
         t.set("skill_overall", obs.skill_vector.overall())
             .map_err(|e| e.to_string())?;
         let dims = lua.create_table().map_err(|e| e.to_string())?;
-        for (dim, &val) in &obs.skill_vector.dimensions {
-            dims.set(dim.as_str(), val).map_err(|e| e.to_string())?;
+        for (dim, val) in obs.skill_vector.iter_dimensions() {
+            dims.set(dim, val).map_err(|e| e.to_string())?;
         }
         t.set("skill_vector", dims).map_err(|e| e.to_string())?;
     }
@@ -210,7 +210,10 @@ pub fn metric_snapshot(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Val
 }
 fn participant_players(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Value, String> {
     let players = lua.create_table().map_err(|e| e.to_string())?;
-    let mut ids: Vec<PlayerId> = mr.team_a.iter().chain(mr.team_b.iter()).copied().collect();
+    let total = mr.team_a.len() + mr.team_b.len();
+    let mut ids: Vec<PlayerId> = Vec::with_capacity(total);
+    ids.extend_from_slice(&mr.team_a);
+    ids.extend_from_slice(&mr.team_b);
     ids.sort_by_key(|id| id.0);
     for (i, pid) in ids.iter().enumerate() {
         if let Some(obs) = world.observations.get(pid) {

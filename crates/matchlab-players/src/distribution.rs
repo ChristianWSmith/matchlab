@@ -86,7 +86,7 @@ pub fn draw_skill_vector(dist: &SkillDistribution, rng: &mut SimRng) -> SkillVec
                     (m.name.clone(), val)
                 })
                 .collect();
-            SkillVector { dimensions }
+            SkillVector::multidimensional(dimensions)
         }
         SkillDistribution::MultivariateNormal {
             means,
@@ -101,7 +101,7 @@ pub fn draw_skill_vector(dist: &SkillDistribution, rng: &mut SimRng) -> SkillVec
                 .zip(values)
                 .map(|(name, val)| (name.clone(), val))
                 .collect();
-            SkillVector { dimensions }
+            SkillVector::multidimensional(dimensions)
         }
     }
 }
@@ -148,8 +148,8 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         let sv = draw_skill_vector(&dist, &mut rng);
         assert_eq!(sv.ndim(), 2);
-        assert!(sv.dimensions.contains_key("aim"));
-        assert!(sv.dimensions.contains_key("movement"));
+        assert!(sv.contains_dimension("aim"));
+        assert!(sv.contains_dimension("movement"));
     }
     #[test]
     fn cholesky_identity_for_diagonal_covariance() {
@@ -176,8 +176,8 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         let sv = draw_skill_vector(&dist, &mut rng);
         assert_eq!(sv.ndim(), 2);
-        assert!(sv.dimensions.contains_key("a"));
-        assert!(sv.dimensions.contains_key("b"));
+        assert!(sv.contains_dimension("a"));
+        assert!(sv.contains_dimension("b"));
     }
     #[test]
     fn independent_dimensions_have_near_zero_correlation() {
@@ -202,8 +202,8 @@ mod tests {
         let mut b_vals = Vec::new();
         for _ in 0..1000 {
             let sv = draw_skill_vector(&dist, &mut rng);
-            a_vals.push(sv.dimensions["a"]);
-            b_vals.push(sv.dimensions["b"]);
+            a_vals.push(sv.get_dimension("a").unwrap());
+            b_vals.push(sv.get_dimension("b").unwrap());
         }
         let r = pearson_correlation(&a_vals, &b_vals);
         assert!(
@@ -240,7 +240,10 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         for _ in 0..100 {
             let sv = draw_skill_vector(&dist, &mut rng);
-            assert!(sv.dimensions["x"] > 0.0, "lognormal must be positive");
+            assert!(
+                sv.get_dimension("x").unwrap() > 0.0,
+                "lognormal must be positive"
+            );
         }
     }
     #[test]
@@ -255,7 +258,9 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         for _ in 0..100 {
             let sv = draw_skill_vector(&dist, &mut rng);
-            assert!(sv.dimensions["x"] >= 10.0 && sv.dimensions["x"] <= 20.0);
+            assert!(
+                sv.get_dimension("x").unwrap() >= 10.0 && sv.get_dimension("x").unwrap() <= 20.0
+            );
         }
     }
 }

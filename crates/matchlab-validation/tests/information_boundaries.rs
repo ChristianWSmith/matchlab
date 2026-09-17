@@ -14,7 +14,7 @@ fn make_world_with_multidim_skill() -> World {
             dims.insert("aim".to_string(), 1500.0);
             dims.insert("movement".to_string(), 1100.0);
             dims.insert("game_sense".to_string(), 1300.0);
-            SkillVector { dimensions: dims }
+            SkillVector::multidimensional(dims)
         },
         skill_volatility: 5.0,
         improvement_rate: 0.0,
@@ -72,8 +72,8 @@ fn observation_exposes_overall_only() {
     let world = make_world_with_multidim_skill();
     let obs = world.observe(PlayerId(0)).unwrap();
     assert_eq!(obs.skill_vector.ndim(), 1);
-    assert!(obs.skill_vector.dimensions.contains_key("overall"));
-    assert!(!obs.skill_vector.dimensions.contains_key("aim"));
+    assert!(obs.skill_vector.contains_dimension("overall"));
+    assert!(!obs.skill_vector.contains_dimension("aim"));
 }
 /// The reality holds the full multidimensional skill.
 #[test]
@@ -81,9 +81,9 @@ fn reality_holds_full_skill_vector() {
     let world = make_world_with_multidim_skill();
     let reality = world.reality(PlayerId(0)).unwrap();
     assert_eq!(reality.skill.ndim(), 3);
-    assert!(reality.skill.dimensions.contains_key("aim"));
-    assert!(reality.skill.dimensions.contains_key("movement"));
-    assert!(reality.skill.dimensions.contains_key("game_sense"));
+    assert!(reality.skill.contains_dimension("aim"));
+    assert!(reality.skill.contains_dimension("movement"));
+    assert!(reality.skill.contains_dimension("game_sense"));
 }
 /// Rating/matchmaking systems must use `world.observe()`, never `world.reality()`.
 /// This test demonstrates that the observation layer is the correct access path.
@@ -102,8 +102,8 @@ fn observe_returns_observation_not_reality() {
 fn simulation_can_access_reality() {
     let world = make_world_with_multidim_skill();
     let reality = world.reality(PlayerId(0)).unwrap();
-    let aim_skill = reality.skill.dimensions.get("aim").unwrap();
-    assert_eq!(*aim_skill, 1500.0);
+    let aim_skill = reality.skill.get_dimension("aim").unwrap();
+    assert_eq!(aim_skill, 1500.0);
 }
 /// The information budget concept: a struct that controls what systems can see.
 #[test]
@@ -152,7 +152,7 @@ pub fn build_observation_table(
         table.insert("skill_overall".to_string(), reality.skill.overall());
     }
     if budget.include_skill_dimensions {
-        for (dim, &val) in &reality.skill.dimensions {
+        for (dim, val) in reality.skill.iter_dimensions() {
             table.insert(format!("skill_{dim}"), val);
         }
     }

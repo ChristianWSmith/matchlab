@@ -17,12 +17,13 @@ use std::sync::Mutex;
 use tracing;
 /// Global under which the persistent context table is stored.
 const CONTEXT_GLOBAL: &str = "_matchlab_context";
+/// Registry key for the cached config value.
+const CONFIG_REGISTRY_KEY: &str = "_matchlab_config";
 /// A loaded Lua script with its config and deterministic helpers.
 pub struct LuaVm {
     lua: Mutex<Lua>,
     script_path: String,
     config: serde_yaml::Value,
-    config_lua: Value,
 }
 impl LuaVm {
     /// Load and execute a script, storing `params` as its `config`.
@@ -71,11 +72,13 @@ impl LuaVm {
         };
         let config_lua = context::yaml_to_lua(&lua, &config)
             .map_err(|e| format!("config conversion failed: {}", e))?;
+        lua.globals()
+            .set(CONFIG_REGISTRY_KEY, config_lua)
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             lua: Mutex::new(lua),
             script_path: resolved_str,
             config,
-            config_lua,
         })
     }
     pub fn script_path(&self) -> &str {
@@ -144,7 +147,10 @@ impl LuaVm {
                 t
             }
         };
-        let config_value = self.config_lua.clone();
+        let config_value: Value = lua
+            .globals()
+            .get(CONFIG_REGISTRY_KEY)
+            .map_err(|e| e.to_string())?;
         let mut call_args: SmallVec<[Value; 8]> = args.iter().cloned().collect();
         call_args.push(config_value);
         call_args.push(Value::Table(ctx_table.clone()));

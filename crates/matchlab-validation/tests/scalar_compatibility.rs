@@ -20,8 +20,8 @@ where
 /// Assert that two skill vectors are equal within tolerance.
 pub fn assert_skill_eq(a: &SkillVector, b: &SkillVector, tolerance: f64) {
     for dim in a.dimension_names() {
-        let va = a.dimensions[dim];
-        let vb = b.dimensions.get(dim).copied().unwrap_or(0.0);
+        let va = a.get_dimension(dim).unwrap();
+        let vb = b.get_dimension(dim).unwrap_or(0.0);
         assert!(
             (va - vb).abs() <= tolerance,
             "dimension '{dim}': {va} vs {vb} (tolerance {tolerance})"
@@ -48,7 +48,7 @@ mod tests {
         ] {
             dims.insert(d.to_string(), 1200.0);
         }
-        let multi = SkillVector { dimensions: dims };
+        let multi = SkillVector::multidimensional(dims);
         let single = SkillVector::one_dimensional(1200.0);
         assert_limiting_case_eq(|| multi.overall(), || single.overall(), 1e-9);
     }
@@ -99,8 +99,8 @@ mod tests {
         let mut b_vals = Vec::new();
         for _ in 0..1000 {
             let sv = draw_skill_vector(&dist, &mut rng);
-            a_vals.push(sv.dimensions["a"]);
-            b_vals.push(sv.dimensions["b"]);
+            a_vals.push(sv.get_dimension("a").unwrap());
+            b_vals.push(sv.get_dimension("b").unwrap());
         }
         let r = pearson_correlation(&a_vals, &b_vals);
         assert!(r.abs() < 0.1, "zero correlation: got {r}");
@@ -129,6 +129,6 @@ mod tests {
         let sv = SkillVector::one_dimensional(1200.0);
         assert_eq!(sv.ndim(), 1);
         assert_eq!(sv.overall(), 1200.0);
-        assert_eq!(sv.dimensions["overall"], 1200.0);
+        assert_eq!(sv.get_dimension("overall").unwrap(), 1200.0);
     }
 }

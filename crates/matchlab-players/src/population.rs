@@ -8,8 +8,9 @@
 //!   else the sampled skill — the only field rating/matchmaking systems read.
 //! - `PlayerObservation.skill_vector` and `hidden_mmr` carry the *true* skill
 //!   so the outcome model (the simulator of reality) can decide match winners
-//!   from ground truth even after ratings diverge. Algorithms must not read
-//!   these fields.
+//!   from ground truth even after ratings diverge. Observations are always
+//!   1D (`overall` only) — multi-dimensional ground truth lives in
+//!   `PlayerReality.skill`. Algorithms must not read these fields.
 //!
 //! The `initial_rating` override seeds the smurf-like mismatch — the two
 //! representations diverge exactly as the design intends.
@@ -52,7 +53,7 @@ impl PopulationGenerator {
                     if n_dims > 0 {
                         overall /= n_dims as f64;
                     }
-                    (SkillVector { dimensions }, overall)
+                    (SkillVector::multidimensional(dimensions), overall)
                 } else {
                     let val = sample_distribution(&archetype.skill_distribution, rng);
                     (SkillVector::one_dimensional(val), val)
@@ -100,7 +101,7 @@ impl PopulationGenerator {
                     tilt_level: 0.0,
                     game_mode: "ranked".to_string(),
                     role: archetype.role.clone(),
-                    skill_vector: skill_vector.clone(),
+                    skill_vector: SkillVector::one_dimensional(overall_skill),
                     detection_flags: Vec::<DetectionFlag>::new(),
                 });
             }

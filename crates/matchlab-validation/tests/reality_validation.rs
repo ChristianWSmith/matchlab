@@ -28,7 +28,7 @@ fn population_converges_to_configured_mean_and_stddev() {
     let mut values = Vec::new();
     for _ in 0..10000 {
         let sv = draw_skill_vector(&dist, &mut rng);
-        values.push(sv.dimensions["skill"]);
+        values.push(sv.get_dimension("skill").unwrap());
     }
     let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
     let variance: f64 =
@@ -66,8 +66,8 @@ fn independent_dimensions_produce_near_zero_correlation() {
     let mut b_vals = Vec::new();
     for _ in 0..1000 {
         let sv = draw_skill_vector(&dist, &mut rng);
-        a_vals.push(sv.dimensions["a"]);
-        b_vals.push(sv.dimensions["b"]);
+        a_vals.push(sv.get_dimension("a").unwrap());
+        b_vals.push(sv.get_dimension("b").unwrap());
     }
     let r = pearson_correlation(&a_vals, &b_vals);
     assert!(r.abs() < 0.1, "independent dimensions: r = {r}");
@@ -84,8 +84,8 @@ fn correlated_dimensions_produce_configured_correlation() {
     let mut b_vals = Vec::new();
     for _ in 0..5000 {
         let sv = draw_skill_vector(&dist, &mut rng);
-        a_vals.push(sv.dimensions["a"]);
-        b_vals.push(sv.dimensions["b"]);
+        a_vals.push(sv.get_dimension("a").unwrap());
+        b_vals.push(sv.get_dimension("b").unwrap());
     }
     let r = pearson_correlation(&a_vals, &b_vals);
     assert!(
@@ -195,7 +195,7 @@ fn scalar_skill_vector_matches_existing_behavior() {
     let sv = SkillVector::one_dimensional(1200.0);
     assert_eq!(sv.ndim(), 1);
     assert_eq!(sv.overall(), 1200.0);
-    assert_eq!(sv.dimensions["overall"], 1200.0);
+    assert_eq!(sv.get_dimension("overall").unwrap(), 1200.0);
 }
 #[test]
 fn multidim_overall_is_mean_across_dimensions() {
@@ -203,7 +203,7 @@ fn multidim_overall_is_mean_across_dimensions() {
     dims.insert("a".to_string(), 100.0);
     dims.insert("b".to_string(), 200.0);
     dims.insert("c".to_string(), 300.0);
-    let sv = SkillVector { dimensions: dims };
+    let sv = SkillVector::multidimensional(dims);
     assert!((sv.overall() - 200.0).abs() < 1e-9);
 }
 #[test]

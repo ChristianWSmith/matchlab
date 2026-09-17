@@ -3,7 +3,7 @@ use matchlab_core::event::{
     MatchEndEvent, MatchFormedEvent, MatchTimerEvent, SkillChangeEvent, downcast,
 };
 use matchlab_core::match_::{MatchId, MatchResult, MatchState, TeamComposition};
-use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
+use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region, SkillVector};
 use matchlab_core::rng::{SimRng, StreamSeeds};
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
@@ -217,8 +217,8 @@ pub fn handle_skill_change(
             r.skill = process.advance(&r.skill, &mut state.game_rng);
         }
         if let Some(o) = world.observations.get_mut(&pid) {
-            let skill = world.players[&pid].skill.clone();
-            o.skill_vector = skill.clone();
+            let skill = &world.players[&pid].skill;
+            o.skill_vector = SkillVector::one_dimensional(skill.overall());
             o.hidden_mmr = skill.overall();
         }
     }
@@ -405,7 +405,8 @@ pub fn handle_match_end(
     if state.matches_completed % 1000 == 0 {
         tracing::info!(completed = state.matches_completed, "progress");
     }
-    let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::new();
+    let team_size = result.team_a.len() + result.team_b.len();
+    let mut out: Vec<Box<dyn matchlab_core::event::Event>> = Vec::with_capacity(team_size * 2 + 3);
     for pid in result.team_a.iter().chain(result.team_b.iter()) {
         if let Some(agent) = state.adversarial_agents.get_mut(pid) {
             agent.tick(*pid, &mut state.behavior_rng, world);

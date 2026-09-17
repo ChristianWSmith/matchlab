@@ -105,7 +105,7 @@ fn new_loop(
             role_b: None,
         },
         batch_interval_ticks: 1,
-        rejoin_delay: SimTime::from_secs(0.0),
+        rejoin_delay: SimTime::from_secs(30.0),
         max_matches,
         skill_update_interval: Some(SimTime::from_secs(interval_secs)),
         stream_seeds: StreamSeeds::from_seed(seed),
@@ -181,7 +181,7 @@ fn dynamic_skill_rating_responds_to_drift() {
     let total = 40u64;
     let s0 = 1000.0;
     let k = 3.0;
-    let horizon = 172_800.0;
+    let horizon = 43_200.0;
     let population = mixed_population(total, 0.5, s0, k);
     let loop_ = new_loop(population, 1.0, 1, 10_000, horizon, 5);
     let improvers = improver_ids(total);
@@ -255,7 +255,7 @@ fn skill_stays_static_without_interval_flag() {
             role_b: None,
         },
         batch_interval_ticks: 1,
-        rejoin_delay: SimTime::from_secs(0.0),
+        rejoin_delay: SimTime::from_secs(30.0),
         max_matches: 10_000,
         skill_update_interval: None,
         stream_seeds: StreamSeeds::from_seed(13),

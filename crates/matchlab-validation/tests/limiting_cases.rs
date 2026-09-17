@@ -24,9 +24,7 @@ fn identical_skill_vectors() {
 #[test]
 fn zero_dimensional_skill() {
     use matchlab_core::player::SkillVector;
-    let sv = SkillVector {
-        dimensions: std::collections::HashMap::new(),
-    };
+    let sv = SkillVector::multidimensional(std::collections::HashMap::new());
     assert_eq!(sv.overall(), 0.0);
 }
 /// Zero rating change produces no effect on rating.

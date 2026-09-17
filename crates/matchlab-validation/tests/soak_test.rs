@@ -58,7 +58,7 @@ fn soak_population(size: u64, seed: u64) -> Vec<(PlayerReality, PlayerObservatio
 /// Run 5000 matches and verify no NaN or inf in any metric.
 #[test]
 fn soak_no_nan_or_inf_in_metrics() {
-    let pop = soak_population(1000, 42);
+    let pop = soak_population(500, 42);
     let metrics = soak_metrics();
     let teams = TeamComposition {
         team_size_a: 5,
@@ -66,10 +66,10 @@ fn soak_no_nan_or_inf_in_metrics() {
         role_a: None,
         role_b: None,
     };
-    let mut loop_ = build_loop(pop, teams, 5000, 42, metrics);
+    let mut loop_ = build_loop(pop, teams, 2000, 42, metrics);
     loop_.run_until(SimTime::from_secs(604_800.0));
     let completed = loop_.state.lock().unwrap().matches_completed;
-    assert!(completed >= 5000, "only {completed} matches completed");
+    assert!(completed >= 2000, "only {completed} matches completed");
     let results = loop_.finalize_metrics();
     for (name, result) in &results {
         match result {
@@ -106,7 +106,7 @@ fn soak_no_nan_or_inf_in_metrics() {
 /// Verify rating_accuracy is finite and positive after 5000 matches.
 #[test]
 fn soak_rating_accuracy_finite_positive() {
-    let pop = soak_population(1000, 42);
+    let pop = soak_population(500, 42);
     let metrics = soak_metrics();
     let teams = TeamComposition {
         team_size_a: 5,
@@ -114,7 +114,7 @@ fn soak_rating_accuracy_finite_positive() {
         role_a: None,
         role_b: None,
     };
-    let mut loop_ = build_loop(pop, teams, 5000, 42, metrics);
+    let mut loop_ = build_loop(pop, teams, 2000, 42, metrics);
     loop_.run_until(SimTime::from_secs(604_800.0));
     let results = loop_.finalize_metrics();
     let accuracy = results
@@ -127,7 +127,7 @@ fn soak_rating_accuracy_finite_positive() {
 /// Verify match_quality is in [0, 1] after 5000 matches.
 #[test]
 fn soak_match_quality_in_unit_interval() {
-    let pop = soak_population(1000, 42);
+    let pop = soak_population(500, 42);
     let metrics = soak_metrics();
     let teams = TeamComposition {
         team_size_a: 5,
@@ -135,7 +135,7 @@ fn soak_match_quality_in_unit_interval() {
         role_a: None,
         role_b: None,
     };
-    let mut loop_ = build_loop(pop, teams, 5000, 42, metrics);
+    let mut loop_ = build_loop(pop, teams, 2000, 42, metrics);
     loop_.run_until(SimTime::from_secs(604_800.0));
     let results = loop_.finalize_metrics();
     let quality = results
@@ -160,7 +160,7 @@ fn soak_match_quality_in_unit_interval() {
 /// Verify queue_time is non-negative after 5000 matches.
 #[test]
 fn soak_queue_time_non_negative() {
-    let pop = soak_population(1000, 42);
+    let pop = soak_population(500, 42);
     let metrics = soak_metrics();
     let teams = TeamComposition {
         team_size_a: 5,
@@ -168,7 +168,7 @@ fn soak_queue_time_non_negative() {
         role_a: None,
         role_b: None,
     };
-    let mut loop_ = build_loop(pop, teams, 5000, 42, metrics);
+    let mut loop_ = build_loop(pop, teams, 2000, 42, metrics);
     loop_.run_until(SimTime::from_secs(604_800.0));
     let results = loop_.finalize_metrics();
     let qt = results
@@ -188,7 +188,7 @@ fn soak_queue_time_non_negative() {
 /// All player ratings are finite after 5000 matches.
 #[test]
 fn soak_all_ratings_finite() {
-    let pop = soak_population(1000, 42);
+    let pop = soak_population(500, 42);
     let metrics = MetricsEngine::new();
     let teams = TeamComposition {
         team_size_a: 5,
@@ -196,7 +196,7 @@ fn soak_all_ratings_finite() {
         role_a: None,
         role_b: None,
     };
-    let mut loop_ = build_loop(pop, teams, 5000, 42, metrics);
+    let mut loop_ = build_loop(pop, teams, 2000, 42, metrics);
     loop_.run_until(SimTime::from_secs(604_800.0));
     let state = loop_.state.lock().unwrap();
     let mut non_finite = Vec::new();

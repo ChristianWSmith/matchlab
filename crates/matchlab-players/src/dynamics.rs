@@ -37,19 +37,18 @@ impl SkillDynamics for LinearDynamics {
         rng: &mut SimRng,
     ) -> SkillVector {
         let dimensions = skill
-            .dimensions
-            .iter()
-            .map(|(dim, &val)| {
+            .iter_dimensions()
+            .map(|(dim, val)| {
                 let drift = self.improvement_rate - self.decline_rate;
                 let noise = if self.volatility > 0.0 {
                     rng.sample_normal(0.0, self.volatility)
                 } else {
                     0.0
                 };
-                (dim.clone(), val + drift + noise)
+                (dim.to_string(), val + drift + noise)
             })
             .collect();
-        SkillVector { dimensions }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// Experience-dependent dynamics: improvement rate decreases with games played,
@@ -70,18 +69,17 @@ impl SkillDynamics for ExperienceDynamics {
         let ratio = (context.games_played as f64 / self.plateau_games as f64).min(1.0);
         let effective_rate = self.learning_rate * (1.0 - ratio);
         let dimensions = skill
-            .dimensions
-            .iter()
-            .map(|(dim, &val)| {
+            .iter_dimensions()
+            .map(|(dim, val)| {
                 let noise = if self.volatility > 0.0 {
                     rng.sample_normal(0.0, self.volatility)
                 } else {
                     0.0
                 };
-                (dim.clone(), val + effective_rate + noise)
+                (dim.to_string(), val + effective_rate + noise)
             })
             .collect();
-        SkillVector { dimensions }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// Decay dynamics: skill declines after periods of inactivity.
@@ -107,14 +105,13 @@ impl SkillDynamics for DecayDynamics {
         let inactive_steps = context.time_inactive - self.inactive_threshold;
         let decay_factor = (1.0 - self.decay_rate).powi(inactive_steps as i32);
         let dimensions = skill
-            .dimensions
-            .iter()
-            .map(|(dim, &val)| {
+            .iter_dimensions()
+            .map(|(dim, val)| {
                 let decayed = val * decay_factor;
-                (dim.clone(), decayed.max(self.min_skill))
+                (dim.to_string(), decayed.max(self.min_skill))
             })
             .collect();
-        SkillVector { dimensions }
+        SkillVector::multidimensional(dimensions)
     }
 }
 /// No-op dynamics: skill remains stationary.

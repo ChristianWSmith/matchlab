@@ -100,16 +100,16 @@ mod tests {
             team_size: 2,
             role_requirements: None,
         };
-        let p1 = SkillVector {
-            dimensions: [("a".to_string(), 100.0), ("b".to_string(), 100.0)]
+        let p1 = SkillVector::multidimensional(
+            [("a".to_string(), 100.0), ("b".to_string(), 100.0)]
                 .into_iter()
                 .collect(),
-        };
-        let p2 = SkillVector {
-            dimensions: [("a".to_string(), 100.0), ("b".to_string(), 300.0)]
+        );
+        let p2 = SkillVector::multidimensional(
+            [("a".to_string(), 100.0), ("b".to_string(), 300.0)]
                 .into_iter()
                 .collect(),
-        };
+        );
         let players = vec![p1, p2];
         assert!((model.team_strength(&players, &ctx) - 250.0).abs() < 1e-9);
     }
