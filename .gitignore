@@ -28,3 +28,6 @@ target
 # matchlab experiment output
 /results
 tickets/
+
+# smoke test artifacts
+smoke/output/
