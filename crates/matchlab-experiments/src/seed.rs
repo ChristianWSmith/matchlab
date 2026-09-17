@@ -51,6 +51,7 @@ pub fn hash_config(config: &ExperimentConfig) -> String {
         path.hash(&mut h);
         let resolved = matchlab_lua::resolve::resolve_script_path(&path);
         let content = std::fs::read_to_string(&resolved).unwrap_or_default();
+        let content = content.replace("\r\n", "\n");
         content.hash(&mut h);
     }
     let hash = format!("{:016x}", h.finish());
