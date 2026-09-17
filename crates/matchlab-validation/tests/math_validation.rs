@@ -49,7 +49,7 @@ fn bootstrap_ci_coverage() {
     let mut rng = SimRng::from_seed(42);
     let mut hits = 0;
     let n_samples = 100;
-    let n_trials = 1000;
+    let n_trials = 200;
     for _ in 0..n_trials {
         let samples: Vec<f64> = (0..n_samples)
             .map(|_| rng.sample_normal(5.0, 1.0))

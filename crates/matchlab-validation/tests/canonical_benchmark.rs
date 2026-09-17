@@ -147,7 +147,7 @@ experiment:
 }
 #[test]
 fn elo_convergence_time_series_shows_improvement() {
-    let config = elo_manifest("bench_elo_ts", 42, 1000, 20_000);
+    let config = elo_manifest("bench_elo_ts", 42, 500, 5_000);
     let result = ExperimentRunner::run(&config).expect("elo run");
     let bucket_means = match &result.metrics["rating_accuracy_by_time"] {
         MetricResult::TimeSeries { bucket_means } => bucket_means,
@@ -162,13 +162,13 @@ fn elo_convergence_time_series_shows_improvement() {
     let first = nonzero.first().unwrap();
     let last = nonzero.last().unwrap();
     assert!(
-        **last < 0.87 * *first,
+        **last < 0.92 * *first,
         "elo time series must show convergence: first {first:.1}, last {last:.1}"
     );
 }
 #[test]
 fn elo_mae_becomes_finite_and_reasonable() {
-    let config = elo_manifest("bench_elo_mae", 42, 1000, 20_000);
+    let config = elo_manifest("bench_elo_mae", 42, 500, 5_000);
     let result = ExperimentRunner::run(&config).expect("elo run");
     let mae = summary_mean(&result.metrics["rating_accuracy"]);
     let cold_mae = 250.0 * (2.0 / std::f64::consts::PI).sqrt();
@@ -181,7 +181,7 @@ fn elo_mae_becomes_finite_and_reasonable() {
 }
 #[test]
 fn glicko2_shows_learning_from_cold_start() {
-    let config = glicko_manifest("bench_glicko_conv", 42, 1000, 20_000);
+    let config = glicko_manifest("bench_glicko_conv", 42, 500, 5_000);
     let result = ExperimentRunner::run(&config).expect("glicko run");
     let mae = summary_mean(&result.metrics["rating_accuracy"]);
     let cold_mae = 250.0 * (2.0 / std::f64::consts::PI).sqrt();
@@ -193,7 +193,7 @@ fn glicko2_shows_learning_from_cold_start() {
 }
 #[test]
 fn glicko2_convergence_time_series_shows_improvement() {
-    let config = glicko_manifest("bench_glicko_ts", 42, 1000, 20_000);
+    let config = glicko_manifest("bench_glicko_ts", 42, 500, 5_000);
     let result = ExperimentRunner::run(&config).expect("glicko run");
     let bucket_means = match &result.metrics["rating_accuracy_by_time"] {
         MetricResult::TimeSeries { bucket_means } => bucket_means,

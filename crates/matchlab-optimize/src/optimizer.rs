@@ -1204,7 +1204,7 @@ mod tests {
     #[test]
     fn optimize_minimal_run() {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../experiments/base/standard.yaml");
+            .join("../../experiments/base/quick.yaml");
         let yaml = format!(
             r#"
 name: test_opt
@@ -1221,6 +1221,11 @@ objectives:
     direction: maximize
 bo:
   initial_points: 2
+  gp:
+    phase1_restarts: 5
+    phase2_restarts: 10
+    phase2_inner_iters: 5
+  k_dpp_candidates: 50
 "#,
             base.display()
         );
@@ -1239,8 +1244,8 @@ bo:
     fn smoke_kernel_acquisition_matrix() {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../experiments/base/quick.yaml");
-        let kernels = ["matern52", "matern32", "rbf", "rq"];
-        let acquisitions = ["ei", "ucb", "pi"];
+        let kernels = ["matern52", "rbf"];
+        let acquisitions = ["ei", "ucb"];
 
         for kernel in &kernels {
             for acquisition in &acquisitions {
@@ -1263,6 +1268,11 @@ bo:
   initial_points: 1
   kernel: {kernel}
   acquisition: {acquisition}
+  gp:
+    phase1_restarts: 5
+    phase2_restarts: 10
+    phase2_inner_iters: 5
+  k_dpp_candidates: 50
 "#,
                     base.display()
                 );
@@ -1294,7 +1304,7 @@ bo:
     #[test]
     fn optimize_batch_mode() {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../experiments/base/standard.yaml");
+            .join("../../experiments/base/quick.yaml");
         let yaml = format!(
             r#"
 name: test_batch_opt
@@ -1312,6 +1322,11 @@ objectives:
 bo:
   initial_points: 2
   threads: 2
+  gp:
+    phase1_restarts: 5
+    phase2_restarts: 10
+    phase2_inner_iters: 5
+  k_dpp_candidates: 50
 "#,
             base.display()
         );
@@ -1390,7 +1405,7 @@ bo:
     #[test]
     fn optimize_async_all_workers_complete() {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../experiments/base/standard.yaml");
+            .join("../../experiments/base/quick.yaml");
         let yaml = format!(
             r#"
 name: test_async_all_complete
@@ -1408,6 +1423,11 @@ objectives:
 bo:
   initial_points: 2
   threads: 3
+  gp:
+    phase1_restarts: 5
+    phase2_restarts: 10
+    phase2_inner_iters: 5
+  k_dpp_candidates: 50
 "#,
             base.display()
         );

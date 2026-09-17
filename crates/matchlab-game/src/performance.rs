@@ -51,12 +51,11 @@ impl PerformanceModel for GaussianNoiseModel {
             return skill.clone();
         }
         let dimensions = skill
-            .dimensions
-            .iter()
-            .map(|(dim, &val)| {
+            .iter_dimensions()
+            .map(|(dim, val)| {
                 let stddev = self.variance * (val * val + 1.0).sqrt();
                 let noise = rng.sample_normal(0.0, stddev);
-                (dim.clone(), val + noise)
+                (dim.to_string(), val + noise)
             })
             .collect();
         SkillVector::multidimensional(dimensions)
@@ -148,7 +147,9 @@ mod tests {
         let mut rng = SimRng::from_seed(42);
         let perf = model.realize(&sv, &ctx, &mut rng);
         assert_eq!(perf.ndim(), 2);
-        assert!(perf.dimensions["a"] != 100.0 || perf.dimensions["b"] != 200.0);
+        assert!(
+            perf.get_dimension("a").unwrap() != 100.0 || perf.get_dimension("b").unwrap() != 200.0
+        );
     }
     #[test]
     fn context_does_not_affect_deterministic_model() {

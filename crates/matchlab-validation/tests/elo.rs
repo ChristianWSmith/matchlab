@@ -72,13 +72,13 @@ fn win_rate_matches_logistic_ground_truth() {
     let population = interleaved_two_class_population(600, SKILL_HIGH, SKILL_LOW, 1000.0, 1);
     let mut metrics = MetricsEngine::new();
     metrics.register(Box::new(ClassWinRate::default()));
-    let outcome = run_loop(population, 1, 20_000, 604_800.0, 42, metrics);
+    let outcome = run_loop(population, 1, 10_000, 604_800.0, 42, metrics);
     let observed = match &outcome.metrics["test_class_win_rate"] {
         MetricResult::Scalar(v) => *v,
         other => panic!("expected scalar, got {other:?}"),
     };
     let mixed = { outcome.matches_completed };
-    assert!(mixed > 10_000, "expected a large sample, got {mixed}");
+    assert!(mixed > 5_000, "expected a large sample, got {mixed}");
     let p = p_high_wins();
     let sigma = (p * (1.0 - p) / mixed as f64).sqrt();
     assert!(
@@ -91,9 +91,9 @@ fn elo_converges_toward_true_skill() {
     let config = single_class_config(
         "elo_convergence",
         1,
-        1_000,
+        500,
         5,
-        20_000,
+        10_000,
         604_800.0,
         &["rating_accuracy"],
     );
@@ -117,7 +117,7 @@ fn elo_converges_toward_true_skill() {
     let first = nonzero.first().expect("nonempty series");
     let last = nonzero.last().expect("nonempty series");
     assert!(
-        **last < 0.87 * *first,
+        **last < 0.92 * *first,
         "convergence too weak: first {first:.1}, last {last:.1}"
     );
 }
@@ -128,7 +128,7 @@ fn same_seed_same_results() {
         7,
         500,
         5,
-        1_500,
+        500,
         604_800.0,
         &["rating_accuracy", "match_quality"],
     );

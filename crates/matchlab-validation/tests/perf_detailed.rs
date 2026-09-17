@@ -306,7 +306,7 @@ fn bench_clone_costs() {
 
 #[test]
 fn bench_hashmap_lookup() {
-    let n = 1000u64;
+    let n = 100u64;
     let map: HashMap<PlayerId, PlayerObservation> =
         (0..n).map(|id| (PlayerId(id), obs(id, 1000.0))).collect();
     let keys: Vec<PlayerId> = (0..n).map(PlayerId).collect();

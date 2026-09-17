@@ -5,9 +5,7 @@
 -- config: beta, dimension_weights = { dim -> weight }, synergy_bonus
 
 function effective_skill(o, config)
-    if not o.skill_overall then
-        return o.rating
-    end
+    assert(o.skill_overall, "skill_overall must be present on observation")
     return o.skill_overall
 end
 

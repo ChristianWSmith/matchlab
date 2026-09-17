@@ -71,7 +71,7 @@ pub struct SkillVector {
     /// Map of skill dimension name → value.
     /// For 1D: {"overall": 1200.0}
     /// For multidimensional: {"aim": 1500, "movement": 1100, ...}
-    pub dimensions: HashMap<String, f64>,
+    pub(crate) dimensions: HashMap<String, f64>,
     /// Fast path for 1D: avoids HashMap iteration in overall().
     pub(crate) inline_value: Option<f64>,
 }
@@ -174,6 +174,15 @@ impl SkillVector {
     /// Iterator over dimension names.
     pub fn dimension_names(&self) -> impl Iterator<Item = &str> {
         self.dimensions.keys().map(String::as_str)
+    }
+    pub fn iter_dimensions(&self) -> impl Iterator<Item = (&str, f64)> {
+        self.dimensions.iter().map(|(k, &v)| (k.as_str(), v))
+    }
+    pub fn get_dimension(&self, key: &str) -> Option<f64> {
+        self.dimensions.get(key).copied()
+    }
+    pub fn contains_dimension(&self, key: &str) -> bool {
+        self.dimensions.contains_key(key)
     }
 }
 /// Lightweight visible rank, kept inside `player.rs` so core stays free of a
@@ -468,5 +477,20 @@ mod tests {
         assert_eq!(sv.dimensions["overall"], 1200.0);
         let names: Vec<&str> = sv.dimension_names().collect();
         assert_eq!(names, vec!["overall"]);
+    }
+    #[test]
+    fn multidimensional_sets_inline_value_none() {
+        let mut dims = HashMap::new();
+        dims.insert("aim".to_string(), 1500.0);
+        dims.insert("movement".to_string(), 1100.0);
+        let sv = SkillVector::multidimensional(dims);
+        assert!(sv.inline_value.is_none());
+        assert_eq!(sv.overall(), 1300.0);
+    }
+    #[test]
+    fn one_dimensional_sets_inline_value_some() {
+        let sv = SkillVector::one_dimensional(1200.0);
+        assert_eq!(sv.inline_value, Some(1200.0));
+        assert_eq!(sv.overall(), 1200.0);
     }
 }

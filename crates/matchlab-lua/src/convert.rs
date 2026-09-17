@@ -62,8 +62,8 @@ pub fn observation_to_table(
         t.set("skill_overall", obs.skill_vector.overall())
             .map_err(|e| e.to_string())?;
         let dims = lua.create_table().map_err(|e| e.to_string())?;
-        for (dim, &val) in &obs.skill_vector.dimensions {
-            dims.set(dim.as_str(), val).map_err(|e| e.to_string())?;
+        for (dim, val) in obs.skill_vector.iter_dimensions() {
+            dims.set(dim, val).map_err(|e| e.to_string())?;
         }
         t.set("skill_vector", dims).map_err(|e| e.to_string())?;
     }
@@ -214,9 +214,7 @@ fn participant_players(lua: &Lua, mr: &MatchResult, world: &World) -> Result<Val
     let mut ids: Vec<PlayerId> = Vec::with_capacity(total);
     ids.extend_from_slice(&mr.team_a);
     ids.extend_from_slice(&mr.team_b);
-    if total > 20 {
-        ids.sort_by_key(|id| id.0);
-    }
+    ids.sort_by_key(|id| id.0);
     for (i, pid) in ids.iter().enumerate() {
         if let Some(obs) = world.observations.get(pid) {
             let row = participant_to_table(lua, obs, world.players.get(pid))?;

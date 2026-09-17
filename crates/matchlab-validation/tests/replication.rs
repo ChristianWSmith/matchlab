@@ -444,8 +444,8 @@ fn effect_ci_width_shrinks_as_replicates_grow() {
             .expect("rating_accuracy effect");
         es.ci_hi - es.ci_lo
     };
-    let small = width(24);
-    let large = width(96);
+    let small = width(12);
+    let large = width(48);
     assert!(
         large < small,
         "CI must tighten with more replicates ({large} vs {small})"

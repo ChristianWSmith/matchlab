@@ -16,9 +16,12 @@ impl SkillProcess {
     /// Advance all skill dimensions one time step.
     pub fn advance(&self, current: &SkillVector, rng: &mut SimRng) -> SkillVector {
         let mut new_dims = std::collections::HashMap::new();
-        for (dim, &val) in &current.dimensions {
+        for (dim, val) in current.iter_dimensions() {
             let noise = rng.sample_normal(0.0, self.volatility);
-            new_dims.insert(dim.clone(), (val + self.improvement_rate + noise).max(0.0));
+            new_dims.insert(
+                dim.to_string(),
+                (val + self.improvement_rate + noise).max(0.0),
+            );
         }
         SkillVector::multidimensional(new_dims)
     }
