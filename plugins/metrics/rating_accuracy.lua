@@ -6,10 +6,9 @@
 name = "rating_accuracy"
 
 data_requirements = {
-    observation_fields = { "player_id", "rating" },
+    observation_fields = { "player_id", "rating", "skill_overall" },
     reality_fields = { "true_skill" },
-    include_skill = true,
-    snapshot_tick = true,
+    snapshot_fields = { "tick" },
 }
 
 function on_record(match_result, snapshot, config, context)

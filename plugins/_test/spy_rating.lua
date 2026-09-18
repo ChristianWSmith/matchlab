@@ -1,16 +1,13 @@
 -- plugins/_test/spy_rating.lua
 -- TEST-ONLY (never referenced by a manifest in experiments/): a mirror of
--- elo.lua whose `update` errors loudly if it can see data outside its WinLoss
--- information budget. The simulation must hand this script the sanitized
--- result produced by filter_match_result -> into_match_result: scores zeroed,
--- duration zeroed, performances emptied, and no ground-truth skill keys in the
--- observation map. A passing loop run proves the budget sanitization is wired.
-
-information_budget = { "WinLoss" }
+-- elo.lua whose `update` errors loudly if it can see data outside its declared
+-- data_requirements. The simulation must hand this script only the fields it
+-- declared — scores, duration, performances, and ground-truth skill must be
+-- absent. A passing loop run proves the field-gating is wired.
 
 data_requirements = {
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
-    match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score", "duration_secs", "performances" },
+    match_result_fields = { "winner", "team_a", "team_b" },
 }
 
 function initialize(player_id, config, context)
@@ -41,17 +38,17 @@ function team_average(team)
 end
 
 function update(match_result, observations, config, context)
-    if match_result.team_a_score ~= 0.0 then
-        error("budget leak: team_a_score " .. match_result.team_a_score)
+    if match_result.team_a_score ~= nil then
+        error("budget leak: team_a_score present")
     end
-    if match_result.team_b_score ~= 0.0 then
-        error("budget leak: team_b_score " .. match_result.team_b_score)
+    if match_result.team_b_score ~= nil then
+        error("budget leak: team_b_score present")
     end
-    if match_result.duration_secs ~= 0.0 then
-        error("budget leak: duration_secs " .. match_result.duration_secs)
+    if match_result.duration_secs ~= nil then
+        error("budget leak: duration_secs present")
     end
-    if #match_result.performances ~= 0 then
-        error("budget leak: performances " .. #match_result.performances)
+    if match_result.performances ~= nil then
+        error("budget leak: performances present")
     end
     for _, o in pairs(observations) do
         if o.skill_overall ~= nil then

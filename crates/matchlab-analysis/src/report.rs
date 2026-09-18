@@ -60,7 +60,6 @@ mod tests {
     use matchlab_core::world::World;
     use matchlab_metrics::MetricsEngine;
     use matchlab_metrics::lua::LuaMetricCollector;
-    use std::collections::VecDeque;
     fn sample_result(name: &str, config_hash: &str) -> ExperimentResult {
         let mut engine = MetricsEngine::new();
         engine.register(Box::new(
@@ -88,8 +87,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".to_string(),
             skill_vector: matchlab_core::player::SkillVector::one_dimensional(1000.0),

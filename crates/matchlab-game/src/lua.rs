@@ -3,8 +3,8 @@
 //! `LuaOutcomeModel` implements the `OutcomeModel` trait by delegating to a
 //! script's `win_probability` / `simulate` functions. Randomness in `simulate`
 //! flows through `matchlab.rng_*` (from the caller's `&mut SimRng`). The
-//! observation tables carry the ground-truth skill binding (`include_skill`),
-//! so match winners are decided by true skill.
+//! adapter injects skill fields into observation tables so the outcome model
+//! can decide winners from true skill.
 use crate::outcome::OutcomeModel;
 use matchlab_core::match_::{MatchId, MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation};
@@ -172,7 +172,6 @@ impl OutcomeModel for LuaOutcomeModel {
 mod tests {
     use super::*;
     use matchlab_core::player::{SkillVector, VisibleRank};
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -190,8 +189,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

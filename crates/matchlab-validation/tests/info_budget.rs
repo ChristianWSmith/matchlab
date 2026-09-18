@@ -7,6 +7,7 @@ use matchlab_core::rng::StreamSeeds;
 use matchlab_core::time::SimTime;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_metrics::{LuaMetricCollector, MetricResult, MetricsEngine};
@@ -57,6 +58,7 @@ fn build_loop(
         matchmaker,
         metrics,
         config,
+        GlobalSubscription::default(),
     )
 }
 fn completed(loop_: &mut MatchLoop) -> u64 {
@@ -119,12 +121,11 @@ fn metric_snapshot_carries_ground_truth() {
     };
     assert!(count > 0.0, "spy_collector asserted no participants");
 }
-/// Negative control: the spies must be live. Bypassing `filter_match_result`
-/// and calling `update` directly on an unfiltered `MatchResult` must trip the
-/// leak assertion — proving the loop-level passes above are meaningful.
+/// Verify that `_fair` field-gating properly strips data the script didn't
+/// declare. The spy declares only winner/team_a/team_b — scores, performances,
+/// and duration must be absent (nil), proving the serialization boundary works.
 #[test]
-#[should_panic(expected = "budget leak")]
-fn unfiltered_result_trips_the_rating_spy() {
+fn unfiltered_result_is_gated_by_fair_serialization() {
     let spy = registry::from_script("plugins/_test/spy_rating.lua", &elo_params())
         .expect("spy rating loads");
     let mr = MatchResult {
@@ -155,5 +156,6 @@ fn unfiltered_result_trips_the_rating_spy() {
     let mut obs_map = HashMap::new();
     obs_map.insert(PlayerId(1), observation(1, 1000.0));
     obs_map.insert(PlayerId(2), observation(2, 1000.0));
-    spy.update(&mr, &obs_map);
+    let updates = spy.update(&mr, &obs_map);
+    assert!(!updates.is_empty(), "spy must produce rating updates");
 }

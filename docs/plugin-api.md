@@ -64,8 +64,9 @@ Rating systems declare what data they need via a `data_requirements` table. The 
 |-----|------|-------------|
 | `match_result_fields` | `{string, ...}` | Fields from `MatchResult` the script reads. Options: `"winner"`, `"team_a"`, `"team_b"`, `"team_a_score"`, `"team_b_score"`, `"duration_secs"`, `"performances"`, `"variance"`, `"disconnected"`, `"forfeited"`. |
 | `observation_fields` | `{string, ...}` | Fields from `PlayerObservation` available in `observations[id]`. Options: `"player_id"`, `"rating"`, `"rating_deviation"`, `"volatility"`, `"games_played"`, `"win_rate"`, `"tilt_level"`, `"is_online"`, `"recent_performances"`, `"queue_joined_at_secs"`, `"party_id"`, `"role"`. |
-| `population_snapshot` | `bool` | If `true`, snapshot includes full population. Default: `false`. |
-| `population_fields` | `{string, ...}` | Population snapshot fields when `population_snapshot = true`. Options: `"rating"`, `"skill_overall"`, `"true_skill"`. |
+| `population_fields` | `{string, ...}` | When present, the metric snapshot includes a columnar population table. Options: `"rating"`, `"skill_overall"`, `"true_skill"`. |
+| `snapshot_fields` | `{string, ...}` | Extra fields in the snapshot header. Options: `"tick"`, `"time_secs"`. |
+| `completed_match_fields` | `{string, ...}` | Completed match data for metric correlation. Options: `"id"`, `"winner"`, `"team_a"`, `"team_b"`, `"time"`. |
 
 A system that omits `data_requirements` receives the full `MatchResult` and standard observation fields (backward-compatible default).
 
@@ -331,7 +332,8 @@ end
 | Global | Type | Description |
 |--------|------|-------------|
 | `name` | `string` | **Required.** Metric name used as the key in results. |
-| `population_snapshot` | `bool` | If `true`, snapshot includes full population. Default: `false`. |
+| `population_fields` | `{string, ...}` | When present, the metric snapshot includes a columnar population table. Options: `"rating"`, `"skill_overall"`, `"true_skill"`. |
+| `snapshot_fields` | `{string, ...}` | Extra fields in the snapshot header. Options: `"tick"`, `"time_secs"`. |
 | `time_buckets` | `function(config, context)` | Returns bucket edges for time-series metric. |
 
 ### Snapshot Table
@@ -342,11 +344,11 @@ end
 | `tick` | `u64` | Current tick |
 | `time_secs` | `f64` | Current time in seconds |
 | `players` | `{row, ...}` | Per-participant rows with all observation fields plus `true_skill`, `skill_overall`, `skill_vector`, `improvement_rate`, `reality_games_played`, `archetype` |
-| `population` | columnar table | Only present when `data_requirements.population_snapshot = true`. See below. |
+| `population` | columnar table | Only present when `data_requirements.population_fields` is set. See below. |
 
 ### Population Snapshot (columnar)
 
-When `data_requirements.population_snapshot = true`, `snapshot.population` contains flat arrays indexed by player position:
+When `data_requirements.population_fields` is set, `snapshot.population` contains flat arrays indexed by player position:
 
 | Field | Type | Description |
 |-------|------|-------------|

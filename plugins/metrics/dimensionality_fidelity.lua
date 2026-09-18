@@ -6,7 +6,6 @@
 name = "dimensionality_fidelity"
 
 data_requirements = {
-    population_snapshot = true,
     population_fields = { "rating", "skill_overall" },
     reality_fields = { "true_skill" },
 }

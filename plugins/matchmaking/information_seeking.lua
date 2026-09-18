@@ -9,7 +9,7 @@
 
 data_requirements = {
     queue_fields = { "player_id", "rating", "rating_deviation", "wait_secs", "role", "idx" },
-    completed_matches = true,
+    completed_match_fields = { "id", "winner", "team_a", "team_b", "time" },
 }
 
 function find_closest_rating(target_rating, candidates, used, count, role)

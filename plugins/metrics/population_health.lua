@@ -6,7 +6,6 @@
 name = "population_health"
 
 data_requirements = {
-    population_snapshot = true,
     population_fields = { "rating" },
 }
 

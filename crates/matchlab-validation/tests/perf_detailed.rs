@@ -9,7 +9,7 @@ use matchlab_core::world::World;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::time::Instant;
 
 const ITERS: u64 = 10_000;
@@ -31,8 +31,6 @@ fn obs(id: u64, rating: f64) -> PlayerObservation {
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: VecDeque::new(),
-        quit_history: VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),
@@ -156,13 +154,10 @@ fn bench_observation_to_table() {
     let lua = mlua::Lua::new();
     let o = obs(1, 1500.0);
     for _ in 0..100 {
-        let _ = convert::observation_to_table(&lua, &o, false).unwrap();
+        let _ = convert::observation_to_table(&lua, &o).unwrap();
     }
-    bench("observation_to_table (no skill)", ITERS, || {
-        let _ = convert::observation_to_table(&lua, &o, false).unwrap();
-    });
-    bench("observation_to_table (with skill)", ITERS, || {
-        let _ = convert::observation_to_table(&lua, &o, true).unwrap();
+    bench("observation_to_table", ITERS, || {
+        let _ = convert::observation_to_table(&lua, &o).unwrap();
     });
 }
 
@@ -185,10 +180,10 @@ fn bench_observations_to_map() {
         .map(|id| obs(id, 1000.0 + id as f64 * 50.0))
         .collect();
     for _ in 0..100 {
-        let _ = convert::observations_to_map(&lua, &obs_list, false).unwrap();
+        let _ = convert::observations_to_map(&lua, &obs_list).unwrap();
     }
     bench("observations_to_map (10 obs)", ITERS, || {
-        let _ = convert::observations_to_map(&lua, &obs_list, false).unwrap();
+        let _ = convert::observations_to_map(&lua, &obs_list).unwrap();
     });
 }
 
@@ -216,7 +211,12 @@ fn bench_queue_operations() {
         .map(|id| QueueEntry {
             player_id: PlayerId(id),
             joined_at: SimTime::ZERO,
-            observation: obs(id, 1000.0),
+            observation: matchlab_matchmaking::queue::LeanObservation {
+                rating: 1000.0,
+                rating_deviation: 350.0,
+                games_played: 0,
+                win_rate: 0.5,
+            },
             region: Region::NA,
             party_id: None,
             game_mode: "ranked".into(),
@@ -292,7 +292,12 @@ fn bench_clone_costs() {
     let e = QueueEntry {
         player_id: PlayerId(1),
         joined_at: SimTime::ZERO,
-        observation: obs(1, 1000.0),
+        observation: matchlab_matchmaking::queue::LeanObservation {
+            rating: 1000.0,
+            rating_deviation: 350.0,
+            games_played: 0,
+            win_rate: 0.5,
+        },
         region: Region::NA,
         party_id: None,
         game_mode: "ranked".into(),
@@ -353,6 +358,7 @@ fn bench_full_simulation_loop() {
     use matchlab_core::match_::TeamComposition;
     use matchlab_loop::MatchLoop;
     use matchlab_loop::machine::LoopConfig;
+    use matchlab_lua::GlobalSubscription;
     use matchlab_metrics::MetricsEngine;
     use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
@@ -424,6 +430,7 @@ fn bench_full_simulation_loop() {
         matchmaker(),
         MetricsEngine::new(),
         cfg.clone(),
+        GlobalSubscription::default(),
     );
     loop_.run();
     let elapsed = start.elapsed();
@@ -441,6 +448,7 @@ fn bench_full_simulation_loop() {
         matchmaker(),
         MetricsEngine::new(),
         cfg,
+        GlobalSubscription::default(),
     );
     loop_.run();
     let elapsed = start.elapsed();

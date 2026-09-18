@@ -70,37 +70,18 @@ fn empty_queue_produces_no_matches() {
 /// Single-player queue cannot form a team.
 #[test]
 fn single_player_queue() {
-    use matchlab_core::player::{PlayerId, SkillVector, VisibleRank};
+    use matchlab_core::player::PlayerId;
     use matchlab_core::time::SimTime;
-    use matchlab_matchmaking::queue::{Queue, QueueEntry};
-    use std::collections::VecDeque;
+    use matchlab_matchmaking::queue::{LeanObservation, Queue, QueueEntry};
     let mut queue = Queue::default();
     queue.enqueue(QueueEntry {
         player_id: PlayerId(1),
         joined_at: SimTime::from_secs(0.0),
-        observation: matchlab_core::player::PlayerObservation {
-            id: PlayerId(1),
+        observation: LeanObservation {
             rating: 1000.0,
-            hidden_mmr: 1000.0,
-            visible_rank: VisibleRank {
-                tier: "gold".to_string(),
-                division: 1,
-            },
             rating_deviation: 350.0,
-            volatility: 0.06,
             games_played: 0,
             win_rate: 0.5,
-            recent_performances: Vec::new(),
-            queue_joined_at: None,
-            is_online: true,
-            party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
-            tilt_level: 0.0,
-            game_mode: "ranked".to_string(),
-            role: None,
-            skill_vector: SkillVector::one_dimensional(1000.0),
-            detection_flags: Vec::new(),
         },
         region: matchlab_core::player::Region::NA,
         party_id: None,

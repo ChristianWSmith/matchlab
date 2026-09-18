@@ -134,11 +134,11 @@ The default team model is additive — team strength is the sum of member skills
 
 Rating systems declare a `data_requirements` table specifying which fields they need from match results and observations. The loop sanitizes `MatchResult` before calling `update`, stripping fields not in the declared `match_result_fields`.
 
-**Assumption:** The budget categories (WinLoss, Score, PerformanceData, etc.) adequately represent the data available to real rating systems.
+**Assumption:** The `data_requirements` field-list model adequately captures the data available to real rating systems.
 
 **Limitation:**
-- Real systems may have access to continuous in-game data (damage dealt, objectives completed, time spent dead) that does not map cleanly to the budget categories.
-- The budget model is binary (data is either allowed or stripped), not noisy.
+- Real systems may have access to continuous in-game data (damage dealt, objectives completed, time spent dead) that does not map cleanly to discrete field lists.
+- The field-gating model is binary (data is either included or excluded), not noisy.
 
 ---
 

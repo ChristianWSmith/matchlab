@@ -42,7 +42,7 @@ impl LuaMetricCollector {
             .and_then(|v| v.as_u64())
             .unwrap_or(50)
             .max(1);
-        tracing::info!(name = %metric_name, script = %vm.script_path(), needs_population = data_requirements.population_snapshot, "metric collector loaded");
+        tracing::info!(name = %metric_name, script = %vm.script_path(), needs_population = !data_requirements.population_fields.is_empty(), "metric collector loaded");
         Ok(Self {
             vm,
             metric_name,
@@ -90,7 +90,7 @@ impl MetricCollector for LuaMetricCollector {
     }
     fn record_match(&mut self, match_result: &MatchResult, world: &World) {
         self.match_count += 1;
-        let sample_population = self.data_requirements.population_snapshot
+        let sample_population = !self.data_requirements.population_fields.is_empty()
             && (self.match_count % self.sample_every == 0 || self.match_count == 1);
         let (mr_val, snapshot) = self
             .vm
@@ -146,7 +146,6 @@ mod tests {
     use matchlab_core::player::{PlayerId, PlayerReality, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> matchlab_core::player::PlayerObservation {
         matchlab_core::player::PlayerObservation {
             id: PlayerId(id),
@@ -164,8 +163,6 @@ mod tests {
             queue_joined_at: Some(SimTime::from_secs(1.0)),
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

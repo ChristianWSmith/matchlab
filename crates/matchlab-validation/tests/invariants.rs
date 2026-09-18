@@ -16,6 +16,7 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_metrics::collector::MetricCollector;
 use matchlab_metrics::engine::MetricsEngine;
@@ -475,6 +476,7 @@ fn build_loop_with(
         Box::new(matchmaker),
         metrics,
         config,
+        GlobalSubscription::default(),
     )
 }
 fn queue_time_lua() -> Box<dyn MetricCollector> {

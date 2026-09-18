@@ -3,16 +3,13 @@ use mlua::prelude::*;
 #[derive(Debug, Clone, Default)]
 pub struct DataRequirements {
     pub queue_fields: Vec<String>,
-    pub completed_matches: bool,
     pub match_result_fields: Vec<String>,
     pub observation_fields: Vec<String>,
-    pub include_skill: bool,
-    pub population_snapshot: bool,
+    pub snapshot_fields: Vec<String>,
     pub population_fields: Vec<String>,
     pub reality_fields: Vec<String>,
-    pub snapshot_tick: bool,
-    pub snapshot_time_secs: bool,
     pub behavior_fields: Vec<String>,
+    pub completed_match_fields: Vec<String>,
 }
 
 impl DataRequirements {
@@ -25,11 +22,6 @@ impl DataRequirements {
                 req.queue_fields = string_array(v)?;
             }
         }
-        if let Ok(v) = table.get::<LuaValue>("completed_matches") {
-            if !v.is_nil() {
-                req.completed_matches = v.as_boolean().unwrap_or(false);
-            }
-        }
         if let Ok(v) = table.get::<LuaValue>("match_result_fields") {
             if !v.is_nil() {
                 req.match_result_fields = string_array(v)?;
@@ -40,14 +32,9 @@ impl DataRequirements {
                 req.observation_fields = string_array(v)?;
             }
         }
-        if let Ok(v) = table.get::<LuaValue>("include_skill") {
+        if let Ok(v) = table.get::<LuaValue>("snapshot_fields") {
             if !v.is_nil() {
-                req.include_skill = v.as_boolean().unwrap_or(false);
-            }
-        }
-        if let Ok(v) = table.get::<LuaValue>("population_snapshot") {
-            if !v.is_nil() {
-                req.population_snapshot = v.as_boolean().unwrap_or(false);
+                req.snapshot_fields = string_array(v)?;
             }
         }
         if let Ok(v) = table.get::<LuaValue>("population_fields") {
@@ -60,19 +47,14 @@ impl DataRequirements {
                 req.reality_fields = string_array(v)?;
             }
         }
-        if let Ok(v) = table.get::<LuaValue>("snapshot_tick") {
-            if !v.is_nil() {
-                req.snapshot_tick = v.as_boolean().unwrap_or(false);
-            }
-        }
-        if let Ok(v) = table.get::<LuaValue>("snapshot_time_secs") {
-            if !v.is_nil() {
-                req.snapshot_time_secs = v.as_boolean().unwrap_or(false);
-            }
-        }
         if let Ok(v) = table.get::<LuaValue>("behavior_fields") {
             if !v.is_nil() {
                 req.behavior_fields = string_array(v)?;
+            }
+        }
+        if let Ok(v) = table.get::<LuaValue>("completed_match_fields") {
+            if !v.is_nil() {
+                req.completed_match_fields = string_array(v)?;
             }
         }
 
@@ -101,6 +83,14 @@ impl DataRequirements {
 
     pub fn has_behavior_field(&self, field: &str) -> bool {
         self.behavior_fields.iter().any(|f| f == field)
+    }
+
+    pub fn has_snapshot_field(&self, field: &str) -> bool {
+        self.snapshot_fields.iter().any(|f| f == field)
+    }
+
+    pub fn has_completed_match_field(&self, field: &str) -> bool {
+        self.completed_match_fields.iter().any(|f| f == field)
     }
 }
 

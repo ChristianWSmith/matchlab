@@ -1,10 +1,10 @@
 //! Core type marshalling between Rust and Lua.
 //!
 //! Truth-separation note: the observation table carries the ground-truth skill
-//! binding (`skill_overall`, `skill_vector`) only when `include_skill` is true.
-//! The outcome model and metric snapshots pass `true` (the game decides winners
-//! from true skill; metrics may read reality); rating, matchmaking, detection,
-//! and adversarial adapters pass `false`.
+//! binding (`skill_overall`, `skill_vector`) only when the adapter injects those
+//! fields into the script's `observation_fields`. The outcome model and metric
+//! adapters inject skill fields; rating, matchmaking, detection, and adversarial
+//! adapters do not.
 use crate::data_requirements::DataRequirements;
 use matchlab_core::match_::{MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
@@ -12,16 +12,11 @@ use matchlab_core::world::World;
 use mlua::{Lua, Table, Value};
 /// Convert a `PlayerObservation` into a Lua table.
 ///
-/// `include_skill` adds `skill_overall` and the `skill_vector` dimension map —
-/// permitted for the outcome model and metrics only.
-pub fn observation_to_table(
-    lua: &Lua,
-    obs: &PlayerObservation,
-    include_skill: bool,
-) -> Result<Table, String> {
-    let capacity = if include_skill { 20 } else { 16 };
+/// All fields are included — the caller (test/benchmark code) opts in to
+/// everything. Production code uses `observation_to_table_fair` instead.
+pub fn observation_to_table(lua: &Lua, obs: &PlayerObservation) -> Result<Table, String> {
     let t = lua
-        .create_table_with_capacity(capacity, 0)
+        .create_table_with_capacity(20, 0)
         .map_err(|e| e.to_string())?;
     t.set("player_id", obs.id.0).map_err(|e| e.to_string())?;
     t.set("rating", obs.rating).map_err(|e| e.to_string())?;
@@ -59,15 +54,13 @@ pub fn observation_to_table(
         Some(r) => t.set("role", r.as_str()).map_err(|e| e.to_string())?,
         None => t.set("role", Value::Nil).map_err(|e| e.to_string())?,
     }
-    if include_skill {
-        t.set("skill_overall", obs.skill_vector.overall())
-            .map_err(|e| e.to_string())?;
-        let dims = lua.create_table().map_err(|e| e.to_string())?;
-        for (dim, val) in obs.skill_vector.iter_dimensions() {
-            dims.set(dim, val).map_err(|e| e.to_string())?;
-        }
-        t.set("skill_vector", dims).map_err(|e| e.to_string())?;
+    t.set("skill_overall", obs.skill_vector.overall())
+        .map_err(|e| e.to_string())?;
+    let dims = lua.create_table().map_err(|e| e.to_string())?;
+    for (dim, val) in obs.skill_vector.iter_dimensions() {
+        dims.set(dim, val).map_err(|e| e.to_string())?;
     }
+    t.set("skill_vector", dims).map_err(|e| e.to_string())?;
     Ok(t)
 }
 /// Convert a participant observation into a Lua table, appending reality
@@ -77,7 +70,7 @@ pub fn participant_to_table(
     obs: &PlayerObservation,
     reality: Option<&PlayerReality>,
 ) -> Result<Table, String> {
-    let t = observation_to_table(lua, obs, true)?;
+    let t = observation_to_table(lua, obs)?;
     if let Some(r) = reality {
         t.set("true_skill", r.skill.overall())
             .map_err(|e| e.to_string())?;
@@ -91,28 +84,20 @@ pub fn participant_to_table(
     Ok(t)
 }
 /// Convert a list of observations into a Lua array of tables.
-pub fn observations_to_value(
-    lua: &Lua,
-    list: &[PlayerObservation],
-    include_skill: bool,
-) -> Result<Value, String> {
+pub fn observations_to_value(lua: &Lua, list: &[PlayerObservation]) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for (i, obs) in list.iter().enumerate() {
-        t.set(i + 1, observation_to_table(lua, obs, include_skill)?)
+        t.set(i + 1, observation_to_table(lua, obs)?)
             .map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(t))
 }
 /// Convert a list of observations into a Lua table keyed by `player_id`.
 /// Convenient for rating/detection adapters that index participants by id.
-pub fn observations_to_map(
-    lua: &Lua,
-    list: &[PlayerObservation],
-    include_skill: bool,
-) -> Result<Value, String> {
+pub fn observations_to_map(lua: &Lua, list: &[PlayerObservation]) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for obs in list {
-        t.set(obs.id.0, observation_to_table(lua, obs, include_skill)?)
+        t.set(obs.id.0, observation_to_table(lua, obs)?)
             .map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(t))
@@ -121,11 +106,10 @@ pub fn observations_to_map(
 pub fn observations_to_map_from_refs(
     lua: &Lua,
     list: &[(&PlayerId, &PlayerObservation)],
-    include_skill: bool,
 ) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     for (id, obs) in list {
-        t.set(id.0, observation_to_table(lua, obs, include_skill)?)
+        t.set(id.0, observation_to_table(lua, obs)?)
             .map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(t))
@@ -360,18 +344,16 @@ pub fn observation_to_table_fair(
             None => t.set("role", Value::Nil).map_err(|e| e.to_string())?,
         }
     }
-    if req.include_skill {
-        if req.has_observation_field("skill_overall") {
-            t.set("skill_overall", obs.skill_vector.overall())
-                .map_err(|e| e.to_string())?;
+    if req.has_observation_field("skill_overall") {
+        t.set("skill_overall", obs.skill_vector.overall())
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("skill_vector") {
+        let dims = lua.create_table().map_err(|e| e.to_string())?;
+        for (dim, val) in obs.skill_vector.iter_dimensions() {
+            dims.set(dim, val).map_err(|e| e.to_string())?;
         }
-        if req.has_observation_field("skill_vector") {
-            let dims = lua.create_table().map_err(|e| e.to_string())?;
-            for (dim, val) in obs.skill_vector.iter_dimensions() {
-                dims.set(dim, val).map_err(|e| e.to_string())?;
-            }
-            t.set("skill_vector", dims).map_err(|e| e.to_string())?;
-        }
+        t.set("skill_vector", dims).map_err(|e| e.to_string())?;
     }
     Ok(t)
 }
@@ -509,11 +491,11 @@ pub fn metric_snapshot_with_table_fair(
 ) -> Result<Value, String> {
     let t = lua.create_table().map_err(|e| e.to_string())?;
     t.set("match_result", mr_table).map_err(|e| e.to_string())?;
-    if req.snapshot_tick {
+    if req.has_snapshot_field("tick") {
         t.set("tick", world.time.ticks())
             .map_err(|e| e.to_string())?;
     }
-    if req.snapshot_time_secs {
+    if req.has_snapshot_field("time_secs") {
         t.set("time_secs", world.time.as_secs_f64())
             .map_err(|e| e.to_string())?;
     }
@@ -557,7 +539,7 @@ pub fn population_snapshot_fair(
     let mut true_skill = Vec::with_capacity(n);
     for pid in &ids {
         if let Some(obs) = world.observations.get(pid) {
-            if req.has_population_field("rating") || req.has_observation_field("rating") {
+            if req.has_population_field("rating") {
                 rating.push(obs.rating);
             }
             if req.has_population_field("skill_overall") {
@@ -579,7 +561,7 @@ pub fn population_snapshot_fair(
         }
         Ok(Value::Table(t))
     };
-    if req.has_population_field("rating") || req.has_observation_field("rating") {
+    if req.has_population_field("rating") {
         t.set("rating", arr(lua, &rating)?)
             .map_err(|e| e.to_string())?;
     }
@@ -605,32 +587,43 @@ pub struct CompletedMatch {
 pub fn completed_matches_to_table(
     lua: &Lua,
     completed: &[CompletedMatch],
+    req: &DataRequirements,
 ) -> Result<Value, String> {
     let arr = lua.create_table().map_err(|e| e.to_string())?;
     for (i, m) in completed.iter().enumerate() {
         let mt = lua.create_table().map_err(|e| e.to_string())?;
-        mt.set("id", m.match_id).map_err(|e| e.to_string())?;
-        mt.set("winner", m.winner.as_str())
-            .map_err(|e| e.to_string())?;
-        mt.set("time", m.time_secs).map_err(|e| e.to_string())?;
-        let team_a = lua.create_table().map_err(|e| e.to_string())?;
-        for (j, (pid, rating, rd)) in m.team_a.iter().enumerate() {
-            let entry = lua.create_table().map_err(|e| e.to_string())?;
-            entry.set("id", *pid).map_err(|e| e.to_string())?;
-            entry.set("rating", *rating).map_err(|e| e.to_string())?;
-            entry.set("rd", *rd).map_err(|e| e.to_string())?;
-            team_a.set(j + 1, entry).map_err(|e| e.to_string())?;
+        if req.has_completed_match_field("id") {
+            mt.set("id", m.match_id).map_err(|e| e.to_string())?;
         }
-        mt.set("team_a", team_a).map_err(|e| e.to_string())?;
-        let team_b = lua.create_table().map_err(|e| e.to_string())?;
-        for (j, (pid, rating, rd)) in m.team_b.iter().enumerate() {
-            let entry = lua.create_table().map_err(|e| e.to_string())?;
-            entry.set("id", *pid).map_err(|e| e.to_string())?;
-            entry.set("rating", *rating).map_err(|e| e.to_string())?;
-            entry.set("rd", *rd).map_err(|e| e.to_string())?;
-            team_b.set(j + 1, entry).map_err(|e| e.to_string())?;
+        if req.has_completed_match_field("winner") {
+            mt.set("winner", m.winner.as_str())
+                .map_err(|e| e.to_string())?;
         }
-        mt.set("team_b", team_b).map_err(|e| e.to_string())?;
+        if req.has_completed_match_field("time") {
+            mt.set("time", m.time_secs).map_err(|e| e.to_string())?;
+        }
+        if req.has_completed_match_field("team_a") {
+            let team_a = lua.create_table().map_err(|e| e.to_string())?;
+            for (j, (pid, rating, rd)) in m.team_a.iter().enumerate() {
+                let entry = lua.create_table().map_err(|e| e.to_string())?;
+                entry.set("id", *pid).map_err(|e| e.to_string())?;
+                entry.set("rating", *rating).map_err(|e| e.to_string())?;
+                entry.set("rd", *rd).map_err(|e| e.to_string())?;
+                team_a.set(j + 1, entry).map_err(|e| e.to_string())?;
+            }
+            mt.set("team_a", team_a).map_err(|e| e.to_string())?;
+        }
+        if req.has_completed_match_field("team_b") {
+            let team_b = lua.create_table().map_err(|e| e.to_string())?;
+            for (j, (pid, rating, rd)) in m.team_b.iter().enumerate() {
+                let entry = lua.create_table().map_err(|e| e.to_string())?;
+                entry.set("id", *pid).map_err(|e| e.to_string())?;
+                entry.set("rating", *rating).map_err(|e| e.to_string())?;
+                entry.set("rd", *rd).map_err(|e| e.to_string())?;
+                team_b.set(j + 1, entry).map_err(|e| e.to_string())?;
+            }
+            mt.set("team_b", team_b).map_err(|e| e.to_string())?;
+        }
         arr.set(i + 1, mt).map_err(|e| e.to_string())?;
     }
     Ok(Value::Table(arr))
@@ -642,7 +635,6 @@ mod tests {
     use matchlab_core::player::{SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -660,8 +652,6 @@ mod tests {
             queue_joined_at: Some(SimTime::from_secs(1.0)),
             is_online: true,
             party_id: Some(3),
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(1200.0),
@@ -673,7 +663,7 @@ mod tests {
     fn observation_table_fields() {
         let lua = Lua::new();
         let o = obs(1, 1000.0);
-        let t = observation_to_table(&lua, &o, true).unwrap();
+        let t = observation_to_table(&lua, &o).unwrap();
         assert_eq!(t.get::<u64>("player_id").unwrap(), 1);
         assert_eq!(t.get::<f64>("rating").unwrap(), 1000.0);
         assert_eq!(t.get::<f64>("skill_overall").unwrap(), 1200.0);
@@ -681,26 +671,46 @@ mod tests {
         assert_eq!(t.get::<u64>("party_id").unwrap(), 3);
     }
     #[test]
-    fn skill_fields_omitted_when_disallowed() {
+    fn skill_fields_omitted_when_not_in_observation_fields() {
         let lua = Lua::new();
         let o = obs(1, 1000.0);
-        let t = observation_to_table(&lua, &o, false).unwrap();
+        let req = DataRequirements {
+            observation_fields: vec!["player_id".into(), "rating".into()],
+            ..Default::default()
+        };
+        let t = observation_to_table_fair(&lua, &o, &req).unwrap();
         assert!(t.get::<mlua::Value>("skill_overall").unwrap().is_nil());
         assert!(t.get::<mlua::Value>("skill_vector").unwrap().is_nil());
     }
     #[test]
-    fn role_is_exposed_without_include_skill() {
+    fn skill_fields_present_when_in_observation_fields() {
+        let lua = Lua::new();
+        let o = obs(1, 1000.0);
+        let req = DataRequirements {
+            observation_fields: vec![
+                "player_id".into(),
+                "skill_overall".into(),
+                "skill_vector".into(),
+            ],
+            ..Default::default()
+        };
+        let t = observation_to_table_fair(&lua, &o, &req).unwrap();
+        assert_eq!(t.get::<f64>("skill_overall").unwrap(), 1200.0);
+        assert!(t.get::<mlua::Value>("skill_vector").unwrap().is_table());
+    }
+    #[test]
+    fn role_is_exposed_in_observation_table() {
         let lua = Lua::new();
         let mut o = obs(1, 1000.0);
         o.role = Some("killer".to_string());
-        let t = observation_to_table(&lua, &o, false).unwrap();
+        let t = observation_to_table(&lua, &o).unwrap();
         assert_eq!(t.get::<String>("role").unwrap(), "killer");
     }
     #[test]
     fn role_is_nil_when_absent() {
         let lua = Lua::new();
         let o = obs(1, 1000.0);
-        let t = observation_to_table(&lua, &o, false).unwrap();
+        let t = observation_to_table(&lua, &o).unwrap();
         assert!(t.get::<mlua::Value>("role").unwrap().is_nil());
     }
     #[test]

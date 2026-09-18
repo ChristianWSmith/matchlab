@@ -89,7 +89,7 @@ The following modules and types are considered stable public API. Breaking chang
 | Module | Key Types | Status |
 |--------|-----------|--------|
 | `system` | `RatingSystem`, `RatingState` | Stable |
-| `filter` | `filter_match_result` | Stable |
+| `filter` | `_fair` serialization field gating | Stable |
 
 ### Game (`matchlab-game`)
 

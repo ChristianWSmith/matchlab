@@ -6,10 +6,9 @@
 name = "smurf"
 
 data_requirements = {
-    observation_fields = { "player_id", "rating" },
+    observation_fields = { "player_id", "rating", "skill_overall" },
     reality_fields = { "true_skill", "reality_games_played" },
     match_result_fields = { "team_a", "team_b" },
-    include_skill = true,
 }
 
 function on_record(match_result, snapshot, config, context)

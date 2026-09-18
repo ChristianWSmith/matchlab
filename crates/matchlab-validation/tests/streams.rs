@@ -9,6 +9,7 @@ use matchlab_core::time::SimTime;
 use matchlab_experiments::seed::SeedManager;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_metrics::{LuaMetricCollector, MetricResult, MetricsEngine};
 use matchlab_rating::plugins::registry;
@@ -71,6 +72,7 @@ fn run_loop(
         Box::new(matchmaker),
         metrics(),
         config,
+        GlobalSubscription::default(),
     );
     loop_.run_until(SimTime::from_secs(3600.0));
     let completed = loop_.state.lock().unwrap().matches_completed;

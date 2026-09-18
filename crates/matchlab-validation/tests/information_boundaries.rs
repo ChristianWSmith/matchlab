@@ -54,8 +54,6 @@ fn make_world_with_multidim_skill() -> World {
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: std::collections::VecDeque::new(),
-        quit_history: std::collections::VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".to_string(),
         role: None,

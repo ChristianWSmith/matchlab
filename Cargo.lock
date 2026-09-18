@@ -551,6 +551,7 @@ dependencies = [
  "matchlab-core",
  "matchlab-detection",
  "matchlab-game",
+ "matchlab-lua",
  "matchlab-matchmaking",
  "matchlab-metrics",
  "matchlab-players",

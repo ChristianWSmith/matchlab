@@ -184,14 +184,15 @@ impl Matchmaker for LuaMatchmaker {
         completed: &[CompletedMatch],
     ) -> Vec<ProposedMatch> {
         tracing::debug!(queue_len = queue.len(), "matchmaker called");
-        let has_completed = self.data_requirements.completed_matches && !completed.is_empty();
+        let has_completed =
+            !self.data_requirements.completed_match_fields.is_empty() && !completed.is_empty();
         let (queue_val, teams_val, completed_val) = self
             .vm
             .with_lua(|lua| {
                 let q = queue_to_table_fair(lua, queue, now, &self.data_requirements)?;
                 let t = teams_to_table(lua, teams)?;
                 let c = if has_completed {
-                    convert::completed_matches_to_table(lua, completed)?
+                    convert::completed_matches_to_table(lua, completed, &self.data_requirements)?
                 } else {
                     Value::Nil
                 };
@@ -236,7 +237,6 @@ impl Matchmaker for LuaMatchmaker {
 mod tests {
     use super::*;
     use matchlab_core::player::{PlayerObservation, Region, SkillVector, VisibleRank};
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -254,8 +254,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),
@@ -267,7 +265,12 @@ mod tests {
         crate::queue::QueueEntry {
             player_id: PlayerId(id),
             joined_at,
-            observation: obs(id, rating),
+            observation: crate::queue::LeanObservation {
+                rating,
+                rating_deviation: 350.0,
+                games_played: 0,
+                win_rate: 0.5,
+            },
             region,
             party_id: None,
             game_mode: "ranked".to_string(),

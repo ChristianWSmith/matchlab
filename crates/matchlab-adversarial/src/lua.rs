@@ -175,7 +175,6 @@ mod tests {
     use super::*;
     use matchlab_core::player::{PlayerObservation, PlayerReality, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
-    use std::collections::VecDeque;
     fn reality(id: u64, quit_probability: f64) -> PlayerReality {
         PlayerReality {
             id: PlayerId(id),
@@ -220,8 +219,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

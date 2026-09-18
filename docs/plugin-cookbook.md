@@ -61,7 +61,6 @@ The `data_requirements` table declares what data your script needs from the Rust
 Key fields:
 - `match_result_fields` — fields from `MatchResult`: `"winner"`, `"team_a"`, `"team_b"`, `"team_a_score"`, `"team_b_score"`, `"duration_secs"`, `"performances"`
 - `observation_fields` — fields from `PlayerObservation`: `"player_id"`, `"rating"`, `"rating_deviation"`, `"volatility"`, `"games_played"`, etc.
-- `include_skill` — if `true`, observation tables include `skill_overall` and `skill_vector` (outcome models only)
 
 ### Step-by-Step: Elo
 

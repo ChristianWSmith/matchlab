@@ -80,7 +80,7 @@ The exception is:
 | Item | Convention | Example |
 |------|-----------|---------|
 | Types | `PascalCase` | `PlayerReality`, `SimTime` |
-| Functions | `snake_case` | `win_probability`, `filter_match_result` |
+| Functions | `snake_case` | `win_probability`, `predict` |
 | Constants | `SCREAMING_SNAKE_CASE` | `ZERO`, `DEFAULT_K_FACTOR` |
 | Modules | `snake_case` | `outcome.rs`, `match_.rs` |
 | Files | `snake_case`, avoid keywords | `match_.rs` (not `match.rs`) |
@@ -210,7 +210,7 @@ M.name = "my_metric"
 -- end
 
 -- Optional: include full population snapshot (not just match participants)
--- M.data_requirements = { population_snapshot = true, population_fields = { "rating" } }
+-- M.data_requirements = { population_fields = { "rating" } }
 
 function M.on_record(match, world)
     -- Accumulate samples in the context table

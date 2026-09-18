@@ -10,7 +10,6 @@ name = "spy_collector"
 
 data_requirements = {
     observation_fields = { "player_id", "rating", "skill_overall", "skill_vector" },
-    include_skill = true,
     reality_fields = { "true_skill" },
 }
 

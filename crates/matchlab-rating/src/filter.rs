@@ -63,7 +63,6 @@ pub fn filter_match_result(mr: &MatchResult, budget: &[ObservationType]) -> Filt
         (!has(ObservationType::PerformanceData)).then_some("performances"),
         (!has(ObservationType::Duration)).then_some("duration"),
         (!has(ObservationType::Disconnects)).then_some("disconnects"),
-        (!has(ObservationType::SessionHistory)).then_some("session_history"),
     ]
     .into_iter()
     .flatten()

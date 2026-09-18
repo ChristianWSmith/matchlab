@@ -5,7 +5,6 @@
 
 data_requirements = {
     observation_fields = { "player_id", "skill_overall", "rating", "games_played", "skill_vector" },
-    include_skill = true,
 }
 
 function effective_skill(o, config)

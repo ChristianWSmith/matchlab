@@ -6,7 +6,7 @@ use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::world::World;
 use matchlab_matchmaking::matchmaker::{Matchmaker, ProposedMatch};
-use matchlab_matchmaking::queue::{Queue, QueueEntry};
+use matchlab_matchmaking::queue::{LeanObservation, Queue, QueueEntry};
 use matchlab_players::population_dynamics::{PopulationDynamics, PopulationEvent};
 /// Result of a single ecosystem tick.
 #[derive(Debug, Default)]
@@ -62,38 +62,36 @@ impl EcosystemLoop {
             match &action {
                 AgentAction::Queue => {
                     if let Some(reality) = self.world.players.get(player_id) {
+                        let obs = self.world.observe(*player_id).cloned().unwrap_or_else(|| {
+                            matchlab_core::player::PlayerObservation {
+                                id: *player_id,
+                                rating: reality.skill.overall(),
+                                hidden_mmr: reality.skill.overall(),
+                                visible_rank: matchlab_core::player::VisibleRank {
+                                    tier: "unranked".to_string(),
+                                    division: 1,
+                                },
+                                rating_deviation: 350.0,
+                                volatility: 0.06,
+                                games_played: 0,
+                                win_rate: 0.5,
+                                recent_performances: Vec::new(),
+                                queue_joined_at: None,
+                                is_online: true,
+                                party_id: reality.party_id,
+                                tilt_level: 0.0,
+                                game_mode: "ranked".to_string(),
+                                role: None,
+                                skill_vector: matchlab_core::player::SkillVector::one_dimensional(
+                                    reality.skill.overall(),
+                                ),
+                                detection_flags: Vec::new(),
+                            }
+                        });
                         let entry = QueueEntry {
                             player_id: *player_id,
                             joined_at: now,
-                            observation: self.world.observe(*player_id).cloned().unwrap_or_else(
-                                || matchlab_core::player::PlayerObservation {
-                                    id: *player_id,
-                                    rating: reality.skill.overall(),
-                                    hidden_mmr: reality.skill.overall(),
-                                    visible_rank: matchlab_core::player::VisibleRank {
-                                        tier: "unranked".to_string(),
-                                        division: 1,
-                                    },
-                                    rating_deviation: 350.0,
-                                    volatility: 0.06,
-                                    games_played: 0,
-                                    win_rate: 0.5,
-                                    recent_performances: Vec::new(),
-                                    queue_joined_at: None,
-                                    is_online: true,
-                                    party_id: reality.party_id,
-                                    session_history: std::collections::VecDeque::new(),
-                                    quit_history: std::collections::VecDeque::new(),
-                                    tilt_level: 0.0,
-                                    game_mode: "ranked".to_string(),
-                                    role: None,
-                                    skill_vector:
-                                        matchlab_core::player::SkillVector::one_dimensional(
-                                            reality.skill.overall(),
-                                        ),
-                                    detection_flags: Vec::new(),
-                                },
-                            ),
+                            observation: LeanObservation::from_observation(&obs),
                             region: reality.region,
                             party_id: reality.party_id,
                             game_mode: "ranked".to_string(),

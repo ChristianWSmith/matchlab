@@ -151,7 +151,7 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | `matchlab-lua` | Lua VM, context threading, deterministic RNG routing, script validation, `DataRequirements`, core↔Lua marshalling |
 | `matchlab-players` | Archetypes, population generation, skill dynamics, population dynamics |
 | `matchlab-game` | OutcomeModel trait, Lua outcome scripts (logistic, variance, composition, performance, fatigue, momentum) |
-| `matchlab-rating` | RatingSystem trait, information budget via `data_requirements`, Lua rating scripts (elo, flat, glicko2, trueskill) |
+| `matchlab-rating` | RatingSystem trait, `data_requirements` for field-level gating, Lua rating scripts (elo, flat, glicko2, trueskill) |
 | `matchlab-matchmaking` | Queue, Matchmaker trait, constraints, search strategies, `CompletedMatch` delta, Lua matchmaker scripts (batch, expanding_window, strict, hub_spoke, random, information_seeking) |
 | `matchlab-detection` | DetectionSystem trait, Lua detection scripts (smurf) |
 | `matchlab-ranking` | RankMapper trait, Leaderboard, Lua rank scripts (brackets) |

@@ -6,7 +6,6 @@
 
 data_requirements = {
     observation_fields = { "player_id", "skill_overall", "rating", "recent_performances" },
-    include_skill = true,
 }
 
 function base_skill(o)

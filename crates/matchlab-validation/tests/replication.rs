@@ -17,6 +17,7 @@ use matchlab_experiments::replicate::{
 };
 use matchlab_experiments::runner::ExperimentRunner;
 use matchlab_loop::LoopConfig;
+use matchlab_lua::GlobalSubscription;
 use matchlab_metrics::MetricResult;
 use matchlab_metrics::engine::MetricsEngine;
 use matchlab_metrics::lua::LuaMetricCollector;
@@ -413,6 +414,7 @@ initial_rating: 1000.0
             Box::new(matchmaker),
             engine,
             config,
+            GlobalSubscription::default(),
         );
         loop_.run_until(SimTime::from_secs(60_000.0));
         let (matches_completed, sim_time) = {

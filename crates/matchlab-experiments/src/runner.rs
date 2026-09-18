@@ -14,6 +14,7 @@ use matchlab_core::rng::{SimRng, StreamSeeds};
 use matchlab_core::time::SimTime;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_metrics::{MetricResult, MetricsEngine};
 use matchlab_objective::utility::{ObjectiveFunction, ObjectiveWeights};
@@ -104,6 +105,7 @@ impl ExperimentRunner {
             ranker,
             adversarial_agents,
             satisfaction_model,
+            GlobalSubscription::default(),
         );
         let until = SimTime::from_secs(config.experiment.duration.max_time);
         loop_.run_until(until);

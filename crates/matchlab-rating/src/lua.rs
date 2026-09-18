@@ -162,7 +162,6 @@ mod tests {
     use matchlab_core::match_::{MatchId, Team};
     use matchlab_core::player::{SkillVector, VisibleRank};
     use matchlab_core::time::SimTime;
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64, rd: f64, games: u64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -180,8 +179,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

@@ -9,13 +9,13 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 use matchlab_detection::detector::DetectionSystem;
 use matchlab_game::outcome::OutcomeModel;
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::CompletedMatch;
 use matchlab_matchmaking::matchmaker::Matchmaker;
-use matchlab_matchmaking::queue::{Queue, QueueEntry};
+use matchlab_matchmaking::queue::{LeanObservation, Queue, QueueEntry};
 use matchlab_metrics::MetricsEngine;
 use matchlab_players::skill::SkillProcess;
 use matchlab_ranking::ranker::RankMapper;
-use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::RatingSystem;
 use matchlab_utility::satisfaction::{PlayerExperience, SatisfactionModel};
 use std::collections::HashMap;
@@ -65,6 +65,7 @@ pub struct MachineState {
     matchmaker_rng: SimRng,
     behavior_rng: SimRng,
     completed_buffer: Vec<CompletedMatch>,
+    pub subscription: GlobalSubscription,
     /// Counterfactual recording trace ; `None` unless recording.
     pub history: Option<crate::history::GameHistory>,
 }
@@ -76,6 +77,7 @@ impl MachineState {
         matchmaker: Box<dyn Matchmaker>,
         metrics: MetricsEngine,
         config: LoopConfig,
+        subscription: GlobalSubscription,
     ) -> Self {
         Self::with_extras(
             population,
@@ -88,6 +90,7 @@ impl MachineState {
             None,
             HashMap::new(),
             None,
+            subscription,
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -102,6 +105,7 @@ impl MachineState {
         ranker: Option<Box<dyn RankMapper>>,
         adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
         satisfaction_model: Option<Box<dyn SatisfactionModel>>,
+        subscription: GlobalSubscription,
     ) -> Self {
         let pop_map: HashMap<PlayerId, (PlayerReality, PlayerObservation)> = population
             .into_iter()
@@ -133,6 +137,7 @@ impl MachineState {
             matchmaker_rng: SimRng::from_seed(config.stream_seeds.matchmaker),
             behavior_rng: SimRng::from_seed(config.stream_seeds.behavior),
             completed_buffer: Vec::new(),
+            subscription,
             history: config.record_history.then(crate::history::GameHistory::new),
         }
     }
@@ -180,7 +185,7 @@ pub fn handle_player_queue(
         let entry = QueueEntry {
             player_id: pid,
             joined_at: world.time,
-            observation: obs.clone(),
+            observation: LeanObservation::from_observation(&obs),
             region: Region::NA,
             party_id: obs.party_id,
             game_mode: obs.game_mode.clone(),
@@ -353,9 +358,7 @@ pub fn handle_match_end(
             obs_map.insert(*pid, o.clone());
         }
     }
-    let budget = state.rating_system.information_budget();
-    let filtered = filter_match_result(&result, &budget).into_match_result(result.match_id);
-    let updates = state.rating_system.update(&filtered, &obs_map);
+    let updates = state.rating_system.update(&result, &obs_map);
     tracing::debug!(
         match_id = match_id.0,
         players_updated = updates.len(),
@@ -406,35 +409,37 @@ pub fn handle_match_end(
         }
     }
     world.matches.insert(match_id, MatchState::Completed);
-    state.completed_buffer.push(CompletedMatch {
-        match_id: match_id.0,
-        team_a: result
-            .team_a
-            .iter()
-            .filter_map(|pid| {
-                world
-                    .observations
-                    .get(pid)
-                    .map(|o| (pid.0, o.rating, o.rating_deviation))
-            })
-            .collect(),
-        team_b: result
-            .team_b
-            .iter()
-            .filter_map(|pid| {
-                world
-                    .observations
-                    .get(pid)
-                    .map(|o| (pid.0, o.rating, o.rating_deviation))
-            })
-            .collect(),
-        winner: match result.winner {
-            matchlab_core::match_::Team::A => "a",
-            matchlab_core::match_::Team::B => "b",
-        }
-        .to_string(),
-        time_secs: world.time.as_secs_f64(),
-    });
+    if state.subscription.needs_completed_matches() {
+        state.completed_buffer.push(CompletedMatch {
+            match_id: match_id.0,
+            team_a: result
+                .team_a
+                .iter()
+                .filter_map(|pid| {
+                    world
+                        .observations
+                        .get(pid)
+                        .map(|o| (pid.0, o.rating, o.rating_deviation))
+                })
+                .collect(),
+            team_b: result
+                .team_b
+                .iter()
+                .filter_map(|pid| {
+                    world
+                        .observations
+                        .get(pid)
+                        .map(|o| (pid.0, o.rating, o.rating_deviation))
+                })
+                .collect(),
+            winner: match result.winner {
+                matchlab_core::match_::Team::A => "a",
+                matchlab_core::match_::Team::B => "b",
+            }
+            .to_string(),
+            time_secs: world.time.as_secs_f64(),
+        });
+    }
     state.matches_completed += 1;
     if state.matches_completed % 1000 == 0 {
         tracing::info!(completed = state.matches_completed, "progress");
@@ -627,7 +632,6 @@ mod tests {
     use matchlab_players::population::{PopulationConfig, PopulationGenerator};
     use matchlab_rating::registry;
     use matchlab_rating::system::RatingSystem;
-    use std::collections::VecDeque;
     fn lua_elo() -> Box<dyn RatingSystem> {
         let params =
             serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
@@ -663,8 +667,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(rating),
@@ -716,6 +718,7 @@ mod tests {
                 stream_seeds: StreamSeeds::from_seed(1234),
                 record_history: false,
             },
+            GlobalSubscription::default(),
         )
     }
     #[test]
@@ -778,7 +781,12 @@ mod tests {
         state.queue.enqueue(QueueEntry {
             player_id: PlayerId(1),
             joined_at: SimTime::ZERO,
-            observation: obs(1, 1000.0),
+            observation: LeanObservation {
+                rating: 1000.0,
+                rating_deviation: 350.0,
+                games_played: 0,
+                win_rate: 0.5,
+            },
             region: Region::NA,
             party_id: None,
             game_mode: "ranked".to_string(),
@@ -788,7 +796,12 @@ mod tests {
         state.queue.enqueue(QueueEntry {
             player_id: PlayerId(2),
             joined_at: SimTime::ZERO,
-            observation: obs(2, 1000.0),
+            observation: LeanObservation {
+                rating: 1000.0,
+                rating_deviation: 350.0,
+                games_played: 0,
+                win_rate: 0.5,
+            },
             region: Region::NA,
             party_id: None,
             game_mode: "ranked".to_string(),
@@ -926,6 +939,7 @@ mod tests {
             lua_batch(),
             MetricsEngine::new(),
             cfg,
+            GlobalSubscription::default(),
         );
         loop_a.run();
         let total_games: u64 = {
@@ -989,6 +1003,7 @@ mod tests {
                 lua_batch(),
                 MetricsEngine::new(),
                 cfg,
+                GlobalSubscription::default(),
             )
         };
         let mut loop_a = build(pop.clone(), cfg.clone());
@@ -1055,7 +1070,15 @@ mod tests {
             stream_seeds: StreamSeeds::from_seed(1234),
             record_history: false,
         };
-        let mut loop_a = MatchLoop::new(pop, lua_elo(), lua_logistic(), lua_batch(), metrics, cfg);
+        let mut loop_a = MatchLoop::new(
+            pop,
+            lua_elo(),
+            lua_logistic(),
+            lua_batch(),
+            metrics,
+            cfg,
+            GlobalSubscription::default(),
+        );
         loop_a.run();
         let completed = loop_a.state.lock().unwrap().matches_completed;
         assert_eq!(completed, 20);

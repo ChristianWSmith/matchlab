@@ -6,6 +6,7 @@ use matchlab_experiments::config::ExperimentConfig;
 use matchlab_experiments::seed::SeedManager;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_metrics::engine::MetricsEngine;
 use matchlab_rating::registry;
@@ -147,6 +148,7 @@ fn run_experiment() -> matchlab_experiments::ExperimentResult {
         Box::new(matchmaker),
         metrics,
         config_loop,
+        GlobalSubscription::default(),
     );
     loop_.run_until(SimTime::from_secs(200_000.0));
     let (matches_completed, simulated_time_secs) = {

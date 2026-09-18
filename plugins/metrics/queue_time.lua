@@ -5,7 +5,7 @@ name = "queue_time"
 
 data_requirements = {
     observation_fields = { "player_id", "queue_joined_at_ticks" },
-    snapshot_tick = true,
+    snapshot_fields = { "tick" },
 }
 
 function on_record(match_result, snapshot, config, context)

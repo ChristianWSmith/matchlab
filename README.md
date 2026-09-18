@@ -214,8 +214,8 @@ experiment with ≈330,000 matches runs in well under a minute.
 3. **Match execution.** The outcome model (the "game") decides the winner using
    ground-truth skill with stochastic noise.
 4. **Rating update.** Each rating system updates its players from the match
-   result — and, crucially, **sees only the data its information budget
-   permits.**
+   result — and, crucially, **sees only the fields its `data_requirements`
+   declares.**
 5. **Optional ecosystem layers.** Smurf detection evaluates behavior, rank
    mapping assigns visible ranks, adversarial agents misbehave on cue, and the
    satisfaction model decides who churns.
@@ -428,10 +428,7 @@ the full plugin API contract, see [`docs/plugin-api.md`](docs/plugin-api.md).
 | `bayesian_logistic.lua` | Bayesian logistic: MAP estimate with Gaussian prior | `initial_rating`, `prior_variance`, `learning_rate` |
 | `bayesian_hierarchical.lua` | Bayesian hierarchical: population-level shrinkage | `initial_rating`, `population_prior_mean`, `learning_rate` |
 
-*Information budgets:* rating systems declare what match data they may read
-(e.g. Elo and Glicko-2 read only win/loss). The loop enforces the budget by
-sanitizing match results before a system sees them, so a WinLoss-only system can
-never peek at scores, performances, or durations.
+*Data requirements:* rating systems declare which `MatchResult` and `PlayerObservation` fields they read via a `data_requirements` table (e.g. Elo and Glicko-2 read only `match_result_fields = { "winner", "team_a", "team_b" }`). The loop serializes only the declared fields, so a minimal system never sees scores, performances, or durations.
 
 ### Outcome models (`plugins/game/`)
 
@@ -802,7 +799,7 @@ crates/                   Rust crate workspace
   matchlab-players/       population generation, skill dynamics, distributions
   matchlab-game/          outcome-model adapter, performance model, team model
   matchlab-matchmaking/   queue, matchmakers, search strategies, parties, latency
-  matchlab-rating/        rating systems, information budgets
+  matchlab-rating/        rating systems, data_requirements field gating
   matchlab-detection/     smurf detection
   matchlab-ranking/       rank mapping, leaderboard
   matchlab-metrics/       metric collectors, statistics

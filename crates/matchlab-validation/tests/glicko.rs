@@ -11,7 +11,7 @@ use matchlab_core::time::SimTime;
 use matchlab_rating::RatingSystem;
 use matchlab_rating::lua::LuaRatingSystem;
 use matchlab_validation::reference::glicko2;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 const TAU: f64 = 0.5;
 const EPS: f64 = 1e-6;
 fn obs(id: u64, rating: f64, rd: f64, volatility: f64, games: u64) -> PlayerObservation {
@@ -31,8 +31,6 @@ fn obs(id: u64, rating: f64, rd: f64, volatility: f64, games: u64) -> PlayerObse
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: VecDeque::new(),
-        quit_history: VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),

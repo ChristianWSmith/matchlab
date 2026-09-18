@@ -4,9 +4,8 @@
 name = "convergence"
 
 data_requirements = {
-    observation_fields = { "player_id", "rating", "games_played" },
+    observation_fields = { "player_id", "rating", "games_played", "skill_overall" },
     reality_fields = { "true_skill" },
-    include_skill = true,
 }
 
 function on_record(match_result, snapshot, config, context)

@@ -5,9 +5,8 @@
 name = "stability"
 
 data_requirements = {
-    observation_fields = { "player_id", "rating" },
+    observation_fields = { "player_id", "rating", "skill_overall" },
     reality_fields = { "improvement_rate" },
-    include_skill = true,
 }
 
 function on_record(match_result, snapshot, config, context)
