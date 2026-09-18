@@ -67,8 +67,8 @@ function batch_fallback(queue, teams, context)
         if a.rating ~= b.rating then
             return a.rating < b.rating
         end
-        if a.joined_at_secs ~= b.joined_at_secs then
-            return a.joined_at_secs < b.joined_at_secs
+        if a.wait_secs ~= b.wait_secs then
+            return a.wait_secs < b.wait_secs
         end
         return a.idx < b.idx
     end)
@@ -161,6 +161,15 @@ function find_matches(queue, teams, now_secs, config, context, completed)
     context.skill_band_counts = context.skill_band_counts or {}
     context.upsets = context.upsets or { matches_observed = 0, last_decay = 0 }
 
+    local function ensure_upset(pid)
+        local u = context.upsets[pid]
+        if u == nil then
+            u = { involved = 0, upsets = 0, total_magnitude = 0, recent = {} }
+            context.upsets[pid] = u
+        end
+        return u
+    end
+
     local function process_completed(completed)
         if completed == nil then return end
         for _, m in ipairs(completed) do
@@ -207,11 +216,7 @@ function find_matches(queue, teams, now_secs, config, context, completed)
                 local normalized_gap = gap / math.max(avg_rd, 1.0)
                 for _, entry in ipairs(winners) do
                     local pid = entry.id
-                    local u = context.upsets[pid]
-                    if u == nil then
-                        u = { involved = 0, upsets = 0, total_magnitude = 0, recent = {} }
-                        context.upsets[pid] = u
-                    end
+                    local u = ensure_upset(pid)
                     u.involved = u.involved + 1
                     u.upsets = u.upsets + 1
                     u.total_magnitude = u.total_magnitude + normalized_gap
@@ -222,11 +227,7 @@ function find_matches(queue, teams, now_secs, config, context, completed)
                 end
                 for _, entry in ipairs(losers) do
                     local pid = entry.id
-                    local u = context.upsets[pid]
-                    if u == nil then
-                        u = { involved = 0, upsets = 0, total_magnitude = 0, recent = {} }
-                        context.upsets[pid] = u
-                    end
+                    local u = ensure_upset(pid)
                     u.involved = u.involved + 1
                     u.total_magnitude = u.total_magnitude + normalized_gap
                     table.insert(u.recent, { gap = normalized_gap, time = m.time })
@@ -237,20 +238,12 @@ function find_matches(queue, teams, now_secs, config, context, completed)
             else
                 for _, entry in ipairs(m.team_a) do
                     local pid = entry.id
-                    local u = context.upsets[pid]
-                    if u == nil then
-                        u = { involved = 0, upsets = 0, total_magnitude = 0, recent = {} }
-                        context.upsets[pid] = u
-                    end
+                    local u = ensure_upset(pid)
                     u.involved = u.involved + 1
                 end
                 for _, entry in ipairs(m.team_b) do
                     local pid = entry.id
-                    local u = context.upsets[pid]
-                    if u == nil then
-                        u = { involved = 0, upsets = 0, total_magnitude = 0, recent = {} }
-                        context.upsets[pid] = u
-                    end
+                    local u = ensure_upset(pid)
                     u.involved = u.involved + 1
                 end
             end
@@ -510,14 +503,8 @@ function find_matches(queue, teams, now_secs, config, context, completed)
                 used[seed.player_id] = true
                 used[best_opp.player_id] = true
 
-                local team_a, team_b
-                if matches_role_filter(seed, role_a) then
-                    team_a = { seed.player_id }
-                    team_b = { best_opp.player_id }
-                else
-                    team_a = { best_opp.player_id }
-                    team_b = { seed.player_id }
-                end
+                local team_a = { seed.player_id }
+                local team_b = { best_opp.player_id }
 
                 local remaining_a = size_a - #team_a
                 if remaining_a > 0 then

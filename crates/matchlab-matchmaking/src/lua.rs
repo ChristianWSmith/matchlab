@@ -691,4 +691,89 @@ mod tests {
         assert!(row2.get::<mlua::Value>("party_id").unwrap().is_nil());
         assert!(row2.get::<mlua::Value>("role").unwrap().is_nil());
     }
+    #[test]
+    fn information_seeking_forms_matches() {
+        let mm = LuaMatchmaker::load(
+            "plugins/matchmaking/information_seeking.lua",
+            &serde_yaml::Value::Null,
+        )
+        .unwrap();
+        let mut queue = Queue::default();
+        for id in 1..=10u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0, Region::NA));
+        }
+        let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+        let mut rng = SimRng::from_seed(42);
+        let matches = mm.find_matches(&queue, &world, &sym(1), SimTime::ZERO, &mut rng, &[]);
+        assert!(
+            !matches.is_empty(),
+            "ISM should form at least one match from 10 equal-skill players"
+        );
+        let mut matched_ids: Vec<u64> = matches
+            .iter()
+            .flat_map(|m| m.team_a.iter().chain(m.team_b.iter()))
+            .map(|p| p.0)
+            .collect();
+        matched_ids.sort();
+        matched_ids.dedup();
+        assert_eq!(
+            matched_ids.len(),
+            matches.len() * 2,
+            "each player matched once"
+        );
+    }
+    #[test]
+    fn information_seeking_processes_completed_matches() {
+        let mm = LuaMatchmaker::load(
+            "plugins/matchmaking/information_seeking.lua",
+            &serde_yaml::Value::Null,
+        )
+        .unwrap();
+        let mut queue = Queue::default();
+        for id in 1..=10u64 {
+            queue.enqueue(entry(id, SimTime::from_secs(id as f64), 1000.0, Region::NA));
+        }
+        let world = build_world(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
+        let completed = vec![CompletedMatch {
+            match_id: 1,
+            team_a: vec![(1, 800.0, 350.0)],
+            team_b: vec![(2, 1200.0, 350.0)],
+            winner: "b".to_string(),
+            time_secs: 10.0,
+        }];
+        let mut rng = SimRng::from_seed(42);
+        let matches = mm.find_matches(&queue, &world, &sym(1), SimTime::ZERO, &mut rng, &completed);
+        assert!(
+            !matches.is_empty(),
+            "ISM should still form matches after processing completed delta"
+        );
+    }
+    #[test]
+    fn information_seeking_respects_roles() {
+        let mm = LuaMatchmaker::load(
+            "plugins/matchmaking/information_seeking.lua",
+            &serde_yaml::Value::Null,
+        )
+        .unwrap();
+        let teams = TeamComposition {
+            team_size_a: 1,
+            team_size_b: 1,
+            role_a: Some("killer".to_string()),
+            role_b: Some("survivor".to_string()),
+        };
+        let mut queue = Queue::default();
+        let mut k = entry(1, SimTime::ZERO, 1000.0, Region::NA);
+        k.role = Some("killer".to_string());
+        queue.enqueue(k);
+        let mut s = entry(2, SimTime::ZERO, 1000.0, Region::NA);
+        s.role = Some("survivor".to_string());
+        queue.enqueue(s);
+        queue.enqueue(entry(3, SimTime::ZERO, 1000.0, Region::NA));
+        let world = build_world(&[(1, 1000.0), (2, 1000.0), (3, 1000.0)]);
+        let mut rng = SimRng::from_seed(1);
+        let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
+        assert_eq!(matches.len(), 1, "one role-matched pair should form");
+        assert!(matches[0].team_a.contains(&PlayerId(1)));
+        assert!(matches[0].team_b.contains(&PlayerId(2)));
+    }
 }

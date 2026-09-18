@@ -545,7 +545,7 @@ pub fn population_snapshot_fair(
             if req.has_population_field("skill_overall") {
                 skill_overall.push(obs.skill_vector.overall());
             }
-            if req.has_reality_field("true_skill") {
+            if req.has_population_field("true_skill") {
                 if let Some(reality) = world.players.get(pid) {
                     true_skill.push(reality.skill.overall());
                 }
@@ -569,7 +569,7 @@ pub fn population_snapshot_fair(
         t.set("skill_overall", arr(lua, &skill_overall)?)
             .map_err(|e| e.to_string())?;
     }
-    if req.has_reality_field("true_skill") {
+    if req.has_population_field("true_skill") {
         t.set("true_skill", arr(lua, &true_skill)?)
             .map_err(|e| e.to_string())?;
     }

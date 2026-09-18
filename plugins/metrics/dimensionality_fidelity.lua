@@ -6,8 +6,7 @@
 name = "dimensionality_fidelity"
 
 data_requirements = {
-    population_fields = { "rating", "skill_overall" },
-    reality_fields = { "true_skill" },
+    population_fields = { "rating", "skill_overall", "true_skill" },
 }
 
 function on_record(match_result, snapshot, config, context)

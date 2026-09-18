@@ -1,5 +1,83 @@
 use mlua::prelude::*;
 
+const KNOWN_OBSERVATION_FIELDS: &[&str] = &[
+    "player_id",
+    "rating",
+    "hidden_mmr",
+    "rating_deviation",
+    "volatility",
+    "games_played",
+    "win_rate",
+    "tilt_level",
+    "is_online",
+    "recent_performances",
+    "queue_joined_at_secs",
+    "queue_joined_at_ticks",
+    "party_id",
+    "role",
+    "skill_overall",
+    "skill_vector",
+];
+
+const KNOWN_MATCH_RESULT_FIELDS: &[&str] = &[
+    "match_id",
+    "winner",
+    "team_a",
+    "team_b",
+    "team_a_score",
+    "team_b_score",
+    "duration_secs",
+    "disconnected",
+    "forfeited",
+    "variance",
+    "performances",
+];
+
+const KNOWN_QUEUE_FIELDS: &[&str] = &[
+    "idx",
+    "player_id",
+    "rating",
+    "rating_deviation",
+    "games_played",
+    "win_rate",
+    "joined_at_secs",
+    "wait_secs",
+    "region",
+    "party_id",
+    "latency_ms",
+    "game_mode",
+    "role",
+];
+
+const KNOWN_SNAPSHOT_FIELDS: &[&str] = &["tick", "time_secs"];
+
+const KNOWN_POPULATION_FIELDS: &[&str] = &["rating", "skill_overall", "true_skill"];
+
+const KNOWN_REALITY_FIELDS: &[&str] = &[
+    "true_skill",
+    "improvement_rate",
+    "reality_games_played",
+    "archetype",
+];
+
+const KNOWN_BEHAVIOR_FIELDS: &[&str] = &[
+    "quit_probability",
+    "tilt_level",
+    "party_id",
+    "win_rate",
+    "is_online",
+];
+
+const KNOWN_COMPLETED_MATCH_FIELDS: &[&str] = &["id", "winner", "team_a", "team_b", "time"];
+
+fn warn_unknown_fields(fields: &[String], known: &[&str], category: &str) {
+    for field in fields {
+        if !known.contains(&field.as_str()) {
+            tracing::warn!(field = %field, category = %category, "unknown field in data_requirements");
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DataRequirements {
     pub queue_fields: Vec<String>,
@@ -57,6 +135,39 @@ impl DataRequirements {
                 req.completed_match_fields = string_array(v)?;
             }
         }
+
+        warn_unknown_fields(&req.queue_fields, KNOWN_QUEUE_FIELDS, "queue_fields");
+        warn_unknown_fields(
+            &req.match_result_fields,
+            KNOWN_MATCH_RESULT_FIELDS,
+            "match_result_fields",
+        );
+        warn_unknown_fields(
+            &req.observation_fields,
+            KNOWN_OBSERVATION_FIELDS,
+            "observation_fields",
+        );
+        warn_unknown_fields(
+            &req.snapshot_fields,
+            KNOWN_SNAPSHOT_FIELDS,
+            "snapshot_fields",
+        );
+        warn_unknown_fields(
+            &req.population_fields,
+            KNOWN_POPULATION_FIELDS,
+            "population_fields",
+        );
+        warn_unknown_fields(&req.reality_fields, KNOWN_REALITY_FIELDS, "reality_fields");
+        warn_unknown_fields(
+            &req.behavior_fields,
+            KNOWN_BEHAVIOR_FIELDS,
+            "behavior_fields",
+        );
+        warn_unknown_fields(
+            &req.completed_match_fields,
+            KNOWN_COMPLETED_MATCH_FIELDS,
+            "completed_match_fields",
+        );
 
         Ok(req)
     }
