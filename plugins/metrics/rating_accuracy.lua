@@ -5,6 +5,13 @@
 
 name = "rating_accuracy"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    reality_fields = { "true_skill" },
+    include_skill = true,
+    snapshot_tick = true,
+}
+
 function on_record(match_result, snapshot, config, context)
     context.samples = context.samples or {}
     context.ticks = context.ticks or {}

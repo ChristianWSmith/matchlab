@@ -18,6 +18,7 @@ pub mod search;
 pub mod selection;
 pub use latency::{LatencyMatrix, LatencyModel, TeamLatencyStats};
 pub use lua::LuaMatchmaker;
+pub use matchlab_lua::convert::CompletedMatch;
 pub use matchmaker::{Matchmaker, ProposedMatch};
 pub use objective::MatchObjective;
 pub use party::{Party, PartyRegistry};

@@ -3,7 +3,10 @@
 -- Online approximation: maintains running sums and solves via regularization.
 -- config: initial_rating, learning_rate, regularization
 
-information_budget = { "ScoreDifference" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score" },
+}
 
 function initialize(player_id, config, context)
     local key = tostring(player_id)

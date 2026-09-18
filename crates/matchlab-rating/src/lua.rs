@@ -2,12 +2,13 @@
 //!
 //! `LuaRatingSystem` implements the `RatingSystem` trait by delegating to a
 //! script's `initialize` / `predict` / `update` functions. The script declares
-//! its `information_budget` global at load; per-player state that the script
+//! its `data_requirements` global at load; per-player state that the script
 //! wants to keep lives in the VM's context table (passed by reference).
 use crate::system::{ObservationType, RatingState, RatingSystem};
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_lua::convert;
+use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ use tracing;
 /// A rating system whose algorithm lives entirely in a Lua script.
 pub struct LuaRatingSystem {
     vm: LuaVm,
-    budget: Vec<ObservationType>,
+    data_requirements: DataRequirements,
 }
 impl LuaRatingSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -25,15 +26,22 @@ impl LuaRatingSystem {
             &["initialize", "predict", "update"],
             "plugins/rating",
         )?;
-        let budget = vm
-            .get_global::<Vec<String>>("information_budget")?
-            .map(|names| names.iter().filter_map(|n| observation_type(n)).collect())
-            .unwrap_or_else(|| vec![ObservationType::WinLoss]);
-        tracing::info!(script = %vm.script_path(), budget = ?budget, "rating system loaded");
-        Ok(Self { vm, budget })
+        let data_requirements = vm.read_data_requirements()?;
+        tracing::info!(script = %vm.script_path(), ?data_requirements, "rating system loaded");
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
+    }
+    pub fn budget(&self) -> Vec<ObservationType> {
+        self.data_requirements
+            .match_result_fields
+            .iter()
+            .filter_map(|n| observation_type(n))
+            .collect()
     }
 }
 fn observation_type(name: &str) -> Option<ObservationType> {
@@ -64,7 +72,7 @@ fn state_from_table(t: &Table) -> RatingState {
 }
 impl RatingSystem for LuaRatingSystem {
     fn information_budget(&self) -> Vec<ObservationType> {
-        self.budget.clone()
+        self.budget()
     }
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let args = vec![mlua::Value::Integer(player_id.0 as mlua::Integer)];
@@ -78,8 +86,8 @@ impl RatingSystem for LuaRatingSystem {
         let (team_a_val, team_b_val) = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value(lua, team_a, false)?;
-                let b = convert::observations_to_value(lua, team_b, false)?;
+                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
                 Ok((a, b))
             })
             .expect("build team tables");
@@ -106,11 +114,16 @@ impl RatingSystem for LuaRatingSystem {
             .vm
             .with_lua(|lua| {
                 let mr =
-                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
+                    convert::match_result_to_table_fair(lua, match_result, &self.data_requirements)
+                        .map(mlua::Value::Table)?;
                 let mut obs_list: Vec<(&PlayerId, &PlayerObservation)> =
                     observations.iter().collect();
                 obs_list.sort_by_key(|(id, _)| id.0);
-                let obs = convert::observations_to_map_from_refs(lua, &obs_list, false)?;
+                let obs = convert::observations_to_map_from_refs_fair(
+                    lua,
+                    &obs_list,
+                    &self.data_requirements,
+                )?;
                 Ok((mr, obs))
             })
             .expect("build match result and observations tables");
@@ -219,7 +232,7 @@ mod tests {
         assert!(updates[&PlayerId(1)].rating > 1000.0);
         assert!(updates[&PlayerId(2)].rating < 1000.0);
         assert_eq!(updates[&PlayerId(1)].games_played, 1);
-        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+        assert_eq!(sys.information_budget(), vec![]);
     }
     #[test]
     fn elo_matches_logistic_scale() {
@@ -304,12 +317,12 @@ mod tests {
         assert!((updates[&PlayerId(2)].rating - 990.0).abs() < 1e-9);
     }
     #[test]
-    fn missing_information_budget_defaults_to_winloss() {
+    fn missing_data_requirements_defaults_to_empty_budget() {
         let sys = LuaRatingSystem::load(
             "plugins/rating/elo.lua",
             &params("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0"),
         )
         .unwrap();
-        assert_eq!(sys.information_budget(), vec![ObservationType::WinLoss]);
+        assert_eq!(sys.information_budget(), vec![]);
     }
 }

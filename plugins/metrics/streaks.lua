@@ -3,6 +3,11 @@
 
 name = "streaks"
 
+data_requirements = {
+    observation_fields = { "player_id" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.streaks = context.streaks or {}
     context.max_streaks = context.max_streaks or {}

@@ -4,6 +4,12 @@
 
 name = "stability"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    reality_fields = { "improvement_rate" },
+    include_skill = true,
+}
+
 function on_record(match_result, snapshot, config, context)
     context.history = context.history or {}
     for _, p in ipairs(snapshot.players) do

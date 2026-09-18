@@ -5,7 +5,10 @@
 -- divisor = beta * ln(10) keeps the log10 Elo scale aligned with the logistic
 -- game model, so both compute the same win probability for a rating gap.
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 function initialize(player_id, config, context)
     return {

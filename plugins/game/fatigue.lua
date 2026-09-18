@@ -3,6 +3,11 @@
 -- session (games_played is the observable session-length proxy).
 -- config: beta, noise, fatigue_decay_rate
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating", "games_played", "skill_vector" },
+    include_skill = true,
+}
+
 function effective_skill(o, config)
     local base = o.skill_overall or o.rating
     local decay_rate = config.fatigue_decay_rate or 0.001

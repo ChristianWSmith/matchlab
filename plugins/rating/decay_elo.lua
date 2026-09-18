@@ -8,7 +8,10 @@
 -- player_id): `{ last_ticks }` tracks when the player last updated.
 -- config: k_factor, initial_rating, beta, decay_rate (points per idle second)
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b", "duration_secs" },
+}
 
 function initialize(player_id, config, context)
     context[tostring(player_id)] = { last_ticks = 0 }

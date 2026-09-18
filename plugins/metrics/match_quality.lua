@@ -3,6 +3,11 @@
 
 name = "match_quality"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    match_result_fields = { "team_a", "team_b" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.samples = context.samples or {}
     local ratings = index_ratings(snapshot.players)

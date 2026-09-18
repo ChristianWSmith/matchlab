@@ -2,6 +2,10 @@
 -- Goes AFK/disconnects with probability go_afk_probability.
 -- config: go_afk_probability
 
+data_requirements = {
+    behavior_fields = { "quit_probability" },
+}
+
 function tick(player_id, behavior, observation, config, context)
     local prob = config.go_afk_probability or 0.0
     if matchlab.rng_bool(prob) then

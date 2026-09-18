@@ -3,7 +3,10 @@
 -- Online approximation: maintains win/loss counts per player.
 -- config: initial_rating
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 function initialize(player_id, config, context)
     local key = tostring(player_id)

@@ -6,6 +6,11 @@
 -- PlayerReality at population generation), so match winners are decided by true
 -- skill — this is what makes rating convergence a real property.
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating", "skill_vector" },
+    include_skill = true,
+}
+
 function effective_skill(o)
     if o.skill_overall ~= nil then
         return o.skill_overall

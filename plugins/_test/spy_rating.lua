@@ -8,6 +8,11 @@
 
 information_budget = { "WinLoss" }
 
+data_requirements = {
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score", "duration_secs", "performances" },
+}
+
 function initialize(player_id, config, context)
     return {
         rating = config.initial_rating,

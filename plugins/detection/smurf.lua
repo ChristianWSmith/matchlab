@@ -7,6 +7,11 @@
 --         min_games_before_action (5), escalation_factor (0.9),
 --         ladder = { {probability, action}, ... }
 
+data_requirements = {
+    match_result_fields = { "team_a", "team_b", "performances" },
+    observation_fields = { "player_id", "rating" },
+}
+
 local DEFAULT_LADDER = {
     { 0.3, "None" },
     { 0.5, "AccelerateRating" },

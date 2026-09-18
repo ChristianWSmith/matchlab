@@ -4,7 +4,10 @@
 -- a running MAP estimate using logistic likelihood with Gaussian prior.
 -- config: initial_rating, prior_variance, learning_rate
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 function initialize(player_id, config, context)
     local key = tostring(player_id)

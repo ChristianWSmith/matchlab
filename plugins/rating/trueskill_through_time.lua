@@ -4,7 +4,10 @@
 -- Match probability: P(i>j) = Phi((mu_i - mu_j) / sqrt(2*beta^2 + sigma_i^2 + sigma_j^2))
 -- config: initial_mean (or initial_rating), initial_variance, beta, dynamics, gamma
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 

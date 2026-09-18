@@ -2,6 +2,10 @@
 -- Links the boosting duo into a party and boosts the boostee's win rate to 1.0.
 -- config: boost_target, boostee
 
+data_requirements = {
+    behavior_fields = { "party_id", "win_rate" },
+}
+
 function tick(player_id, behavior, observation, config, context)
     local target = config.boost_target
     local boostee = config.boostee

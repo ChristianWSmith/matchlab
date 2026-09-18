@@ -9,6 +9,7 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 use matchlab_detection::detector::DetectionSystem;
 use matchlab_game::outcome::OutcomeModel;
+use matchlab_matchmaking::CompletedMatch;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_matchmaking::queue::{Queue, QueueEntry};
 use matchlab_metrics::MetricsEngine;
@@ -63,6 +64,7 @@ pub struct MachineState {
     game_rng: SimRng,
     matchmaker_rng: SimRng,
     behavior_rng: SimRng,
+    completed_buffer: Vec<CompletedMatch>,
     /// Counterfactual recording trace ; `None` unless recording.
     pub history: Option<crate::history::GameHistory>,
 }
@@ -130,6 +132,7 @@ impl MachineState {
             game_rng: SimRng::from_seed(config.stream_seeds.game),
             matchmaker_rng: SimRng::from_seed(config.stream_seeds.matchmaker),
             behavior_rng: SimRng::from_seed(config.stream_seeds.behavior),
+            completed_buffer: Vec::new(),
             history: config.record_history.then(crate::history::GameHistory::new),
         }
     }
@@ -246,7 +249,9 @@ pub fn handle_match_timer(
             &teams,
             now,
             &mut state.matchmaker_rng,
+            &state.completed_buffer,
         );
+        state.completed_buffer.clear();
         let queue_len = state.queue.len();
         tracing::debug!(
             queue_len,
@@ -401,6 +406,35 @@ pub fn handle_match_end(
         }
     }
     world.matches.insert(match_id, MatchState::Completed);
+    state.completed_buffer.push(CompletedMatch {
+        match_id: match_id.0,
+        team_a: result
+            .team_a
+            .iter()
+            .filter_map(|pid| {
+                world
+                    .observations
+                    .get(pid)
+                    .map(|o| (pid.0, o.rating, o.rating_deviation))
+            })
+            .collect(),
+        team_b: result
+            .team_b
+            .iter()
+            .filter_map(|pid| {
+                world
+                    .observations
+                    .get(pid)
+                    .map(|o| (pid.0, o.rating, o.rating_deviation))
+            })
+            .collect(),
+        winner: match result.winner {
+            matchlab_core::match_::Team::A => "a",
+            matchlab_core::match_::Team::B => "b",
+        }
+        .to_string(),
+        time_secs: world.time.as_secs_f64(),
+    });
     state.matches_completed += 1;
     if state.matches_completed % 1000 == 0 {
         tracing::info!(completed = state.matches_completed, "progress");

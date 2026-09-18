@@ -8,6 +8,7 @@
 //! either a single value (context read back by reference after the call) or
 //! `(value, context)` where the second value replaces the stored context.
 use crate::context::{self, Context};
+use crate::data_requirements::DataRequirements;
 use crate::rng;
 use crate::validate;
 use matchlab_core::rng::SimRng;
@@ -115,6 +116,20 @@ impl LuaVm {
         T::from_lua(value, &lua)
             .map(Some)
             .map_err(|e| format!("global {name}: {e}"))
+    }
+    pub fn read_data_requirements(&self) -> Result<DataRequirements, String> {
+        let lua = self
+            .lua
+            .lock()
+            .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
+        let value: Value = lua
+            .globals()
+            .get("data_requirements")
+            .map_err(|e| e.to_string())?;
+        if matches!(value, Value::Nil) {
+            return Ok(DataRequirements::default());
+        }
+        DataRequirements::from_lua_value(value)
     }
     /// Call `name` with `args ++ [config, context]`.
     ///

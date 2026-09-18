@@ -4,7 +4,10 @@
 -- Online approximation: power iteration on the running graph.
 -- config: initial_rating, damping_factor, iterations
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 function initialize(player_id, config, context)
     if not context.graph then

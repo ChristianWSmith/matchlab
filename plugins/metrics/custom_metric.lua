@@ -4,6 +4,10 @@
 
 name = "custom_metric"
 
+data_requirements = {
+    match_result_fields = { "team_a_score", "team_b_score" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.values = context.values or {}
     local diff = math.abs(match_result.team_a_score - match_result.team_b_score)

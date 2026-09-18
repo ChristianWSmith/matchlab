@@ -5,6 +5,7 @@
 //! The outcome model and metric snapshots pass `true` (the game decides winners
 //! from true skill; metrics may read reality); rating, matchmaking, detection,
 //! and adversarial adapters pass `false`.
+use crate::data_requirements::DataRequirements;
 use matchlab_core::match_::{MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation, PlayerReality, Region};
 use matchlab_core::world::World;
@@ -287,6 +288,352 @@ fn set_opt_int(t: &Table, key: &str, value: Option<u64>) -> Result<(), String> {
         Some(v) => t.set(key, v).map_err(|e| e.to_string()),
         None => t.set(key, Value::Nil).map_err(|e| e.to_string()),
     }
+}
+
+pub fn observation_to_table_fair(
+    lua: &Lua,
+    obs: &PlayerObservation,
+    req: &DataRequirements,
+) -> Result<Table, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    if req.has_observation_field("player_id") {
+        t.set("player_id", obs.id.0).map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("rating") {
+        t.set("rating", obs.rating).map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("hidden_mmr") {
+        t.set("hidden_mmr", obs.hidden_mmr)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("rating_deviation") {
+        t.set("rating_deviation", obs.rating_deviation)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("volatility") {
+        t.set("volatility", obs.volatility)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("games_played") {
+        t.set("games_played", obs.games_played)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("win_rate") {
+        t.set("win_rate", obs.win_rate).map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("tilt_level") {
+        t.set("tilt_level", obs.tilt_level)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("is_online") {
+        t.set("is_online", obs.is_online)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("recent_performances") {
+        let recent = lua.create_table().map_err(|e| e.to_string())?;
+        for (i, v) in obs.recent_performances.iter().enumerate() {
+            recent.set(i + 1, *v).map_err(|e| e.to_string())?;
+        }
+        t.set("recent_performances", recent)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_observation_field("queue_joined_at_secs") {
+        set_opt_number(
+            &t,
+            "queue_joined_at_secs",
+            obs.queue_joined_at.map(|s| s.as_secs_f64()),
+        )?;
+    }
+    if req.has_observation_field("queue_joined_at_ticks") {
+        set_opt_int(
+            &t,
+            "queue_joined_at_ticks",
+            obs.queue_joined_at.map(|s| s.ticks()),
+        )?;
+    }
+    if req.has_observation_field("party_id") {
+        set_opt_int(&t, "party_id", obs.party_id)?;
+    }
+    if req.has_observation_field("role") {
+        match &obs.role {
+            Some(r) => t.set("role", r.as_str()).map_err(|e| e.to_string())?,
+            None => t.set("role", Value::Nil).map_err(|e| e.to_string())?,
+        }
+    }
+    if req.include_skill {
+        if req.has_observation_field("skill_overall") {
+            t.set("skill_overall", obs.skill_vector.overall())
+                .map_err(|e| e.to_string())?;
+        }
+        if req.has_observation_field("skill_vector") {
+            let dims = lua.create_table().map_err(|e| e.to_string())?;
+            for (dim, val) in obs.skill_vector.iter_dimensions() {
+                dims.set(dim, val).map_err(|e| e.to_string())?;
+            }
+            t.set("skill_vector", dims).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(t)
+}
+
+pub fn participant_to_table_fair(
+    lua: &Lua,
+    obs: &PlayerObservation,
+    reality: Option<&PlayerReality>,
+    req: &DataRequirements,
+) -> Result<Table, String> {
+    let t = observation_to_table_fair(lua, obs, req)?;
+    if let Some(r) = reality {
+        if req.has_reality_field("true_skill") {
+            t.set("true_skill", r.skill.overall())
+                .map_err(|e| e.to_string())?;
+        }
+        if req.has_reality_field("improvement_rate") {
+            t.set("improvement_rate", r.improvement_rate)
+                .map_err(|e| e.to_string())?;
+        }
+        if req.has_reality_field("reality_games_played") {
+            t.set("reality_games_played", r.games_played)
+                .map_err(|e| e.to_string())?;
+        }
+        if req.has_reality_field("archetype") {
+            t.set("archetype", r.archetype.as_str())
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(t)
+}
+
+pub fn observations_to_value_fair(
+    lua: &Lua,
+    list: &[PlayerObservation],
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for (i, obs) in list.iter().enumerate() {
+        t.set(i + 1, observation_to_table_fair(lua, obs, req)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
+pub fn observations_to_map_fair(
+    lua: &Lua,
+    list: &[PlayerObservation],
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for obs in list {
+        t.set(obs.id.0, observation_to_table_fair(lua, obs, req)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
+pub fn observations_to_map_from_refs_fair(
+    lua: &Lua,
+    list: &[(&PlayerId, &PlayerObservation)],
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    for (id, obs) in list {
+        t.set(id.0, observation_to_table_fair(lua, obs, req)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
+pub fn match_result_to_table_fair(
+    lua: &Lua,
+    mr: &MatchResult,
+    req: &DataRequirements,
+) -> Result<Table, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    if req.has_match_result_field("match_id") {
+        t.set("match_id", mr.match_id.0)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("winner") {
+        t.set("winner", team_str(mr.winner))
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("team_a") {
+        t.set("team_a", team_to_value(lua, &mr.team_a)?)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("team_b") {
+        t.set("team_b", team_to_value(lua, &mr.team_b)?)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("team_a_score") {
+        t.set("team_a_score", mr.team_a_score)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("team_b_score") {
+        t.set("team_b_score", mr.team_b_score)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("duration_secs") {
+        t.set("duration_secs", mr.duration.as_secs_f64())
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("disconnected") {
+        t.set("disconnected", mr.disconnected)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("forfeited") {
+        t.set("forfeited", mr.forfeited)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("variance") {
+        t.set("variance", mr.variance).map_err(|e| e.to_string())?;
+    }
+    if req.has_match_result_field("performances") {
+        let perfs = lua.create_table().map_err(|e| e.to_string())?;
+        for (i, p) in mr.player_performances.iter().enumerate() {
+            perfs
+                .set(i + 1, performance_to_table(lua, p)?)
+                .map_err(|e| e.to_string())?;
+        }
+        t.set("performances", perfs).map_err(|e| e.to_string())?;
+    }
+    Ok(t)
+}
+
+pub fn metric_snapshot_with_table_fair(
+    lua: &Lua,
+    mr_table: Value,
+    mr: &MatchResult,
+    world: &World,
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    t.set("match_result", mr_table).map_err(|e| e.to_string())?;
+    if req.snapshot_tick {
+        t.set("tick", world.time.ticks())
+            .map_err(|e| e.to_string())?;
+    }
+    if req.snapshot_time_secs {
+        t.set("time_secs", world.time.as_secs_f64())
+            .map_err(|e| e.to_string())?;
+    }
+    let players = participant_players_fair(lua, mr, world, req)?;
+    t.set("players", players).map_err(|e| e.to_string())?;
+    Ok(Value::Table(t))
+}
+
+fn participant_players_fair(
+    lua: &Lua,
+    mr: &MatchResult,
+    world: &World,
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let players = lua.create_table().map_err(|e| e.to_string())?;
+    let total = mr.team_a.len() + mr.team_b.len();
+    let mut ids: Vec<PlayerId> = Vec::with_capacity(total);
+    ids.extend_from_slice(&mr.team_a);
+    ids.extend_from_slice(&mr.team_b);
+    ids.sort_by_key(|id| id.0);
+    for (i, pid) in ids.iter().enumerate() {
+        if let Some(obs) = world.observations.get(pid) {
+            let row = participant_to_table_fair(lua, obs, world.players.get(pid), req)?;
+            players.set(i + 1, row).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(Value::Table(players))
+}
+
+pub fn population_snapshot_fair(
+    lua: &Lua,
+    world: &World,
+    req: &DataRequirements,
+) -> Result<Value, String> {
+    let mut ids: Vec<PlayerId> = world.observations.keys().copied().collect();
+    ids.sort_by_key(|id| id.0);
+    let n = ids.len();
+    let t = lua.create_table().map_err(|e| e.to_string())?;
+    let mut rating = Vec::with_capacity(n);
+    let mut skill_overall = Vec::with_capacity(n);
+    let mut true_skill = Vec::with_capacity(n);
+    for pid in &ids {
+        if let Some(obs) = world.observations.get(pid) {
+            if req.has_population_field("rating") || req.has_observation_field("rating") {
+                rating.push(obs.rating);
+            }
+            if req.has_population_field("skill_overall") {
+                skill_overall.push(obs.skill_vector.overall());
+            }
+            if req.has_reality_field("true_skill") {
+                if let Some(reality) = world.players.get(pid) {
+                    true_skill.push(reality.skill.overall());
+                }
+            }
+        }
+    }
+    let arr = |lua: &Lua, vals: &[f64]| -> Result<Value, String> {
+        let t = lua
+            .create_table_with_capacity(vals.len(), 0)
+            .map_err(|e| e.to_string())?;
+        for (i, v) in vals.iter().enumerate() {
+            t.set(i + 1, *v).map_err(|e| e.to_string())?;
+        }
+        Ok(Value::Table(t))
+    };
+    if req.has_population_field("rating") || req.has_observation_field("rating") {
+        t.set("rating", arr(lua, &rating)?)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_population_field("skill_overall") {
+        t.set("skill_overall", arr(lua, &skill_overall)?)
+            .map_err(|e| e.to_string())?;
+    }
+    if req.has_reality_field("true_skill") {
+        t.set("true_skill", arr(lua, &true_skill)?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(t))
+}
+
+pub struct CompletedMatch {
+    pub match_id: u64,
+    pub team_a: Vec<(u64, f64, f64)>,
+    pub team_b: Vec<(u64, f64, f64)>,
+    pub winner: String,
+    pub time_secs: f64,
+}
+
+pub fn completed_matches_to_table(
+    lua: &Lua,
+    completed: &[CompletedMatch],
+) -> Result<Value, String> {
+    let arr = lua.create_table().map_err(|e| e.to_string())?;
+    for (i, m) in completed.iter().enumerate() {
+        let mt = lua.create_table().map_err(|e| e.to_string())?;
+        mt.set("id", m.match_id).map_err(|e| e.to_string())?;
+        mt.set("winner", m.winner.as_str())
+            .map_err(|e| e.to_string())?;
+        mt.set("time", m.time_secs).map_err(|e| e.to_string())?;
+        let team_a = lua.create_table().map_err(|e| e.to_string())?;
+        for (j, (pid, rating, rd)) in m.team_a.iter().enumerate() {
+            let entry = lua.create_table().map_err(|e| e.to_string())?;
+            entry.set("id", *pid).map_err(|e| e.to_string())?;
+            entry.set("rating", *rating).map_err(|e| e.to_string())?;
+            entry.set("rd", *rd).map_err(|e| e.to_string())?;
+            team_a.set(j + 1, entry).map_err(|e| e.to_string())?;
+        }
+        mt.set("team_a", team_a).map_err(|e| e.to_string())?;
+        let team_b = lua.create_table().map_err(|e| e.to_string())?;
+        for (j, (pid, rating, rd)) in m.team_b.iter().enumerate() {
+            let entry = lua.create_table().map_err(|e| e.to_string())?;
+            entry.set("id", *pid).map_err(|e| e.to_string())?;
+            entry.set("rating", *rating).map_err(|e| e.to_string())?;
+            entry.set("rd", *rd).map_err(|e| e.to_string())?;
+            team_b.set(j + 1, entry).map_err(|e| e.to_string())?;
+        }
+        mt.set("team_b", team_b).map_err(|e| e.to_string())?;
+        arr.set(i + 1, mt).map_err(|e| e.to_string())?;
+    }
+    Ok(Value::Table(arr))
 }
 #[cfg(test)]
 mod tests {

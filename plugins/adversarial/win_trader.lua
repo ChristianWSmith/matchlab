@@ -3,6 +3,10 @@
 -- maintaining rating.
 -- config: partner, alternating
 
+data_requirements = {
+    behavior_fields = { "party_id" },
+}
+
 function tick(player_id, behavior, observation, config, context)
     local partner = config.partner
     if not partner then return behavior, context end

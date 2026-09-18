@@ -65,7 +65,7 @@ fn batch_1v4_fills_teams_by_role() {
     };
     let mm = batch();
     let mut rng = SimRng::from_seed(7);
-    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 1, "one killer + four survivors → one match");
     assert_eq!(matches[0].team_a, vec![PlayerId(1)], "team A is the killer");
     assert_eq!(
@@ -104,7 +104,7 @@ fn batch_roles_unset_is_byte_identical_regression() {
     ]);
     let mm = batch();
     let mut rng = SimRng::from_seed(13);
-    let matches = mm.find_matches(&queue, &world, &sym(5), SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &sym(5), SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 1);
     assert_eq!(
         matches[0].team_a,
@@ -142,7 +142,7 @@ fn batch_short_pool_stalls_instead_of_borrowing() {
     };
     let mm = batch();
     let mut rng = SimRng::from_seed(7);
-    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     assert!(
         matches.is_empty(),
         "short pools must stall, not borrow across roles"
@@ -163,7 +163,7 @@ fn batch_role_filter_negative() {
     };
     let mm = batch();
     let mut rng = SimRng::from_seed(7);
-    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     assert!(matches.is_empty(), "team A role unmatched ⇒ no match");
 }
 #[test]
@@ -182,9 +182,9 @@ fn batch_role_formation_is_deterministic() {
     };
     let mm = batch();
     let mut rng = SimRng::from_seed(99);
-    let first = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let first = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     let mut rng = SimRng::from_seed(99);
-    let second = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let second = mm.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     assert_eq!(first.len(), second.len());
     for (a, b) in first.iter().zip(second.iter()) {
         assert_eq!(a.team_a, b.team_a);
@@ -215,14 +215,20 @@ fn strict_and_expanding_respect_roles() {
         role_b: Some("survivor".to_string()),
     };
     let mut rng = SimRng::from_seed(1);
-    let strict_matches = strict.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng);
+    let strict_matches = strict.find_matches(&queue, &world, &teams, SimTime::ZERO, &mut rng, &[]);
     assert!(
         strict_matches.is_empty(),
         "strict: no killer in queue ⇒ no match even within max_skill_diff"
     );
     let mut rng = SimRng::from_seed(1);
-    let expanding_matches =
-        expanding.find_matches(&queue, &world, &teams, SimTime::from_secs(60.0), &mut rng);
+    let expanding_matches = expanding.find_matches(
+        &queue,
+        &world,
+        &teams,
+        SimTime::from_secs(60.0),
+        &mut rng,
+        &[],
+    );
     assert!(
         expanding_matches.is_empty(),
         "expanding: 60s wait widens the window but the killer role is still empty"

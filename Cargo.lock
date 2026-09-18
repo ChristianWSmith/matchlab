@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-analysis",
  "matchlab-core",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-adversarial"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-analysis"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-experiments",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-core"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "rand",
  "serde",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-detection"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-experiments"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-core",
@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-game"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-loop"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-core",
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-lua"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "mlua",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-matchmaking"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-metrics"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-objective"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-metrics",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-optimize"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "chrono",
  "matchlab-experiments",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-players"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "serde",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-ranking"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-rating"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-utility"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-core",
  "matchlab-lua",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "matchlab-validation"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "matchlab-adversarial",
  "matchlab-analysis",

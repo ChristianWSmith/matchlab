@@ -568,7 +568,10 @@ Lua, and exercised by `experiments/novel_rating.yaml`.
 A rating-system script's contract is four functions plus a global:
 
 ```lua
-information_budget = { "WinLoss" }          -- what match data this system may read
+data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}                                              -- what data this system needs from the core
 
 function initialize(player_id, config, context)
     -- Return the player's initial { rating, rating_deviation, volatility, games_played }.

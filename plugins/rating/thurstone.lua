@@ -4,7 +4,10 @@
 -- Updates use online gradient ascent on the log-likelihood.
 -- config: initial_rating, initial_sigma, learning_rate
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 

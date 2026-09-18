@@ -11,12 +11,14 @@ use matchlab_core::match_::MatchResult;
 use matchlab_core::player::PlayerId;
 use matchlab_core::world::World;
 use matchlab_lua::convert;
+use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
 use tracing;
 /// A detection system whose algorithm lives entirely in a Lua script.
 pub struct LuaDetectionSystem {
     vm: LuaVm,
+    data_requirements: DataRequirements,
 }
 impl LuaDetectionSystem {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -26,8 +28,12 @@ impl LuaDetectionSystem {
             &["observe", "evaluate", "recommend_action"],
             "plugins/detection",
         )?;
+        let data_requirements = vm.read_data_requirements()?;
         tracing::info!(script = %vm.script_path(), "detection system loaded");
-        Ok(Self { vm })
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
@@ -81,9 +87,10 @@ impl DetectionSystem for LuaDetectionSystem {
             .vm
             .with_lua(|lua| {
                 let mr =
-                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
+                    convert::match_result_to_table_fair(lua, match_result, &self.data_requirements)
+                        .map(mlua::Value::Table)?;
                 let obs = participant_observations(world, match_result);
-                let obs = convert::observations_to_map(lua, &obs, false)?;
+                let obs = convert::observations_to_map_fair(lua, &obs, &self.data_requirements)?;
                 Ok((mr, obs))
             })
             .expect("build match result and observations tables");
@@ -102,7 +109,7 @@ impl DetectionSystem for LuaDetectionSystem {
                     .cloned()
                     .into_iter()
                     .collect();
-                convert::observations_to_map(lua, &list, false)
+                convert::observations_to_map_fair(lua, &list, &self.data_requirements)
             })
             .expect("build observation table");
         let result_tbl: Table = self

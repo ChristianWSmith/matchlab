@@ -6,6 +6,10 @@
 -- from entries whose role matches that side's role; an entry that matches
 -- neither waits. Roles unset ⇒ the legacy counts-only greedy.
 
+data_requirements = {
+    queue_fields = { "rating", "player_id", "role" },
+}
+
 function find_matches(queue, teams, now_secs, config, context)
     local size_a = teams.a.size
     local size_b = teams.b.size

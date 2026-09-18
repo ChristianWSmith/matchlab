@@ -4,6 +4,10 @@
 -- policy in the rating x matchmaking feedback-loop comparison. Deterministic
 -- given the seed (draws flow through matchlab.rng_range).
 
+data_requirements = {
+    queue_fields = { "player_id" },
+}
+
 function find_matches(queue, teams, now_secs, config, context)
     local size_a = teams.a.size
     local size_b = teams.b.size

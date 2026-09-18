@@ -4,7 +4,12 @@
 -- Population is columnar: snapshot.population = { rating = {...}, ... }
 
 name = "dimensionality_fidelity"
-needs_population = true
+
+data_requirements = {
+    population_snapshot = true,
+    population_fields = { "rating", "skill_overall" },
+    reality_fields = { "true_skill" },
+}
 
 function on_record(match_result, snapshot, config, context)
     context.samples = context.samples or {}

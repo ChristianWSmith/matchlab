@@ -116,7 +116,7 @@ no Rust code — just a script and a manifest reference.
 
 | Layer | Directory | Contract |
 |-------|-----------|----------|
-| Rating system | `plugins/rating/` | `information_budget`, `initialize`, `predict`, `update` |
+| Rating system | `plugins/rating/` | `data_requirements`, `initialize`, `predict`, `update` |
 | Outcome model | `plugins/game/` | `win_probability`, `simulate` |
 | Matchmaker | `plugins/matchmaking/` | `find_matches` |
 | Metric collector | `plugins/metrics/` | `name`, `on_record`, `compute` |
@@ -135,7 +135,10 @@ Use an existing script as a template. For example, to add a new rating system:
 local M = {}
 
 M.name = "my_system"
-M.information_budget = { "WinLoss" }  -- or {"WinLoss", "Score", "Duration", "PerformanceData"}
+M.data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
 
 function M.initialize(player_id)
     return {
@@ -207,7 +210,7 @@ M.name = "my_metric"
 -- end
 
 -- Optional: include full population snapshot (not just match participants)
--- M.needs_population = true
+-- M.data_requirements = { population_snapshot = true, population_fields = { "rating" } }
 
 function M.on_record(match, world)
     -- Accumulate samples in the context table
@@ -487,18 +490,31 @@ The following fields are **never** available to rating/matchmaking/detection:
 - `improvement_rate`
 - `reality_games_played`
 
-### Information budget
+### Data requirements
 
-Rating systems declare what data they are allowed to see:
+Rating systems declare what data they need via `data_requirements`:
 
 ```lua
-M.information_budget = { "WinLoss" }                    -- Elo, Flat
-M.information_budget = { "WinLoss", "Score" }           -- score-aware
-M.information_budget = { "WinLoss", "Score", "Duration", "PerformanceData" }  -- full
+-- Elo, Flat: only winner/loser
+M.data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
+
+-- Score-aware: also needs team scores
+M.data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
+
+-- Full: all match data
+M.data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score", "duration_secs", "performances" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
 ```
 
-The loop sanitizes `MatchResult` data through `filter_match_result` before
-calling `update`. Scripts that declare `WinLoss` but read score data will
+The loop only serializes the fields you request. Scripts that declare `match_result_fields = { "winner", "team_a", "team_b" }` but try to read score data will see `nil`.
 receive zeroed scores.
 
 ### Testing scripts

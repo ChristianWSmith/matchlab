@@ -4,7 +4,11 @@
 -- Population is columnar: snapshot.population = { rating = {...}, ... }
 
 name = "population_health"
-needs_population = true
+
+data_requirements = {
+    population_snapshot = true,
+    population_fields = { "rating" },
+}
 
 function on_record(match_result, snapshot, config, context)
     if snapshot.population == nil then

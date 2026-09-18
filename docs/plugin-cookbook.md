@@ -26,7 +26,10 @@ A rating system adjusts player ratings after each match. Reference: `plugins/rat
 Your script must declare these globals and functions:
 
 ```lua
-information_budget = { "WinLoss" }  -- what match data you need (or nil for full)
+data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
 
 function initialize(player_id, config, context)
     -- Return a rating state table and the (possibly updated) context.
@@ -51,22 +54,22 @@ function update(match_result, observations, config, context)
 end
 ```
 
-### Information Budget
+### Data Requirements
 
-The `information_budget` global controls what data the loop sanitizes before calling your `update`. Valid values:
+The `data_requirements` table declares what data your script needs from the Rust core. The loop only serializes the fields you request — a system requesting only `match_result_fields = { "winner", "team_a", "team_b" }` never sees scores, performances, or durations.
 
-- `"WinLoss"` -- only winner/loser, no scores or performances (Elo, Glicko-2, TrueSkill use this)
-- `"Score"` -- team scores are available
-- `"PerformanceData"` -- per-player performance stats are available (the `stats` map on each performance row)
-- `"Duration"`, `"Disconnects"`, `"SessionHistory"` -- other match metadata
-- `nil` or absent -- full match result passed through
-
-If your budget is `"WinLoss"`, the `match_result` table your `update` receives will have scores zeroed and performances emptied.
+Key fields:
+- `match_result_fields` — fields from `MatchResult`: `"winner"`, `"team_a"`, `"team_b"`, `"team_a_score"`, `"team_b_score"`, `"duration_secs"`, `"performances"`
+- `observation_fields` — fields from `PlayerObservation`: `"player_id"`, `"rating"`, `"rating_deviation"`, `"volatility"`, `"games_played"`, etc.
+- `include_skill` — if `true`, observation tables include `skill_overall` and `skill_vector` (outcome models only)
 
 ### Step-by-Step: Elo
 
 ```lua
-information_budget = { "WinLoss" }
+data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
 
 function initialize(player_id, config, context)
     return {
@@ -238,7 +241,7 @@ A matchmaker pairs players from the queue into matches. Reference: `plugins/matc
 ### Contract
 
 ```lua
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context, completed)
     -- queue: array of queue entry tables
     -- teams: { a = { size, role }, b = { size, role } }
     -- now_secs: current simulation time in seconds
@@ -284,7 +287,7 @@ Queue entries carry **only** observation fields. Never access `skill_vector`, `s
 ### Step-by-Step: Batch (Rating-Balanced)
 
 ```lua
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context, completed)
     local size_a = teams.a.size
     local size_b = teams.b.size
 

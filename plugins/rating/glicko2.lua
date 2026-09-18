@@ -4,7 +4,10 @@
 -- config: initial_rating, initial_rd, initial_volatility, tau, epsilon
 -- Verified against the paper worked example (r'=1464.06, RD'=151.52, sigma'=0.05999).
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 local SCALE = 173.7178
 local RATING_CENTER = 1500.0

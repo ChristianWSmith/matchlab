@@ -4,6 +4,11 @@
 
 name = "match_inequality"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    match_result_fields = { "team_a", "team_b" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.values = context.values or {}
     local ratings = index_ratings(snapshot.players)

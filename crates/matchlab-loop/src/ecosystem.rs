@@ -116,7 +116,7 @@ impl EcosystemLoop {
             let events = dynamics.tick(&mut self.population, &mut self.world, now, rng);
             result.population_events.extend(events);
         }
-        let matches = matchmaker.find_matches(&self.queue, &self.world, teams, now, rng);
+        let matches = matchmaker.find_matches(&self.queue, &self.world, teams, now, rng, &[]);
         result.matches_formed = matches;
         result
     }

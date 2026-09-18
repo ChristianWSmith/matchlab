@@ -70,7 +70,7 @@ fn uniform_population_quality_is_exact_one() {
         (6, 1200.0),
     ]);
     let mut rng = SimRng::from_seed(1);
-    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 1, "all 6 uniform players form one match");
     assert!(
         (matches[0].quality_score - 1.0).abs() < 1e-9,
@@ -126,7 +126,7 @@ fn mixed_population_quality_matches_alternate_assignment() {
         (6, 1250.0),
     ]);
     let mut rng = SimRng::from_seed(2);
-    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &sym(3), SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 1);
     let expected = expected_batch_quality(&mut ratings.clone());
     assert!(

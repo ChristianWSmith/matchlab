@@ -4,6 +4,11 @@
 -- represent multidimensional skill?
 -- config: beta, dimension_weights = { dim -> weight }, synergy_bonus
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall" },
+    include_skill = true,
+}
+
 function effective_skill(o, config)
     assert(o.skill_overall, "skill_overall must be present on observation")
     return o.skill_overall

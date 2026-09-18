@@ -5,6 +5,10 @@
 
 name = "avg_rating_gap"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.gaps = context.gaps or {}
     local ratings = {}

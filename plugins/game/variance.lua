@@ -3,6 +3,11 @@
 -- upsets at a given skill gap.
 -- config: beta, noise, variance_multiplier
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating" },
+    include_skill = true,
+}
+
 function effective_skill(o)
     if o.skill_overall ~= nil then
         return o.skill_overall

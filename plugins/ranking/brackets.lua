@@ -3,6 +3,8 @@
 -- all brackets clamp to the last bracket. config.brackets = { {tier, division,
 -- min, max}, ... }
 
+data_requirements = {}
+
 function rating_to_rank(rating, config, context)
     local brackets = config.brackets
     if not brackets then

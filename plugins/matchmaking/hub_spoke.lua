@@ -9,6 +9,10 @@
 -- overflow alike); an entry matching neither waits. Roles unset ⇒ the legacy
 -- counts-only path, byte-identical.
 
+data_requirements = {
+    queue_fields = { "region", "rating", "joined_at_secs", "idx", "player_id", "role" },
+}
+
 function find_matches(queue, teams, now_secs, config, context)
     local size_a = teams.a.size
     local size_b = teams.b.size

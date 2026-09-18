@@ -10,6 +10,10 @@
 -- teams.b.role; an entry matching neither waits. Roles unset ⇒ the legacy
 -- counts-only single-queue alternation (byte-identical regression path).
 
+data_requirements = {
+    queue_fields = { "player_id", "rating", "joined_at_secs", "idx", "role" },
+}
+
 function find_matches(queue, teams, now_secs, config, context)
     local size_a = teams.a.size
     local size_b = teams.b.size

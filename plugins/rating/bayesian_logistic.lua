@@ -4,7 +4,10 @@
 -- Online gradient ascent on the log-posterior.
 -- config: initial_rating, prior_variance, learning_rate
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 function sigmoid(x)
     if x > 20.0 then return 1.0 end

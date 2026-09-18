@@ -108,7 +108,7 @@ fn uniform_1v4_quality_is_analytic_one() {
     let world = world_with(&(1..=10u64).map(|id| (id, 1000.0)).collect::<Vec<_>>());
     let mm = batch();
     let mut rng = SimRng::from_seed(7);
-    let matches = mm.find_matches(&queue, &world, &dbd_teams(), SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &dbd_teams(), SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 2, "2 killers × 4 survivors = 2 matches");
     for m in &matches {
         assert_eq!(m.team_a.len(), 1);
@@ -134,7 +134,7 @@ fn known_gap_1v4_quality_matches_analytic() {
     let world = world_with(&world_iter_ratings);
     let mm = batch();
     let mut rng = SimRng::from_seed(7);
-    let matches = mm.find_matches(&queue, &world, &dbd_teams(), SimTime::ZERO, &mut rng);
+    let matches = mm.find_matches(&queue, &world, &dbd_teams(), SimTime::ZERO, &mut rng, &[]);
     assert_eq!(matches.len(), 2);
     let analytic = 1.0 - 100.0 / 400.0;
     for m in &matches {

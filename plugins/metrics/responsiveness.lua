@@ -4,6 +4,11 @@
 
 name = "responsiveness"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
+
 function on_record(match_result, snapshot, config, context)
     context.prev = context.prev or {}
     context.responses = context.responses or {}

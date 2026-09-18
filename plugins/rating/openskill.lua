@@ -4,7 +4,10 @@
 -- P(A>B) = Phi((mu_A - mu_B) / sqrt(sigma_A^2 + sigma_B^2 + beta^2))
 -- config: initial_mean (or initial_rating), initial_variance, beta, dynamics
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 

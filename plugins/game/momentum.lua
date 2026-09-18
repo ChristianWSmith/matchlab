@@ -3,6 +3,11 @@
 -- Each player's effective skill scales by 1 + momentum_factor * (win_rate - 0.5).
 -- config: beta, noise, momentum_factor
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating", "win_rate", "skill_vector" },
+    include_skill = true,
+}
+
 function effective_skill(o, config)
     local base = o.skill_overall or o.rating
     local mf = config.momentum_factor or 0.0

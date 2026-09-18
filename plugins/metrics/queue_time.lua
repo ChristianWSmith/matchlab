@@ -3,6 +3,11 @@
 
 name = "queue_time"
 
+data_requirements = {
+    observation_fields = { "player_id", "queue_joined_at_ticks" },
+    snapshot_tick = true,
+}
+
 function on_record(match_result, snapshot, config, context)
     context.samples = context.samples or {}
     for _, p in ipairs(snapshot.players) do

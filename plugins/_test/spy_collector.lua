@@ -8,6 +8,12 @@
 
 name = "spy_collector"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall", "skill_vector" },
+    include_skill = true,
+    reality_fields = { "true_skill" },
+}
+
 function on_record(match_result, snapshot, config, context)
     for _, p in ipairs(snapshot.players) do
         if p.true_skill == nil then

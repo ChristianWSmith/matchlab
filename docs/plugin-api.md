@@ -56,15 +56,18 @@ function update(match_result, observations, config, context)
 end
 ```
 
-### Optional Globals
+### Data Requirements
 
-| Global | Type | Description |
-|--------|------|-------------|
-| `information_budget` | `{string, ...}` | Observation types used. Default: `{"WinLoss"}`. Options: `"WinLoss"`, `"Score"`, `"PerformanceData"`, `"Duration"`, `"Disconnects"`, `"SessionHistory"`, `"QuitBehavior"`. Legacy names `"Kills"`, `"Deaths"`, `"Assists"`, `"ObjectiveScore"`, `"Impact"` are accepted and map to `"PerformanceData"`. |
+Rating systems declare what data they need via a `data_requirements` table. The loop sanitizes `MatchResult` before calling `update` based on the declared requirements — a system requesting only `match_result_fields = { "winner", "team_a", "team_b" }` never sees scores, per-player performances, or durations.
 
-### Information Budget
+| Key | Type | Description |
+|-----|------|-------------|
+| `match_result_fields` | `{string, ...}` | Fields from `MatchResult` the script reads. Options: `"winner"`, `"team_a"`, `"team_b"`, `"team_a_score"`, `"team_b_score"`, `"duration_secs"`, `"performances"`, `"variance"`, `"disconnected"`, `"forfeited"`. |
+| `observation_fields` | `{string, ...}` | Fields from `PlayerObservation` available in `observations[id]`. Options: `"player_id"`, `"rating"`, `"rating_deviation"`, `"volatility"`, `"games_played"`, `"win_rate"`, `"tilt_level"`, `"is_online"`, `"recent_performances"`, `"queue_joined_at_secs"`, `"party_id"`, `"role"`. |
+| `population_snapshot` | `bool` | If `true`, snapshot includes full population. Default: `false`. |
+| `population_fields` | `{string, ...}` | Population snapshot fields when `population_snapshot = true`. Options: `"rating"`, `"skill_overall"`, `"true_skill"`. |
 
-The loop sanitizes `MatchResult` before calling `update` based on the declared budget. A `WinLoss`-only system never sees scores, per-player performances, or durations.
+A system that omits `data_requirements` receives the full `MatchResult` and standard observation fields (backward-compatible default).
 
 ### Observation Table Fields
 
@@ -80,7 +83,10 @@ The loop sanitizes `MatchResult` before calling `update` based on the declared b
 
 ```lua
 -- plugins/rating/elo.lua
-information_budget = { "WinLoss" }
+data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+}
 
 function initialize(player_id, config, context)
     return {
@@ -224,7 +230,7 @@ end
 ### Required Functions
 
 ```lua
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context, completed)
     -- queue: array of queue entry tables
     -- teams: {a = {size, role?}, b = {size, role?}}
     -- now_secs: current simulation time in seconds
@@ -265,7 +271,7 @@ Queue entries carry **observations only** — never `PlayerReality`. The matchma
 
 ```lua
 -- plugins/matchmaking/batch.lua
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(queue, teams, now_secs, config, context, completed)
     local size_a = teams.a.size
     local size_b = teams.b.size
     local total = size_a + size_b
@@ -325,7 +331,7 @@ end
 | Global | Type | Description |
 |--------|------|-------------|
 | `name` | `string` | **Required.** Metric name used as the key in results. |
-| `needs_population` | `bool` | If `true`, snapshot includes full population. Default: `false`. |
+| `population_snapshot` | `bool` | If `true`, snapshot includes full population. Default: `false`. |
 | `time_buckets` | `function(config, context)` | Returns bucket edges for time-series metric. |
 
 ### Snapshot Table
@@ -336,11 +342,11 @@ end
 | `tick` | `u64` | Current tick |
 | `time_secs` | `f64` | Current time in seconds |
 | `players` | `{row, ...}` | Per-participant rows with all observation fields plus `true_skill`, `skill_overall`, `skill_vector`, `improvement_rate`, `reality_games_played`, `archetype` |
-| `population` | columnar table | Only present when `needs_population = true`. See below. |
+| `population` | columnar table | Only present when `data_requirements.population_snapshot = true`. See below. |
 
 ### Population Snapshot (columnar)
 
-When `needs_population = true`, `snapshot.population` contains flat arrays indexed by player position:
+When `data_requirements.population_snapshot = true`, `snapshot.population` contains flat arrays indexed by player position:
 
 | Field | Type | Description |
 |-------|------|-------------|

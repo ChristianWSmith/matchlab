@@ -5,12 +5,15 @@
 //! `rematch_probability` functions. `PlayerExperience` (loop-maintained data)
 //! stays in Rust; the weights live in the script's config.
 use crate::satisfaction::{PlayerExperience, SatisfactionModel};
+use matchlab_lua::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
 use tracing;
 /// A satisfaction model whose algorithm lives entirely in a Lua script.
 pub struct LuaSatisfactionModel {
     vm: LuaVm,
+    #[allow(dead_code)]
+    data_requirements: DataRequirements,
 }
 impl LuaSatisfactionModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -24,8 +27,12 @@ impl LuaSatisfactionModel {
             ],
             "plugins/utility",
         )?;
+        let data_requirements = vm.read_data_requirements()?;
         tracing::info!(script = %vm.script_path(), "satisfaction model loaded");
-        Ok(Self { vm })
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()

@@ -4,6 +4,11 @@
 -- their effective skill.
 -- config: beta, performance_weight
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating", "recent_performances" },
+    include_skill = true,
+}
+
 function base_skill(o)
     if o.skill_overall ~= nil then
         return o.skill_overall

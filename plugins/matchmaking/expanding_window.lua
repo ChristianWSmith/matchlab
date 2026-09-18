@@ -7,6 +7,10 @@
 -- neither waits. With roles unset the role filter is a no-op and behavior is
 -- the legacy counts-only greedy (identical traces).
 
+data_requirements = {
+    queue_fields = { "rating", "wait_secs", "player_id", "role" },
+}
+
 function find_matches(queue, teams, now_secs, config, context)
     local size_a = teams.a.size
     local size_b = teams.b.size

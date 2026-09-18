@@ -4,11 +4,14 @@
 //! script's `rating_to_rank` / `rank_to_rating_range` functions. The bracket
 //! table lives in `config.brackets`.
 use crate::ranker::{Rank, RankMapper};
+use matchlab_lua::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
 /// A rank mapper whose algorithm lives entirely in a Lua script.
 pub struct LuaRankMapper {
     vm: LuaVm,
+    #[allow(dead_code)]
+    data_requirements: DataRequirements,
 }
 impl LuaRankMapper {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -18,7 +21,11 @@ impl LuaRankMapper {
             &["rating_to_rank", "rank_to_rating_range"],
             "plugins/ranking",
         )?;
-        Ok(Self { vm })
+        let data_requirements = vm.read_data_requirements()?;
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()

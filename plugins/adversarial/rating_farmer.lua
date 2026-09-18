@@ -3,6 +3,10 @@
 -- account after a reset).
 -- config: quit_probability, quit_after_minutes
 
+data_requirements = {
+    behavior_fields = { "quit_probability", "is_online" },
+}
+
 function tick(player_id, behavior, observation, config, context)
     local prob = config.quit_probability or 0.0
     if matchlab.rng_bool(prob) then

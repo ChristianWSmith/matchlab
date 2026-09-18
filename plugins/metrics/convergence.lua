@@ -3,6 +3,12 @@
 
 name = "convergence"
 
+data_requirements = {
+    observation_fields = { "player_id", "rating", "games_played" },
+    reality_fields = { "true_skill" },
+    include_skill = true,
+}
+
 function on_record(match_result, snapshot, config, context)
     local threshold = config.threshold or 50.0
     context.converged = context.converged or {}

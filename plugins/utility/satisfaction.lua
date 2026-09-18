@@ -3,6 +3,8 @@
 -- config: match_quality, queue_time_penalty, win_bonus, loss_streak_penalty,
 --         rank_progression_bonus, fairness_sensitivity, rematch_bonus
 
+data_requirements = {}
+
 function satisfaction(experience, config, context)
     local mq = config.match_quality or 1.0
     local qtp = config.queue_time_penalty or -0.01

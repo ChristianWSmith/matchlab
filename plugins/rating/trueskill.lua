@@ -6,7 +6,10 @@
 -- config: initial_mean (or initial_rating), initial_variance, beta, dynamics,
 --         draw_probability
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 

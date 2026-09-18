@@ -44,7 +44,7 @@ run_matchlab run "$SMOKE_DIR/experiment.yaml"
 run_json="$OUTPUT_DIR/run/smoke.json"
 [ -f "$run_json" ] || fail "missing run result"
 [ "$(json_field "$run_json" name)" = "smoke" ] || fail "wrong experiment name"
-[ "$(json_field "$run_json" config_hash)" = "0b527b82ea82cea4" ] || fail "config hash mismatch"
+[ "$(json_field "$run_json" config_hash)" = "a744499e864b414f" ] || fail "config hash mismatch"
 [ "$(json_field "$run_json" matches_completed)" = "0" ] || fail "matches_completed != 0"
 pass "produces smoke.json (fields ok)"
 
@@ -58,7 +58,7 @@ run_matchlab package "$SMOKE_DIR/experiment.yaml"
 pkg=$(ls smoke_*.json 2>/dev/null | head -1)
 [ -n "$pkg" ] || fail "missing package file"
 pkg_hash=$(json_field "$pkg" metadata.config_hash 2>/dev/null || json_field "$pkg" config_hash)
-[ "$pkg_hash" = "0b527b82ea82cea4" ] || fail "package config hash mismatch"
+[ "$pkg_hash" = "a744499e864b414f" ] || fail "package config hash mismatch"
 rm -f "$pkg"
 pass "produces reproduction package (hash ok)"
 

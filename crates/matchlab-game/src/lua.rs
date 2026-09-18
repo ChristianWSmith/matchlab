@@ -11,12 +11,14 @@ use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_lua::convert;
+use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
 use tracing;
 /// An outcome model whose algorithm lives entirely in a Lua script.
 pub struct LuaOutcomeModel {
     vm: LuaVm,
+    data_requirements: DataRequirements,
 }
 impl LuaOutcomeModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -26,8 +28,12 @@ impl LuaOutcomeModel {
             &["win_probability", "simulate"],
             "plugins/game",
         )?;
+        let data_requirements = vm.read_data_requirements()?;
         tracing::info!(script = %vm.script_path(), "outcome model loaded");
-        Ok(Self { vm })
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
@@ -105,8 +111,8 @@ impl OutcomeModel for LuaOutcomeModel {
         let (a_val, b_val) = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value(lua, team_a, true)?;
-                let b = convert::observations_to_value(lua, team_b, true)?;
+                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
                 Ok((a, b))
             })
             .expect("build team tables");
@@ -135,8 +141,8 @@ impl OutcomeModel for LuaOutcomeModel {
         let (a_val, b_val) = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value(lua, team_a, true)?;
-                let b = convert::observations_to_value(lua, team_b, true)?;
+                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
                 Ok((a, b))
             })
             .expect("build team tables");

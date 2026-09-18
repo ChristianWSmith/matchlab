@@ -132,7 +132,7 @@ The default team model is additive — team strength is the sum of member skills
 
 ### Information Budget
 
-Rating systems declare an `information_budget` — the types of match data they can observe. The loop sanitizes `MatchResult` before calling `update`, stripping disallowed data.
+Rating systems declare a `data_requirements` table specifying which fields they need from match results and observations. The loop sanitizes `MatchResult` before calling `update`, stripping fields not in the declared `match_result_fields`.
 
 **Assumption:** The budget categories (WinLoss, Score, PerformanceData, etc.) adequately represent the data available to real rating systems.
 
