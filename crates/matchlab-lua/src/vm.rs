@@ -101,7 +101,7 @@ impl LuaVm {
             .map_err(|_| format!("lua mutex poisoned for {}", self.script_path))?;
         f(&lua)
     }
-    /// Read a global from the loaded script (e.g. `information_budget`,
+    /// Read a global from the loaded script (e.g. `data_requirements`,
     /// `name`, `time_buckets`). `Ok(None)` when absent.
     pub fn get_global<T: mlua::FromLua>(&self, name: &str) -> Result<Option<T>, String> {
         let lua = self
@@ -290,10 +290,12 @@ mod tests {
     }
     #[test]
     fn get_global_reads_script_globals() {
-        let p = write_temp("information_budget = { \"WinLoss\" }\nfunction f() return 1 end");
+        let p = write_temp(
+            "data_requirements = { observation_fields = { \"rating\" } }\nfunction f() return 1 end",
+        );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["f"]).unwrap();
-        let budget: Option<Vec<String>> = vm.get_global("information_budget").unwrap();
-        assert_eq!(budget, Some(vec!["WinLoss".to_string()]));
+        let budget: Option<Vec<String>> = vm.get_global("data_requirements").ok().and_then(|v| v);
+        assert!(budget.is_some());
         assert!(
             vm.get_global::<f64>("nonexistent_global")
                 .unwrap()

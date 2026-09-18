@@ -68,7 +68,7 @@ fn completed(loop_: &mut MatchLoop) -> u64 {
 /// The loop must hand a WinLoss-only system the sanitized result: scores and
 /// duration zeroed, performances emptied, and no ground-truth skill keys in the
 /// observation snapshot. `spy_rating` mirrors elo.lua; a completed run proves
-/// `filter_match_result` + `into_match_result` are wired into `handle_match_end`.
+/// `_fair` serialization gates fields by `data_requirements` declarations.
 #[test]
 fn loop_level_winloss_sanitizes_rating_result() {
     let metrics = MetricsEngine::new();

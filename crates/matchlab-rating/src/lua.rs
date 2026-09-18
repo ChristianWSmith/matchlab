@@ -4,7 +4,7 @@
 //! script's `initialize` / `predict` / `update` functions. The script declares
 //! its `data_requirements` global at load; per-player state that the script
 //! wants to keep lives in the VM's context table (passed by reference).
-use crate::system::{ObservationType, RatingState, RatingSystem};
+use crate::system::{RatingState, RatingSystem};
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_lua::convert;
@@ -36,27 +36,6 @@ impl LuaRatingSystem {
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
     }
-    pub fn budget(&self) -> Vec<ObservationType> {
-        self.data_requirements
-            .match_result_fields
-            .iter()
-            .filter_map(|n| observation_type(n))
-            .collect()
-    }
-}
-fn observation_type(name: &str) -> Option<ObservationType> {
-    match name {
-        "WinLoss" => Some(ObservationType::WinLoss),
-        "Score" => Some(ObservationType::Score),
-        "PerformanceData" | "Kills" | "Deaths" | "Assists" | "ObjectiveScore" | "Impact" => {
-            Some(ObservationType::PerformanceData)
-        }
-        "Duration" => Some(ObservationType::Duration),
-        "Disconnects" => Some(ObservationType::Disconnects),
-        "SessionHistory" => Some(ObservationType::SessionHistory),
-        "QuitBehavior" => Some(ObservationType::QuitBehavior),
-        _ => None,
-    }
 }
 fn state_from_table(t: &Table) -> RatingState {
     let rating = t.get::<f64>("rating").unwrap_or(1000.0);
@@ -71,9 +50,6 @@ fn state_from_table(t: &Table) -> RatingState {
     }
 }
 impl RatingSystem for LuaRatingSystem {
-    fn information_budget(&self) -> Vec<ObservationType> {
-        self.budget()
-    }
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let args = vec![mlua::Value::Integer(player_id.0 as mlua::Integer)];
         let state_tbl: Table = self
@@ -229,7 +205,6 @@ mod tests {
         assert!(updates[&PlayerId(1)].rating > 1000.0);
         assert!(updates[&PlayerId(2)].rating < 1000.0);
         assert_eq!(updates[&PlayerId(1)].games_played, 1);
-        assert_eq!(sys.information_budget(), vec![]);
     }
     #[test]
     fn elo_matches_logistic_scale() {
@@ -312,14 +287,5 @@ mod tests {
         let updates = sys.update(&mr, &map);
         assert!((updates[&PlayerId(1)].rating - 1010.0).abs() < 1e-9);
         assert!((updates[&PlayerId(2)].rating - 990.0).abs() < 1e-9);
-    }
-    #[test]
-    fn missing_data_requirements_defaults_to_empty_budget() {
-        let sys = LuaRatingSystem::load(
-            "plugins/rating/elo.lua",
-            &params("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0"),
-        )
-        .unwrap();
-        assert_eq!(sys.information_budget(), vec![]);
     }
 }

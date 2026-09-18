@@ -2,7 +2,6 @@ use matchlab_core::match_::MatchResult;
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use std::collections::HashMap;
 pub trait RatingSystem: Send + Sync {
-    fn information_budget(&self) -> Vec<ObservationType>;
     fn initialize(&self, player_id: PlayerId) -> RatingState;
     fn predict(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64;
     fn update(
@@ -24,24 +23,11 @@ pub struct RatingState {
     pub volatility: f64,
     pub games_played: u64,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ObservationType {
-    WinLoss,
-    Score,
-    PerformanceData,
-    Duration,
-    Disconnects,
-    SessionHistory,
-    QuitBehavior,
-}
 #[cfg(test)]
 mod tests {
     use super::*;
     struct DummySystem;
     impl RatingSystem for DummySystem {
-        fn information_budget(&self) -> Vec<ObservationType> {
-            vec![ObservationType::WinLoss]
-        }
         fn initialize(&self, _player_id: PlayerId) -> RatingState {
             RatingState {
                 rating: 1000.0,

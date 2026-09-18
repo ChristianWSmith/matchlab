@@ -24,7 +24,7 @@ use matchlab_metrics::{MetricResult, lua::LuaMetricCollector};
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
 use matchlab_rating::registry;
-use matchlab_rating::system::{ObservationType, RatingState, RatingSystem};
+use matchlab_rating::system::{RatingState, RatingSystem};
 use matchlab_validation::{build_loop, interleaved_two_class_population, observation};
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -167,9 +167,6 @@ struct SanityRatingSystem {
     inner: Box<dyn RatingSystem>,
 }
 impl RatingSystem for SanityRatingSystem {
-    fn information_budget(&self) -> Vec<ObservationType> {
-        self.inner.information_budget()
-    }
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let state = self.inner.initialize(player_id);
         check_finite_rating_states(&HashMap::from([(player_id, state.clone())]));
