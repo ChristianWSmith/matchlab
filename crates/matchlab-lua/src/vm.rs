@@ -288,7 +288,7 @@ mod tests {
             .with_lua(|lua| Ok(Value::Table(lua.create_table().map_err(|e| e.to_string())?)))
             .unwrap();
         for expected in 1..=3 {
-            let count: i64 = vm.call_with_context("bump", &[data.clone()]).unwrap();
+            let count: i64 = vm.call_with_context("bump", std::slice::from_ref(&data)).unwrap();
             assert_eq!(count, expected);
         }
         let ctx = vm.read_context().unwrap();
