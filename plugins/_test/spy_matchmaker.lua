@@ -6,7 +6,14 @@
 -- convert layer leaks nothing to matchmaking scripts. It forms the simplest
 -- possible teams (first `size_a` entries to A, next `size_b` to B).
 
-function find_matches(queue, teams, now_secs, config, context)
+data_requirements = {
+    queue_fields = { "player_id", "rating" },
+    request_fields = { "now_secs" },
+}
+
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
     local forbidden = {
         skill_vector = true,
         skill_overall = true,

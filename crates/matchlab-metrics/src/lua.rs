@@ -3,12 +3,13 @@
 //! `LuaMetricCollector` implements the `MetricCollector` trait by delegating to
 //! a script's `on_record` / `compute` functions. The script declares its `name`
 //! global and may declare a `time_buckets` function (for the `{name}_by_time`
-//! series) and a `needs_population = true` global (to receive the full
-//! population snapshot, not just match participants).
+//! series) and a `data_requirements` global (to receive the full population
+//! snapshot, not just match participants).
 use crate::collector::{MetricCollector, MetricResult};
 use crate::stats::summary_to_result;
 use matchlab_core::match_::MatchResult;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 use matchlab_lua::convert;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Function, Table, Value};
@@ -17,7 +18,7 @@ use tracing;
 pub struct LuaMetricCollector {
     vm: LuaVm,
     metric_name: String,
-    needs_population: bool,
+    data_requirements: DataRequirements,
     /// Population snapshots are expensive to marshal; attach one every N
     /// matches (configurable via `sample_every`, default 50).
     sample_every: u64,
@@ -34,18 +35,18 @@ impl LuaMetricCollector {
         let metric_name = vm
             .get_global::<String>("name")?
             .ok_or_else(|| format!("metric script {} must declare `name`", vm.script_path()))?;
-        let needs_population = vm.get_global::<bool>("needs_population")?.unwrap_or(false);
+        let data_requirements = vm.read_data_requirements()?;
         let sample_every = vm
             .config()
             .get("sample_every")
             .and_then(|v| v.as_u64())
             .unwrap_or(50)
             .max(1);
-        tracing::info!(name = %metric_name, script = %vm.script_path(), needs_population, "metric collector loaded");
+        tracing::info!(name = %metric_name, script = %vm.script_path(), needs_population = !data_requirements.population_fields.is_empty(), "metric collector loaded");
         Ok(Self {
             vm,
             metric_name,
-            needs_population,
+            data_requirements,
             sample_every,
             match_count: 0,
         })
@@ -84,39 +85,81 @@ fn parse_result(t: &Table) -> MetricResult {
     }
 }
 impl MetricCollector for LuaMetricCollector {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn name(&self) -> &str {
         &self.metric_name
     }
     fn record_match(&mut self, match_result: &MatchResult, world: &World) {
         self.match_count += 1;
-        let sample_population = self.needs_population
+        let sample_population = !self.data_requirements.population_fields.is_empty()
             && (self.match_count % self.sample_every == 0 || self.match_count == 1);
-        let (mr_val, snapshot) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let mr_val =
-                    convert::match_result_to_table(lua, match_result).map(mlua::Value::Table)?;
-                let snap =
-                    convert::metric_snapshot_with_table(lua, mr_val.clone(), match_result, world)?;
-                if sample_population {
-                    let population = convert::population_snapshot(lua, world)?;
-                    snap.as_table()
-                        .expect("metric snapshot is a table")
-                        .set("population", population)
-                        .map_err(|e| e.to_string())?;
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.match_result_fields.is_empty() {
+                    let mr = convert::match_result_to_table_fair(
+                        lua,
+                        match_result,
+                        &self.data_requirements,
+                    )
+                    .map(mlua::Value::Table)?;
+                    let snap = convert::metric_snapshot_with_table_fair(
+                        lua,
+                        mr.clone(),
+                        match_result,
+                        world,
+                        &self.data_requirements,
+                    )?;
+                    if sample_population {
+                        let population =
+                            convert::population_snapshot_fair(lua, world, &self.data_requirements)?;
+                        snap.as_table()
+                            .expect("metric snapshot is a table")
+                            .set("population", population)
+                            .map_err(|e| e.to_string())?;
+                    }
+                    data.set("match_result", mr).map_err(|e| e.to_string())?;
+                    data.set("snapshot", snap).map_err(|e| e.to_string())?;
+                } else {
+                    let snap = convert::metric_snapshot_with_table_fair(
+                        lua,
+                        mlua::Value::Nil,
+                        match_result,
+                        world,
+                        &self.data_requirements,
+                    )?;
+                    if sample_population {
+                        let population =
+                            convert::population_snapshot_fair(lua, world, &self.data_requirements)?;
+                        snap.as_table()
+                            .expect("metric snapshot is a table")
+                            .set("population", population)
+                            .map_err(|e| e.to_string())?;
+                    }
+                    data.set("snapshot", snap).map_err(|e| e.to_string())?;
                 }
-                Ok((mr_val, snap))
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build metric snapshot");
+            .expect("build data");
         let _: Value = self
             .vm
-            .call_with_context("on_record", &[mr_val, snapshot])
+            .call_with_context("on_record", &[data_val])
             .expect("metric on_record failed");
     }
     fn compute(&self) -> MetricResult {
+        let data_val = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         let result_tbl: Table = self
             .vm
-            .call_with_context("compute", &[])
+            .call_with_context("compute", &[data_val])
             .expect("metric compute failed");
         parse_result(&result_tbl)
     }
@@ -126,8 +169,15 @@ impl MetricCollector for LuaMetricCollector {
             .get_global::<Function>("time_buckets")
             .expect("read time_buckets global");
         present.as_ref()?;
+        let data_val = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         self.vm
-            .call_with_context("time_buckets", &[])
+            .call_with_context("time_buckets", &[data_val])
             .expect("metric time_buckets failed")
     }
 }
@@ -138,7 +188,6 @@ mod tests {
     use matchlab_core::player::{PlayerId, PlayerReality, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
     use matchlab_core::time::SimTime;
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> matchlab_core::player::PlayerObservation {
         matchlab_core::player::PlayerObservation {
             id: PlayerId(id),
@@ -156,8 +205,6 @@ mod tests {
             queue_joined_at: Some(SimTime::from_secs(1.0)),
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

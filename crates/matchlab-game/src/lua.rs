@@ -3,20 +3,22 @@
 //! `LuaOutcomeModel` implements the `OutcomeModel` trait by delegating to a
 //! script's `win_probability` / `simulate` functions. Randomness in `simulate`
 //! flows through `matchlab.rng_*` (from the caller's `&mut SimRng`). The
-//! observation tables carry the ground-truth skill binding (`include_skill`),
-//! so match winners are decided by true skill.
+//! adapter injects skill fields into observation tables so the outcome model
+//! can decide winners from true skill.
 use crate::outcome::OutcomeModel;
 use matchlab_core::match_::{MatchId, MatchResult, PlayerPerformance, Team};
 use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_lua::convert;
+use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::Table;
 use tracing;
 /// An outcome model whose algorithm lives entirely in a Lua script.
 pub struct LuaOutcomeModel {
     vm: LuaVm,
+    data_requirements: DataRequirements,
 }
 impl LuaOutcomeModel {
     pub fn load(path: &str, params: &serde_yaml::Value) -> Result<Self, String> {
@@ -26,8 +28,12 @@ impl LuaOutcomeModel {
             &["win_probability", "simulate"],
             "plugins/game",
         )?;
+        let data_requirements = vm.read_data_requirements()?;
         tracing::info!(script = %vm.script_path(), "outcome model loaded");
-        Ok(Self { vm })
+        Ok(Self {
+            vm,
+            data_requirements,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
@@ -101,22 +107,32 @@ fn parse_result(t: &Table) -> MatchResult {
     }
 }
 impl OutcomeModel for LuaOutcomeModel {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let (a_val, b_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value(lua, team_a, true)?;
-                let b = convert::observations_to_value(lua, team_b, true)?;
-                Ok((a, b))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let a =
+                        convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                    let b =
+                        convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
+                    data.set("team_a", a).map_err(|e| e.to_string())?;
+                    data.set("team_b", b).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build team tables");
+            .expect("build data");
         tracing::debug!(
             team_a_size = team_a.len(),
             team_b_size = team_b.len(),
             "win probability called"
         );
         self.vm
-            .call_with_context("win_probability", &[a_val, b_val])
+            .call_with_context("win_probability", &[data_val])
             .expect("outcome win_probability failed")
     }
     fn simulate(
@@ -132,24 +148,28 @@ impl OutcomeModel for LuaOutcomeModel {
             team_b_size = team_b.len(),
             "match simulation started"
         );
-        let (a_val, b_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value(lua, team_a, true)?;
-                let b = convert::observations_to_value(lua, team_b, true)?;
-                Ok((a, b))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let a =
+                        convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                    let b =
+                        convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
+                    data.set("team_a", a).map_err(|e| e.to_string())?;
+                    data.set("team_b", b).map_err(|e| e.to_string())?;
+                }
+                if self.data_requirements.has_request_field("match_id") {
+                    data.set("match_id", match_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build team tables");
+            .expect("build data");
         let result_tbl: Table = self.vm.with_rng(rng, |vm| {
-            vm.call_with_context(
-                "simulate",
-                &[
-                    mlua::Value::Integer(match_id.0 as mlua::Integer),
-                    a_val,
-                    b_val,
-                ],
-            )
-            .expect("outcome simulate failed")
+            vm.call_with_context("simulate", &[data_val])
+                .expect("outcome simulate failed")
         });
         let mut result = parse_result(&result_tbl);
         result.match_id = match_id;
@@ -166,7 +186,6 @@ impl OutcomeModel for LuaOutcomeModel {
 mod tests {
     use super::*;
     use matchlab_core::player::{SkillVector, VisibleRank};
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -184,8 +203,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

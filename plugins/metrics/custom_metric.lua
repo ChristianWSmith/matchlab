@@ -4,14 +4,19 @@
 
 name = "custom_metric"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    match_result_fields = { "team_a_score", "team_b_score" },
+}
+
+function on_record(data, context)
     context.values = context.values or {}
+    local match_result = data.match_result
     local diff = math.abs(match_result.team_a_score - match_result.team_b_score)
     table.insert(context.values, diff)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local values = context.values or {}
     if #values == 0 then
         return { kind = "scalar", value = 0.0 }

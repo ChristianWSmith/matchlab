@@ -5,9 +5,16 @@
 
 name = "rating_accuracy"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall" },
+    reality_fields = { "true_skill" },
+    snapshot_fields = { "tick" },
+}
+
+function on_record(data, context)
     context.samples = context.samples or {}
     context.ticks = context.ticks or {}
+    local snapshot = data.snapshot
     for _, p in ipairs(snapshot.players) do
         if p.true_skill ~= nil then
             table.insert(context.samples, math.abs(p.rating - p.true_skill))
@@ -17,11 +24,11 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "summary", values = context.samples or {} }
 end
 
-function time_buckets(config, context)
+function time_buckets(data, context)
     local samples = context.samples or {}
     local ticks = context.ticks or {}
     if #samples == 0 then

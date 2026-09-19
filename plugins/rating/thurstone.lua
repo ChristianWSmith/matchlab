@@ -4,7 +4,11 @@
 -- Updates use online gradient ascent on the log-likelihood.
 -- config: initial_rating, initial_sigma, learning_rate
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 
@@ -28,7 +32,8 @@ function normal_cdf(x)
     end
 end
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     return {
         rating = config.initial_rating,
         rating_deviation = config.initial_sigma or 250.0,
@@ -37,9 +42,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
     local var_a = team_variance(team_a)
     local var_b = team_variance(team_b)
     local c = math.sqrt(var_a + var_b + 1.0)
@@ -64,7 +70,10 @@ function team_variance(team)
     return sum
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local lr = config.learning_rate or 0.1
     local team_a_won = match_result.winner == "A"
     local avg_a = team_avg(observations, match_result.team_a)

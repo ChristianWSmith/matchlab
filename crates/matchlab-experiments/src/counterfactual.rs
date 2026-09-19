@@ -15,7 +15,6 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 pub use matchlab_loop::{GameHistory, RealitySnapshot};
 use matchlab_metrics::{MetricResult, MetricsEngine};
-use matchlab_rating::filter::filter_match_result;
 use matchlab_rating::system::{RatingState, RatingSystem};
 use std::collections::{BTreeMap, HashMap};
 /// The metric collectors whose outputs are meaningful on a replayed trace.
@@ -49,10 +48,7 @@ pub fn counterfactual_eval(
                     );
                 }
             }
-            let budget = system.information_budget();
-            let filtered =
-                filter_match_result(match_result, &budget).into_match_result(match_result.match_id);
-            let updates = system.update(&filtered, observations);
+            let updates = system.update(match_result, observations);
             for (pid, state) in updates {
                 states.insert(pid, state);
             }
@@ -150,10 +146,7 @@ impl ReplayEngine {
             }
             world.time = SimTime::from_secs(history.times_secs.get(i).copied().unwrap_or(0.0));
             engine.record_match(match_result, &world);
-            let budget = system.information_budget();
-            let filtered =
-                filter_match_result(match_result, &budget).into_match_result(match_result.match_id);
-            let updates = system.update(&filtered, snapshot);
+            let updates = system.update(match_result, snapshot);
             for (pid, state) in updates {
                 states.insert(pid, state);
             }
@@ -194,8 +187,6 @@ fn default_observation(id: PlayerId, rating: f64) -> PlayerObservation {
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: std::collections::VecDeque::new(),
-        quit_history: std::collections::VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".to_string(),
         skill_vector: SkillVector::one_dimensional(rating),
@@ -234,7 +225,6 @@ mod tests {
     use matchlab_core::time::SimTime;
     use matchlab_core::world::World;
     use matchlab_rating::registry;
-    use std::collections::VecDeque;
     fn lua_elo() -> Box<dyn RatingSystem> {
         let params =
             serde_yaml::from_str("k_factor: 32.0\ninitial_rating: 1000.0\nbeta: 400.0").unwrap();
@@ -264,8 +254,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

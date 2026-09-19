@@ -19,6 +19,7 @@ use matchlab_core::time::SimTime;
 use matchlab_experiments::config::ExperimentConfig;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_matchmaking::queue::QueueEntry;
 use matchlab_metrics::MetricResult;
@@ -26,10 +27,7 @@ use matchlab_metrics::engine::MetricsEngine;
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
 use matchlab_rating::registry;
-use std::collections::{HashMap, VecDeque};
-/// Build a full `PlayerObservation` with a given visible rating (hidden_mmr and
-/// skill_vector aligned with rating, so callers that need a rating≠skill
-/// mismatch mutate `skill_vector` afterwards).
+use std::collections::HashMap;
 pub fn observation(id: u64, rating: f64) -> PlayerObservation {
     PlayerObservation {
         id: PlayerId(id),
@@ -47,8 +45,6 @@ pub fn observation(id: u64, rating: f64) -> PlayerObservation {
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: VecDeque::new(),
-        quit_history: VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".into(),
         skill_vector: SkillVector::one_dimensional(rating),
@@ -61,7 +57,12 @@ pub fn queue_entry(id: u64, joined_at: SimTime, rating: f64) -> QueueEntry {
     QueueEntry {
         player_id: PlayerId(id),
         joined_at,
-        observation: observation(id, rating),
+        observation: matchlab_matchmaking::queue::LeanObservation {
+            rating,
+            rating_deviation: 350.0,
+            games_played: 0,
+            win_rate: 0.5,
+        },
         region: Region::NA,
         party_id: None,
         game_mode: "ranked".to_string(),
@@ -351,6 +352,7 @@ pub fn build_loop_full(
         Box::new(matchmaker),
         metrics,
         config,
+        GlobalSubscription::default(),
     )
 }
 pub fn run_loop(

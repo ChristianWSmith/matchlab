@@ -5,9 +5,14 @@
 -- the skill dynamics are too aggressive for any rating system to track.
 -- config: fixed_rating
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     return {
         rating = config.fixed_rating or 1000.0,
         rating_deviation = 350.0,
@@ -16,11 +21,13 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
+function predict(data, context)
     return 0.5
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local match_result = data.match_result
+    local observations = data.observations
     local updates = {}
     for _, id in ipairs(match_result.team_a) do
         local o = observations[id]

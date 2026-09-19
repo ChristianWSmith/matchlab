@@ -1,6 +1,6 @@
 # API Stability Policy
 
-This document defines the stability guarantees for MatchLab's public APIs as of v1.0.
+This document defines the stability guarantees for MatchLab's public APIs as of v3.0.0.
 
 ## Stable Public APIs
 
@@ -89,7 +89,7 @@ The following modules and types are considered stable public API. Breaking chang
 | Module | Key Types | Status |
 |--------|-----------|--------|
 | `system` | `RatingSystem`, `RatingState` | Stable |
-| `filter` | `filter_match_result` | Stable |
+| `filter` | `_fair` serialization field gating | Stable |
 
 ### Game (`matchlab-game`)
 

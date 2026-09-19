@@ -104,6 +104,12 @@ script under `plugins/` (there are no inherent Rust algorithms):
 - `DetectionSystem` (trait) — `plugins/detection/` (smurf)
 - `AdversarialAgent` / `SatisfactionModel` / `RankMapper` — the same model.
 
+All plugins use the **unified data envelope** pattern: every function receives
+`(data, context)` where `data` is a table of inputs. `initialize` is the only
+function that receives `config` as a direct parameter; all other functions
+access config via the `_matchlab_config` global. `data_requirements` declares
+which data the core serializes into `data`.
+
 Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
@@ -148,11 +154,11 @@ The workspace is fully implemented: 16 crates under `crates/`, a binary at `src/
 | Crate | Role |
 |-------|------|
 | `matchlab-core` | SimTime, PlayerId, MatchId, SimRng, SkillVector, PlayerReality, PlayerObservation, MatchResult, World, EventEngine, Simulation |
-| `matchlab-lua` | Lua VM, context threading, deterministic RNG routing, script validation, core↔Lua marshalling |
+| `matchlab-lua` | Lua VM, context threading, deterministic RNG routing, script validation, `DataRequirements`, core↔Lua marshalling |
 | `matchlab-players` | Archetypes, population generation, skill dynamics, population dynamics |
 | `matchlab-game` | OutcomeModel trait, Lua outcome scripts (logistic, variance, composition, performance, fatigue, momentum) |
-| `matchlab-rating` | RatingSystem trait, information budget filtering, Lua rating scripts (elo, flat, glicko2, trueskill) |
-| `matchlab-matchmaking` | Queue, Matchmaker trait, constraints, search strategies, Lua matchmaker scripts (batch, expanding_window, strict, hub_spoke, random) |
+| `matchlab-rating` | RatingSystem trait, `data_requirements` for field-level gating, Lua rating scripts (elo, flat, glicko2, trueskill) |
+| `matchlab-matchmaking` | Queue, Matchmaker trait, constraints, search strategies, `CompletedMatch` delta, Lua matchmaker scripts (batch, expanding_window, strict, hub_spoke, random, information_seeking) |
 | `matchlab-detection` | DetectionSystem trait, Lua detection scripts (smurf) |
 | `matchlab-ranking` | RankMapper trait, Leaderboard, Lua rank scripts (brackets) |
 | `matchlab-loop` | Event handlers, MachineState, MatchLoop, GameHistory (counterfactual recording) |
@@ -222,9 +228,15 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
   trait adapters (`*::lua::Lua*System`); there are **no inherent Rust
   algorithms**. Manifests reference systems by `script:` — bare names like
   `elo` resolve via filesystem to `plugins/rating/elo.lua`; full paths also
-  work. Scripts receive `config` (YAML params) + a persistent `context` table
-  (passed by reference, stored in the VM) and may draw deterministically via
-  `matchlab.rng_*`.
+  work. All plugins use the **unified data envelope** pattern: every function
+  receives `(data, context)` where `data` is a table of inputs. `initialize`
+  is the only function that receives `config` as a direct parameter; all other
+  functions access config via the `_matchlab_config` global. Scripts may draw
+  deterministically via `matchlab.rng_*`. **Every script must declare a
+  `data_requirements` table** specifying exactly which data it needs from the
+  Rust core — the sole source of truth for what crosses the Rust–Lua boundary.
+  The `request_fields` category declares identifier/scalar fields passed
+  through the data envelope.
 - **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`
   via `matchlab.rng_*`. Scripts receive only observable data, never
   `PlayerReality` (the outcome model and metric scripts get the ground-truth
@@ -244,7 +256,7 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
 | Core types (PlayerReality, World, etc.) | `crates/matchlab-core/src/` |
 | How events flow | `crates/matchlab-core/src/event.rs`, `src/lib.rs` (Simulation) |
 | Rating algorithm scripts | `plugins/rating/` (elo, flatpoints, glicko2, trueskill, decay_elo) |
-| Matchmaker scripts | `plugins/matchmaking/` (batch, expanding_window, strict, hub_spoke) |
+| Matchmaker scripts | `plugins/matchmaking/` (batch, expanding_window, strict, hub_spoke, random, information_seeking) |
 | Metric collector scripts | `plugins/metrics/` (one per metric, incl. custom) |
 | Lua system contracts + adapter | `crates/matchlab-{trait}/src/lua.rs`, `crates/matchlab-lua/src/` |
 | How to add a system | Write a `.lua` file in `plugins/`, reference via `script:` in YAML |

@@ -4,8 +4,14 @@
 
 name = "stability"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall" },
+    reality_fields = { "improvement_rate" },
+}
+
+function on_record(data, context)
     context.history = context.history or {}
+    local snapshot = data.snapshot
     for _, p in ipairs(snapshot.players) do
         if p.improvement_rate ~= nil and math.abs(p.improvement_rate) < 0.1 then
             context.history[p.player_id] = context.history[p.player_id] or {}
@@ -15,7 +21,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local history = context.history or {}
     local variances = {}
     for _, ratings in pairs(history) do

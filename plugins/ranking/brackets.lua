@@ -3,7 +3,13 @@
 -- all brackets clamp to the last bracket. config.brackets = { {tier, division,
 -- min, max}, ... }
 
-function rating_to_rank(rating, config, context)
+data_requirements = {
+    request_fields = { "rating", "rank" },
+}
+
+function rating_to_rank(data, context)
+    local rating = data.rating
+    local config = _matchlab_config
     local brackets = config.brackets
     if not brackets then
         return { tier = "unranked", division = 1 }
@@ -21,7 +27,9 @@ function rating_to_rank(rating, config, context)
     return { tier = "unranked", division = 1 }
 end
 
-function rank_to_rating_range(rank, config, context)
+function rank_to_rating_range(data, context)
+    local rank = data.rank
+    local config = _matchlab_config
     local brackets = config.brackets
     if not brackets then
         return { min = 0.0, max = 0.0 }

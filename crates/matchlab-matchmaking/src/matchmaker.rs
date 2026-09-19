@@ -4,6 +4,8 @@ use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
+use matchlab_lua::convert::CompletedMatch;
 pub trait Matchmaker: Send + Sync {
     fn find_matches(
         &self,
@@ -12,7 +14,11 @@ pub trait Matchmaker: Send + Sync {
         teams: &TeamComposition,
         now: SimTime,
         rng: &mut SimRng,
+        completed: &[CompletedMatch],
     ) -> Vec<ProposedMatch>;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }
 #[derive(Debug, Clone)]
 pub struct ProposedMatch {
@@ -46,7 +52,6 @@ mod tests {
     use super::*;
     use matchlab_core::player::{DetectionFlag, PlayerObservation, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
-    use std::collections::VecDeque;
     fn obs(id: u64, rating: f64) -> PlayerObservation {
         PlayerObservation {
             id: PlayerId(id),
@@ -64,8 +69,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(rating),

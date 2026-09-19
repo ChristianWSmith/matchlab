@@ -2,7 +2,13 @@
 -- Goes AFK/disconnects with probability go_afk_probability.
 -- config: go_afk_probability
 
-function tick(player_id, behavior, observation, config, context)
+data_requirements = {
+    behavior_fields = { "quit_probability" },
+}
+
+function tick(data, context)
+    local behavior = data.behavior
+    local config = _matchlab_config
     local prob = config.go_afk_probability or 0.0
     if matchlab.rng_bool(prob) then
         behavior.quit_probability = 1.0
@@ -10,6 +16,6 @@ function tick(player_id, behavior, observation, config, context)
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MinimizeGamesPlayed" }
 end

@@ -4,12 +4,17 @@
 -- config: initial_rating, initial_rd, initial_volatility, tau, epsilon
 -- Verified against the paper worked example (r'=1464.06, RD'=151.52, sigma'=0.05999).
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
 local SCALE = 173.7178
 local RATING_CENTER = 1500.0
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     return {
         rating = config.initial_rating or 1500.0,
         rating_deviation = config.initial_rd or 350.0,
@@ -18,9 +23,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
     return 1.0 / (1.0 + math.exp(-(avg_a - avg_b) / 400.0))
 end
 
@@ -127,7 +133,10 @@ function update_player(mu, phi, sigma, opponents, epsilon, tau)
     return mu_prime, phi_prime, sigma_prime
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local epsilon = config.epsilon or 0.000001
     local tau = config.tau or 0.5
     local team_a = match_result.team_a

@@ -5,9 +5,17 @@
 
 name = "smurf"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall" },
+    reality_fields = { "true_skill", "reality_games_played" },
+    match_result_fields = { "team_a", "team_b" },
+}
+
+function on_record(data, context)
     context.events = context.events or {}
     context.smurf_ids = context.smurf_ids or {}
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     local ratings = index_ratings(snapshot.players)
     for _, p in ipairs(snapshot.players) do
         local is_smurf = p.true_skill ~= nil
@@ -34,7 +42,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local events = context.events or {}
     local total = #events
     if total == 0 then

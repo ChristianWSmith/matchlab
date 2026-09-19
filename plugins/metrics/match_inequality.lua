@@ -4,8 +4,15 @@
 
 name = "match_inequality"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "rating" },
+    match_result_fields = { "team_a", "team_b" },
+}
+
+function on_record(data, context)
     context.values = context.values or {}
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     local ratings = index_ratings(snapshot.players)
     local avg_a = team_average(match_result.team_a, ratings)
     local avg_b = team_average(match_result.team_b, ratings)
@@ -14,7 +21,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "summary", values = context.values or {} }
 end
 

@@ -283,8 +283,8 @@ cargo run -- study experiments/studies/elo_vs_glicko_replay.yaml --replicates 10
   exact same matches, eliminating matchmaker and outcome noise.
 - **Start-state contract:** The replay seeds initial `RatingState` from the first
   recorded observation, matching the live loop's cold-start behavior.
-- **Budget sanitation:** Each replay sanitizes the `MatchResult` through
-  `filter_match_result`, so budget-constrained systems never see leaked data.
+- **Budget sanitation:** Each replay serializes the `MatchResult` through the
+  `_fair` serialization path, so budget-constrained systems never see leaked data.
 
 ### Limitations
 

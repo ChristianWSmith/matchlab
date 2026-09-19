@@ -3,9 +3,16 @@
 
 name = "streaks"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+}
+
+function on_record(data, context)
     context.streaks = context.streaks or {}
     context.max_streaks = context.max_streaks or {}
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     local winner_is_a = match_result.winner == "A"
     for _, p in ipairs(snapshot.players) do
         local won = (team_has(match_result.team_a, p.player_id) and winner_is_a)
@@ -26,7 +33,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local max_streaks = context.max_streaks or {}
     local total = #max_streaks
     if total == 0 then

@@ -1,14 +1,17 @@
 -- plugins/_test/spy_rating.lua
 -- TEST-ONLY (never referenced by a manifest in experiments/): a mirror of
--- elo.lua whose `update` errors loudly if it can see data outside its WinLoss
--- information budget. The simulation must hand this script the sanitized
--- result produced by filter_match_result -> into_match_result: scores zeroed,
--- duration zeroed, performances emptied, and no ground-truth skill keys in the
--- observation map. A passing loop run proves the budget sanitization is wired.
+-- elo.lua whose `update` errors loudly if it can see data outside its declared
+-- data_requirements. The simulation must hand this script only the fields it
+-- declared — scores, duration, performances, and ground-truth skill must be
+-- absent. A passing loop run proves the field-gating is wired.
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
     return {
         rating = config.initial_rating,
         rating_deviation = 350.0,
@@ -17,8 +20,9 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    return expected_score(team_average(team_a), team_average(team_b), config.beta)
+function predict(data, context)
+    local config = _matchlab_config
+    return expected_score(team_average(data.team_a), team_average(data.team_b), config.beta)
 end
 
 function expected_score(rating_a, rating_b, beta)
@@ -35,18 +39,21 @@ function team_average(team)
     return sum / #team
 end
 
-function update(match_result, observations, config, context)
-    if match_result.team_a_score ~= 0.0 then
-        error("budget leak: team_a_score " .. match_result.team_a_score)
+function update(data, context)
+    local match_result = data.match_result
+    local observations = data.observations
+    local config = _matchlab_config
+    if match_result.team_a_score ~= nil then
+        error("budget leak: team_a_score present")
     end
-    if match_result.team_b_score ~= 0.0 then
-        error("budget leak: team_b_score " .. match_result.team_b_score)
+    if match_result.team_b_score ~= nil then
+        error("budget leak: team_b_score present")
     end
-    if match_result.duration_secs ~= 0.0 then
-        error("budget leak: duration_secs " .. match_result.duration_secs)
+    if match_result.duration_secs ~= nil then
+        error("budget leak: duration_secs present")
     end
-    if #match_result.performances ~= 0 then
-        error("budget leak: performances " .. #match_result.performances)
+    if match_result.performances ~= nil then
+        error("budget leak: performances present")
     end
     for _, o in pairs(observations) do
         if o.skill_overall ~= nil then

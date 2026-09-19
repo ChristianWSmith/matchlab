@@ -3,8 +3,14 @@
 
 name = "queue_time"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "queue_joined_at_ticks" },
+    snapshot_fields = { "tick" },
+}
+
+function on_record(data, context)
     context.samples = context.samples or {}
+    local snapshot = data.snapshot
     for _, p in ipairs(snapshot.players) do
         if p.queue_joined_at_ticks ~= nil then
             local wait = (snapshot.tick - p.queue_joined_at_ticks) / 1e9
@@ -14,6 +20,6 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "summary", values = context.samples or {} }
 end

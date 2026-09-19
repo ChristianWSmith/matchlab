@@ -9,6 +9,7 @@ use matchlab_core::rng::{SimRng, StreamSeeds};
 use matchlab_core::time::SimTime;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_metrics::engine::MetricsEngine;
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
@@ -118,6 +119,7 @@ fn new_loop(
         Box::new(matchmaker),
         MetricsEngine::new(),
         config,
+        GlobalSubscription::default(),
     );
     loop_.run_until(SimTime::from_secs(max_time_secs));
     loop_
@@ -268,6 +270,7 @@ fn skill_stays_static_without_interval_flag() {
         Box::new(matchmaker),
         MetricsEngine::new(),
         config,
+        GlobalSubscription::default(),
     );
     loop_.run_until(SimTime::from_secs(30.0));
     for pid in 0..total {

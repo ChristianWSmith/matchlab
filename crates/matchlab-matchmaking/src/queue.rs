@@ -1,10 +1,30 @@
 use matchlab_core::player::{PlayerId, PlayerObservation, Region};
 use matchlab_core::time::SimTime;
+
+#[derive(Debug, Clone)]
+pub struct LeanObservation {
+    pub rating: f64,
+    pub rating_deviation: f64,
+    pub games_played: u64,
+    pub win_rate: f64,
+}
+
+impl LeanObservation {
+    pub fn from_observation(obs: &PlayerObservation) -> Self {
+        Self {
+            rating: obs.rating,
+            rating_deviation: obs.rating_deviation,
+            games_played: obs.games_played,
+            win_rate: obs.win_rate,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueueEntry {
     pub player_id: PlayerId,
     pub joined_at: SimTime,
-    pub observation: PlayerObservation,
+    pub observation: LeanObservation,
     pub region: Region,
     pub party_id: Option<u64>,
     pub game_mode: String,
@@ -61,36 +81,16 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use matchlab_core::player::{SkillVector, VisibleRank};
-    use std::collections::VecDeque;
     fn entry(id: u64, joined_at: SimTime) -> QueueEntry {
         let rating = 1000.0;
         QueueEntry {
             player_id: PlayerId(id),
             joined_at,
-            observation: PlayerObservation {
-                id: PlayerId(id),
+            observation: LeanObservation {
                 rating,
-                hidden_mmr: rating,
-                visible_rank: VisibleRank {
-                    tier: "unranked".to_string(),
-                    division: 1,
-                },
                 rating_deviation: 350.0,
-                volatility: 0.06,
                 games_played: 0,
                 win_rate: 0.5,
-                recent_performances: Vec::new(),
-                queue_joined_at: None,
-                is_online: true,
-                party_id: None,
-                session_history: VecDeque::new(),
-                quit_history: VecDeque::new(),
-                tilt_level: 0.0,
-                game_mode: "ranked".to_string(),
-                skill_vector: SkillVector::one_dimensional(rating),
-                detection_flags: Vec::new(),
-                role: None,
             },
             region: Region::NA,
             party_id: None,

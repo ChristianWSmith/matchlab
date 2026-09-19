@@ -8,7 +8,14 @@
 
 name = "spy_collector"
 
-function on_record(match_result, snapshot, config, context)
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall", "skill_vector" },
+    reality_fields = { "true_skill" },
+}
+
+function on_record(data, context)
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     for _, p in ipairs(snapshot.players) do
         if p.true_skill == nil then
             error("spy_collector: snapshot missing true_skill")
@@ -24,6 +31,6 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "scalar", value = context.count or 0 }
 end

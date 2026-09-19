@@ -5,7 +5,11 @@
 -- config: initial_rating, population_prior_mean, population_prior_variance,
 --         learning_rate
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
 function sigmoid(x)
     if x > 20.0 then return 1.0 end
@@ -13,7 +17,8 @@ function sigmoid(x)
     return 1.0 / (1.0 + math.exp(-x))
 end
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     if not context.hierarchy then
         context.hierarchy = {
             pop_sum = 0.0,
@@ -35,9 +40,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
     return sigmoid(avg_a - avg_b)
 end
 
@@ -50,7 +56,10 @@ function team_average(team)
     return sum / #team
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local lr = config.learning_rate or 0.1
     local mu_0 = config.population_prior_mean or config.initial_rating
     local tau_sq = config.population_prior_variance or 62500.0

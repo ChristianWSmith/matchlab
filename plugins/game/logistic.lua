@@ -6,6 +6,11 @@
 -- PlayerReality at population generation), so match winners are decided by true
 -- skill — this is what makes rating convergence a real property.
 
+data_requirements = {
+    observation_fields = { "player_id", "skill_overall", "rating", "skill_vector" },
+    request_fields = { "match_id" },
+}
+
 function effective_skill(o)
     if o.skill_overall ~= nil then
         return o.skill_overall
@@ -22,7 +27,9 @@ function team_average(team)
     return sum / #team
 end
 
-function win_probability(team_a, team_b, config, context)
+function win_probability(data, context)
+    local team_a, team_b = data.team_a, data.team_b
+    local config = _matchlab_config
     local diff = team_average(team_a) - team_average(team_b)
     local beta = config.beta or 400.0
     if beta == 0.0 then return diff > 0 and 1.0 or (diff < 0 and 0.0 or 0.5) end
@@ -31,8 +38,10 @@ end
 
 -- Draw order matters: it must mirror the reference implementation so results
 -- are byte-identical for the same seed.
-function simulate(match_id, team_a, team_b, config, context)
-    local base_p = win_probability(team_a, team_b, config, context)
+function simulate(data, context)
+    local match_id, team_a, team_b = data.match_id, data.team_a, data.team_b
+    local config = _matchlab_config
+    local base_p = win_probability(data, context)
     -- noise == 0 means deterministic outcomes; rng_range(-0, 0) is an empty
     -- range, so skip the draw entirely (identical RNG behavior for noise > 0).
     local noise = 0.0

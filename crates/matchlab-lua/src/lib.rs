@@ -17,9 +17,13 @@
 //! Dependency flow: `matchlab-core` ← `matchlab-lua` ← algorithm crates.
 pub mod context;
 pub mod convert;
+pub mod data_requirements;
 pub mod resolve;
 pub mod rng;
+pub mod subscription;
 pub mod validate;
 pub mod vm;
 pub use context::Context;
+pub use data_requirements::DataRequirements;
+pub use subscription::GlobalSubscription;
 pub use vm::LuaVm;

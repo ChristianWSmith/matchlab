@@ -1,5 +1,5 @@
 use crate::time::SimTime;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -241,8 +241,6 @@ pub struct PlayerObservation {
     pub queue_joined_at: Option<SimTime>,
     pub is_online: bool,
     pub party_id: Option<u64>,
-    pub session_history: VecDeque<u64>,
-    pub quit_history: VecDeque<f64>,
     pub tilt_level: f64,
     pub game_mode: String,
     pub role: Option<String>,

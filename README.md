@@ -50,9 +50,10 @@ genuinely new system is a single `.lua` file.
 
 Rust handles the heavy lifting (the simulation engine, time, events, worlds,
 statistics) and calls into Lua where decisions are made. Scripts are pure and
-deterministic: they receive a config table and a persistent state table, and all
-randomness comes from the simulation's seeded RNG (via `matchlab.rng_*`
-helpers). The same seed always reproduces the same experiment, byte for byte.
+deterministic: they receive a `data` table of inputs and a persistent `context`
+table, and all randomness comes from the simulation's seeded RNG (via
+`matchlab.rng_*` helpers). The same seed always reproduces the same experiment,
+byte for byte.
 
 ### Deterministic and reproducible
 
@@ -214,8 +215,8 @@ experiment with ≈330,000 matches runs in well under a minute.
 3. **Match execution.** The outcome model (the "game") decides the winner using
    ground-truth skill with stochastic noise.
 4. **Rating update.** Each rating system updates its players from the match
-   result — and, crucially, **sees only the data its information budget
-   permits.**
+   result — and, crucially, **sees only the fields its `data_requirements`
+   declares.**
 5. **Optional ecosystem layers.** Smurf detection evaluates behavior, rank
    mapping assigns visible ranks, adversarial agents misbehave on cue, and the
    satisfaction model decides who churns.
@@ -428,10 +429,7 @@ the full plugin API contract, see [`docs/plugin-api.md`](docs/plugin-api.md).
 | `bayesian_logistic.lua` | Bayesian logistic: MAP estimate with Gaussian prior | `initial_rating`, `prior_variance`, `learning_rate` |
 | `bayesian_hierarchical.lua` | Bayesian hierarchical: population-level shrinkage | `initial_rating`, `population_prior_mean`, `learning_rate` |
 
-*Information budgets:* rating systems declare what match data they may read
-(e.g. Elo and Glicko-2 read only win/loss). The loop enforces the budget by
-sanitizing match results before a system sees them, so a WinLoss-only system can
-never peek at scores, performances, or durations.
+*Data requirements:* rating systems declare which `MatchResult` and `PlayerObservation` fields they read via a `data_requirements` table (e.g. Elo and Glicko-2 read only `match_result_fields = { "winner", "team_a", "team_b" }`). The loop serializes only the declared fields, so a minimal system never sees scores, performances, or durations.
 
 ### Outcome models (`plugins/game/`)
 
@@ -568,18 +566,26 @@ Lua, and exercised by `experiments/novel_rating.yaml`.
 A rating-system script's contract is four functions plus a global:
 
 ```lua
-information_budget = { "WinLoss" }          -- what match data this system may read
+data_requirements = {
+    match_result_fields = { "winner", "team_a", "team_b" },
+    observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
+}                                              -- what data this system needs from the core
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
     -- Return the player's initial { rating, rating_deviation, volatility, games_played }.
+    -- `config` is the params table from the manifest.
     -- `context` is your persistent state table; keep per-player state here.
 end
 
-function predict(team_a, team_b, config, context)
+function predict(data, context)
+    -- data.team_a, data.team_b: arrays of observation tables
     -- Expected P(team_a wins), 0..1, from observations only.
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    -- data.match_result: the match outcome
+    -- data.observations: map of player_id → observation table
     -- Return { player_id = new_rating_state, ... }.
 end
 ```
@@ -799,7 +805,7 @@ crates/                   Rust crate workspace
   matchlab-players/       population generation, skill dynamics, distributions
   matchlab-game/          outcome-model adapter, performance model, team model
   matchlab-matchmaking/   queue, matchmakers, search strategies, parties, latency
-  matchlab-rating/        rating systems, information budgets
+  matchlab-rating/        rating systems, data_requirements field gating
   matchlab-detection/     smurf detection
   matchlab-ranking/       rank mapping, leaderboard
   matchlab-metrics/       metric collectors, statistics

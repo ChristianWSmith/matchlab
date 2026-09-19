@@ -140,8 +140,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: Default::default(),
-            quit_history: Default::default(),
             tilt_level: 0.0,
             game_mode: "ranked".to_string(),
             skill_vector: SkillVector::one_dimensional(1000.0),

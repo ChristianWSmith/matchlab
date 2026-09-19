@@ -4,7 +4,11 @@
 -- Match probability: P(i>j) = Phi((mu_i - mu_j) / sqrt(2*beta^2 + sigma_i^2 + sigma_j^2))
 -- config: initial_mean (or initial_rating), initial_variance, beta, dynamics, gamma
 
-information_budget = { "WinLoss" }
+data_requirements = {
+    observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
+}
 
 local SQRT_2PI = 2.5066282746310002
 
@@ -28,7 +32,8 @@ function normal_cdf(x)
     end
 end
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     local key = tostring(player_id)
     local sigma_sq = config.initial_variance or 62500.0
     context[key] = { last_update = 0, sigma_sq = sigma_sq }
@@ -40,9 +45,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
     return 1.0 / (1.0 + math.exp(-(avg_a - avg_b) / config.beta))
 end
 
@@ -67,7 +73,10 @@ function loss_factors(t, u)
     return -m, m * (m + beta_val)
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local team_a_won = match_result.winner == "A"
     local beta = config.beta
     local gamma = config.gamma or 2.0

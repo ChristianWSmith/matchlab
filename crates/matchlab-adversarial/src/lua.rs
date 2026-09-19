@@ -11,12 +11,14 @@ use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::world::World;
 use matchlab_lua::convert;
+use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
 use mlua::{Table, Value};
 use tracing;
 /// An adversarial agent whose behavior lives entirely in a Lua script.
 pub struct LuaAdversarialAgent {
     vm: LuaVm,
+    data_requirements: DataRequirements,
     objective: AdversarialObjective,
 }
 impl LuaAdversarialAgent {
@@ -27,9 +29,14 @@ impl LuaAdversarialAgent {
             &["tick", "objective"],
             "plugins/adversarial",
         )?;
+        let data_requirements = vm.read_data_requirements()?;
         let objective = read_objective(&vm, player)?;
         tracing::info!(script = %vm.script_path(), player = player.0, ?objective, "adversarial agent loaded");
-        Ok(Self { vm, objective })
+        Ok(Self {
+            vm,
+            data_requirements,
+            objective,
+        })
     }
     pub fn script_path(&self) -> &str {
         self.vm.script_path()
@@ -55,41 +62,60 @@ fn behavior_to_table(
     world: &World,
     player_id: PlayerId,
     lua: &mlua::Lua,
+    data_requirements: &DataRequirements,
 ) -> Result<(Table, Option<Table>), String> {
     let behavior = lua.create_table().map_err(|e| e.to_string())?;
     let mut observation = None;
     if let Some(reality) = world.players.get(&player_id) {
-        behavior
-            .set("quit_probability", reality.quit_probability)
-            .map_err(|e| e.to_string())?;
-        match reality.party_id {
-            Some(pid) => behavior.set("party_id", pid).map_err(|e| e.to_string())?,
-            None => behavior
-                .set("party_id", Value::Nil)
-                .map_err(|e| e.to_string())?,
+        if data_requirements.has_behavior_field("quit_probability") {
+            behavior
+                .set("quit_probability", reality.quit_probability)
+                .map_err(|e| e.to_string())?;
+        }
+        if data_requirements.has_behavior_field("party_id") {
+            match reality.party_id {
+                Some(pid) => behavior.set("party_id", pid).map_err(|e| e.to_string())?,
+                None => behavior
+                    .set("party_id", Value::Nil)
+                    .map_err(|e| e.to_string())?,
+            }
         }
     } else {
-        behavior
-            .set("quit_probability", 0.0)
-            .map_err(|e| e.to_string())?;
+        if data_requirements.has_behavior_field("quit_probability") {
+            behavior
+                .set("quit_probability", 0.0)
+                .map_err(|e| e.to_string())?;
+        }
     }
     if let Some(obs) = world.observations.get(&player_id) {
-        behavior
-            .set("tilt_level", obs.tilt_level)
-            .map_err(|e| e.to_string())?;
-        behavior
-            .set("win_rate", obs.win_rate)
-            .map_err(|e| e.to_string())?;
-        behavior
-            .set("is_online", obs.is_online)
-            .map_err(|e| e.to_string())?;
-        match obs.party_id {
-            Some(pid) => behavior.set("party_id", pid).map_err(|e| e.to_string())?,
-            None => behavior
-                .set("party_id", Value::Nil)
-                .map_err(|e| e.to_string())?,
+        if data_requirements.has_behavior_field("tilt_level") {
+            behavior
+                .set("tilt_level", obs.tilt_level)
+                .map_err(|e| e.to_string())?;
         }
-        observation = Some(convert::observation_to_table(lua, obs, false)?);
+        if data_requirements.has_behavior_field("win_rate") {
+            behavior
+                .set("win_rate", obs.win_rate)
+                .map_err(|e| e.to_string())?;
+        }
+        if data_requirements.has_behavior_field("is_online") {
+            behavior
+                .set("is_online", obs.is_online)
+                .map_err(|e| e.to_string())?;
+        }
+        if data_requirements.has_behavior_field("party_id") {
+            match obs.party_id {
+                Some(pid) => behavior.set("party_id", pid).map_err(|e| e.to_string())?,
+                None => behavior
+                    .set("party_id", Value::Nil)
+                    .map_err(|e| e.to_string())?,
+            }
+        }
+        observation = Some(convert::observation_to_table_fair(
+            lua,
+            obs,
+            data_requirements,
+        )?);
     }
     Ok((behavior, observation))
 }
@@ -119,23 +145,30 @@ fn write_behavior(world: &mut World, player_id: PlayerId, behavior: &Table) -> R
     Ok(())
 }
 impl AdversarialAgent for LuaAdversarialAgent {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn tick(&mut self, player_id: PlayerId, rng: &mut SimRng, world: &mut World) {
-        let (behavior, observation) = self
+        let data_val: Value = self
             .vm
-            .with_lua(|lua| behavior_to_table(world, player_id, lua))
-            .expect("build behavior table");
-        let behavior_val = Value::Table(behavior.clone());
-        let obs_val = observation.map(Value::Table).unwrap_or(Value::Nil);
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("player_id") {
+                    data.set("player_id", player_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                let (behavior, observation) =
+                    behavior_to_table(world, player_id, lua, &self.data_requirements)?;
+                data.set("behavior", behavior).map_err(|e| e.to_string())?;
+                if let Some(obs) = observation {
+                    data.set("observation", obs).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         let new_behavior: Table = self.vm.with_rng(rng, |vm| {
-            vm.call_with_context(
-                "tick",
-                &[
-                    Value::Integer(player_id.0 as mlua::Integer),
-                    behavior_val,
-                    obs_val,
-                ],
-            )
-            .expect("agent tick failed")
+            vm.call_with_context("tick", &[data_val])
+                .expect("agent tick failed")
         });
         tracing::debug!(player_id = player_id.0, "adversarial agent tick");
         write_behavior(world, player_id, &new_behavior).expect("write behavior back");
@@ -149,7 +182,6 @@ mod tests {
     use super::*;
     use matchlab_core::player::{PlayerObservation, PlayerReality, SkillVector, VisibleRank};
     use matchlab_core::rng::SimRng;
-    use std::collections::VecDeque;
     fn reality(id: u64, quit_probability: f64) -> PlayerReality {
         PlayerReality {
             id: PlayerId(id),
@@ -194,8 +226,6 @@ mod tests {
             queue_joined_at: None,
             is_online: true,
             party_id: None,
-            session_history: VecDeque::new(),
-            quit_history: VecDeque::new(),
             tilt_level: 0.0,
             game_mode: "ranked".into(),
             skill_vector: SkillVector::one_dimensional(rating),

@@ -19,7 +19,6 @@ use matchlab_core::player::{
     DetectionFlag, PlayerId, PlayerObservation, PlayerReality, Region, SkillVector, VisibleRank,
 };
 use matchlab_core::rng::SimRng;
-use std::collections::VecDeque;
 use tracing;
 pub struct PopulationConfig {
     pub size: u64,
@@ -96,8 +95,6 @@ impl PopulationGenerator {
                     queue_joined_at: None,
                     is_online: true,
                     party_id: None,
-                    session_history: VecDeque::new(),
-                    quit_history: VecDeque::new(),
                     tilt_level: 0.0,
                     game_mode: "ranked".to_string(),
                     role: archetype.role.clone(),

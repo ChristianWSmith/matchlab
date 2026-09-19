@@ -54,8 +54,6 @@ fn make_world_with_multidim_skill() -> World {
         queue_joined_at: None,
         is_online: true,
         party_id: None,
-        session_history: std::collections::VecDeque::new(),
-        quit_history: std::collections::VecDeque::new(),
         tilt_level: 0.0,
         game_mode: "ranked".to_string(),
         role: None,
@@ -104,76 +102,4 @@ fn simulation_can_access_reality() {
     let reality = world.reality(PlayerId(0)).unwrap();
     let aim_skill = reality.skill.get_dimension("aim").unwrap();
     assert_eq!(aim_skill, 1500.0);
-}
-/// The information budget concept: a struct that controls what systems can see.
-#[test]
-fn information_budget_concept() {
-    let budget_standard = InformationBudget {
-        include_skill_vector: true,
-        include_skill_dimensions: false,
-        include_performance: false,
-    };
-    let budget_full = InformationBudget {
-        include_skill_vector: true,
-        include_skill_dimensions: true,
-        include_performance: true,
-    };
-    assert!(budget_standard.include_skill_vector);
-    assert!(!budget_standard.include_skill_dimensions);
-    assert!(budget_full.include_skill_dimensions);
-    assert!(budget_full.include_performance);
-}
-/// Information budget struct controlling what systems can observe.
-#[derive(Debug, Clone)]
-pub struct InformationBudget {
-    /// Whether the overall skill_vector is included.
-    pub include_skill_vector: bool,
-    /// Whether individual skill dimensions (aim, movement, etc.) are included.
-    pub include_skill_dimensions: bool,
-    /// Whether realized performance is included.
-    pub include_performance: bool,
-}
-impl Default for InformationBudget {
-    fn default() -> Self {
-        Self {
-            include_skill_vector: true,
-            include_skill_dimensions: false,
-            include_performance: false,
-        }
-    }
-}
-/// Build an observation table respecting the information budget.
-pub fn build_observation_table(
-    reality: &matchlab_core::player::PlayerReality,
-    budget: &InformationBudget,
-) -> std::collections::HashMap<String, f64> {
-    let mut table = std::collections::HashMap::new();
-    if budget.include_skill_vector {
-        table.insert("skill_overall".to_string(), reality.skill.overall());
-    }
-    if budget.include_skill_dimensions {
-        for (dim, val) in reality.skill.iter_dimensions() {
-            table.insert(format!("skill_{dim}"), val);
-        }
-    }
-    table
-}
-#[test]
-fn build_observation_table_respects_budget() {
-    let world = make_world_with_multidim_skill();
-    let reality = world.reality(PlayerId(0)).unwrap();
-    let standard = InformationBudget::default();
-    let table = build_observation_table(reality, &standard);
-    assert!(table.contains_key("skill_overall"));
-    assert!(!table.contains_key("skill_aim"));
-    assert!(!table.contains_key("skill_movement"));
-    let full = InformationBudget {
-        include_skill_dimensions: true,
-        ..Default::default()
-    };
-    let table = build_observation_table(reality, &full);
-    assert!(table.contains_key("skill_overall"));
-    assert!(table.contains_key("skill_aim"));
-    assert!(table.contains_key("skill_movement"));
-    assert!(table.contains_key("skill_game_sense"));
 }

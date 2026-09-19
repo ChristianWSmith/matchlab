@@ -16,6 +16,7 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 use matchlab_game::lua::LuaOutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::lua::LuaMatchmaker;
 use matchlab_metrics::collector::MetricCollector;
 use matchlab_metrics::engine::MetricsEngine;
@@ -23,7 +24,7 @@ use matchlab_metrics::{MetricResult, lua::LuaMetricCollector};
 use matchlab_players::archetype::{ArchetypeConfig, DistributionConfig};
 use matchlab_players::population::{PopulationConfig, PopulationGenerator};
 use matchlab_rating::registry;
-use matchlab_rating::system::{ObservationType, RatingState, RatingSystem};
+use matchlab_rating::system::{RatingState, RatingSystem};
 use matchlab_validation::{build_loop, interleaved_two_class_population, observation};
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -166,9 +167,6 @@ struct SanityRatingSystem {
     inner: Box<dyn RatingSystem>,
 }
 impl RatingSystem for SanityRatingSystem {
-    fn information_budget(&self) -> Vec<ObservationType> {
-        self.inner.information_budget()
-    }
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let state = self.inner.initialize(player_id);
         check_finite_rating_states(&HashMap::from([(player_id, state.clone())]));
@@ -475,6 +473,7 @@ fn build_loop_with(
         Box::new(matchmaker),
         metrics,
         config,
+        GlobalSubscription::default(),
     )
 }
 fn queue_time_lua() -> Box<dyn MetricCollector> {

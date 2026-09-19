@@ -86,7 +86,7 @@ fn deterministic_arrival_tape_produces_analytic_waits() {
         world
             .observations
             .insert(PlayerId(i), observation(i, 1000.0));
-        let matches = mm.find_matches(&queue, &world, &sym(1), arrive, &mut rng);
+        let matches = mm.find_matches(&queue, &world, &sym(1), arrive, &mut rng, &[]);
         assert!(matches.len() <= 1, "at most one 1v1 match per cadence");
         for m in matches {
             let ids: Vec<u64> = m

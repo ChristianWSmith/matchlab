@@ -18,6 +18,7 @@ use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
 use matchlab_detection::detector::DetectionSystem;
 use matchlab_game::outcome::OutcomeModel;
+use matchlab_lua::GlobalSubscription;
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_metrics::MetricsEngine;
 use matchlab_ranking::ranker::RankMapper;
@@ -38,6 +39,7 @@ impl MatchLoop {
         matchmaker: Box<dyn Matchmaker>,
         metrics: MetricsEngine,
         config: LoopConfig,
+        subscription: GlobalSubscription,
     ) -> Self {
         Self::with_extras(
             population,
@@ -50,6 +52,7 @@ impl MatchLoop {
             None,
             HashMap::new(),
             None,
+            subscription,
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -64,6 +67,7 @@ impl MatchLoop {
         ranker: Option<Box<dyn RankMapper>>,
         adversarial_agents: HashMap<PlayerId, Box<dyn AdversarialAgent>>,
         satisfaction_model: Option<Box<dyn SatisfactionModel>>,
+        subscription: GlobalSubscription,
     ) -> Self {
         let master = config.stream_seeds.master;
         let state = Arc::new(Mutex::new(MachineState::with_extras(
@@ -77,6 +81,7 @@ impl MatchLoop {
             ranker,
             adversarial_agents,
             satisfaction_model,
+            subscription,
         )));
         let world = World::new(SimRng::from_seed(master));
         let mut engine = EventEngine::new();
