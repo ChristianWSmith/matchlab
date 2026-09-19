@@ -8,8 +8,10 @@ data_requirements = {
     match_result_fields = { "team_a", "team_b" },
 }
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
     context.samples = context.samples or {}
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     local ratings = index_ratings(snapshot.players)
     local avg_a = team_average(match_result.team_a, ratings)
     local avg_b = team_average(match_result.team_b, ratings)
@@ -18,7 +20,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "summary", values = context.samples or {} }
 end
 

@@ -11,6 +11,7 @@ pub struct GlobalSubscription {
     pub reality_fields: HashSet<String>,
     pub behavior_fields: HashSet<String>,
     pub completed_match_fields: HashSet<String>,
+    pub request_fields: HashSet<String>,
 }
 
 impl GlobalSubscription {
@@ -32,6 +33,8 @@ impl GlobalSubscription {
                 .extend(req.behavior_fields.iter().cloned());
             sub.completed_match_fields
                 .extend(req.completed_match_fields.iter().cloned());
+            sub.request_fields
+                .extend(req.request_fields.iter().cloned());
         }
         sub
     }

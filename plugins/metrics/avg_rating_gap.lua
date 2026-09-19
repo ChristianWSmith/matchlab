@@ -9,8 +9,9 @@ data_requirements = {
     observation_fields = { "player_id", "rating" },
 }
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
     context.gaps = context.gaps or {}
+    local snapshot = data.snapshot
     local ratings = {}
     for _, p in ipairs(snapshot.players) do
         table.insert(ratings, p.rating)
@@ -26,7 +27,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "scalar", value = mean(context.gaps or {}) }
 end
 

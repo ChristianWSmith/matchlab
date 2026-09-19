@@ -146,22 +146,26 @@ fn write_behavior(world: &mut World, player_id: PlayerId, behavior: &Table) -> R
 }
 impl AdversarialAgent for LuaAdversarialAgent {
     fn tick(&mut self, player_id: PlayerId, rng: &mut SimRng, world: &mut World) {
-        let (behavior, observation) = self
+        let data_val: Value = self
             .vm
-            .with_lua(|lua| behavior_to_table(world, player_id, lua, &self.data_requirements))
-            .expect("build behavior table");
-        let behavior_val = Value::Table(behavior.clone());
-        let obs_val = observation.map(Value::Table).unwrap_or(Value::Nil);
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("player_id") {
+                    data.set("player_id", player_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                let (behavior, observation) =
+                    behavior_to_table(world, player_id, lua, &self.data_requirements)?;
+                data.set("behavior", behavior).map_err(|e| e.to_string())?;
+                if let Some(obs) = observation {
+                    data.set("observation", obs).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         let new_behavior: Table = self.vm.with_rng(rng, |vm| {
-            vm.call_with_context(
-                "tick",
-                &[
-                    Value::Integer(player_id.0 as mlua::Integer),
-                    behavior_val,
-                    obs_val,
-                ],
-            )
-            .expect("agent tick failed")
+            vm.call_with_context("tick", &[data_val])
+                .expect("agent tick failed")
         });
         tracing::debug!(player_id = player_id.0, "adversarial agent tick");
         write_behavior(world, player_id, &new_behavior).expect("write behavior back");

@@ -131,7 +131,7 @@ impl LuaVm {
         }
         DataRequirements::from_lua_value(value)
     }
-    /// Call `name` with `args ++ [config, context]`.
+    /// Call `name` with `args ++ [context]`.
     ///
     /// The context is a persistent Lua table stored as the `_matchlab_context`
     /// global (created empty on first use) and passed by reference to every
@@ -140,6 +140,21 @@ impl LuaVm {
     /// context. This avoids round-tripping a growing accumulator through
     /// `serde_yaml` on every call.
     pub fn call_with_context<T: FromLua>(&self, name: &str, args: &[Value]) -> Result<T, String> {
+        self.call_inner(name, args, false)
+    }
+
+    /// Call `name` with `args ++ [config, context]`. Used only for
+    /// `initialize`, which is the only function that receives config.
+    pub fn call_init<T: FromLua>(&self, name: &str, args: &[Value]) -> Result<T, String> {
+        self.call_inner(name, args, true)
+    }
+
+    fn call_inner<T: FromLua>(
+        &self,
+        name: &str,
+        args: &[Value],
+        include_config: bool,
+    ) -> Result<T, String> {
         let lua = self
             .lua
             .lock()
@@ -162,12 +177,14 @@ impl LuaVm {
                 t
             }
         };
-        let config_value: Value = lua
-            .globals()
-            .get(CONFIG_REGISTRY_KEY)
-            .map_err(|e| e.to_string())?;
         let mut call_args: SmallVec<[Value; 8]> = args.iter().cloned().collect();
-        call_args.push(config_value);
+        if include_config {
+            let config_value: Value = lua
+                .globals()
+                .get(CONFIG_REGISTRY_KEY)
+                .map_err(|e| e.to_string())?;
+            call_args.push(config_value);
+        }
         call_args.push(Value::Table(ctx_table.clone()));
         let results = func
             .call::<mlua::MultiValue>(mlua::MultiValue::from_vec(call_args.into_vec()))
@@ -242,7 +259,7 @@ mod tests {
     #[test]
     fn load_injects_config_and_calls() {
         let p = write_temp(
-            "function compute(x, config, context)\n  return x * config.factor, context\nend",
+            "function compute(data, context)\n  return data.x * _matchlab_config.factor, context\nend",
         );
         let vm = LuaVm::load(
             p.to_str().unwrap(),
@@ -250,19 +267,28 @@ mod tests {
             &["compute"],
         )
         .unwrap();
-        let args = [Value::Integer(5)];
-        let result: f64 = vm.call_with_context("compute", &args).unwrap();
+        let data = vm
+            .with_lua(|lua| {
+                let t = lua.create_table().map_err(|e| e.to_string())?;
+                t.set("x", 5).map_err(|e| e.to_string())?;
+                Ok(Value::Table(t))
+            })
+            .unwrap();
+        let result: f64 = vm.call_init("compute", &[data]).unwrap();
         assert_eq!(result, 15.0);
         let _ = std::fs::remove_file(&p);
     }
     #[test]
     fn context_mutation_persists_across_calls() {
         let p = write_temp(
-            "function bump(config, context)\n  context.count = (context.count or 0) + 1\n  return context.count\nend",
+            "function bump(data, context)\n  context.count = (context.count or 0) + 1\n  return context.count\nend",
         );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["bump"]).unwrap();
+        let data = vm
+            .with_lua(|lua| Ok(Value::Table(lua.create_table().map_err(|e| e.to_string())?)))
+            .unwrap();
         for expected in 1..=3 {
-            let count: i64 = vm.call_with_context("bump", &[]).unwrap();
+            let count: i64 = vm.call_with_context("bump", &[data.clone()]).unwrap();
             assert_eq!(count, expected);
         }
         let ctx = vm.read_context().unwrap();
@@ -271,10 +297,16 @@ mod tests {
     }
     #[test]
     fn returned_context_table_replaces_stored() {
-        let p =
-            write_temp("function fresh(config, context)\n  return 1, { value = config.n }\nend");
+        let p = write_temp("function fresh(data, context)\n  return 1, { value = data.n }\nend");
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[("n", 42.0)]), &["fresh"]).unwrap();
-        let _: i64 = vm.call_with_context("fresh", &[]).unwrap();
+        let data = vm
+            .with_lua(|lua| {
+                let t = lua.create_table().map_err(|e| e.to_string())?;
+                t.set("n", 42).map_err(|e| e.to_string())?;
+                Ok(Value::Table(t))
+            })
+            .unwrap();
+        let _: i64 = vm.call_with_context("fresh", &[data]).unwrap();
         let ctx = vm.read_context().unwrap();
         let v = ctx.get("value").unwrap();
         assert_eq!(v.as_f64().unwrap(), 42.0);
@@ -348,7 +380,7 @@ mod tests {
     #[test]
     fn rng_is_available_inside_guarded_call() {
         let p = write_temp(
-            "function draw(_, config, context)\n  return matchlab.rng_range(0.0, 100.0)\nend",
+            "function draw(data, context)\n  return matchlab.rng_range(0.0, 100.0)\nend",
         );
         let vm = LuaVm::load(p.to_str().unwrap(), &params(&[]), &["draw"]).unwrap();
         let mut rng = SimRng::from_seed(42);

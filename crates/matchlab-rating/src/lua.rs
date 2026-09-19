@@ -10,7 +10,7 @@ use matchlab_core::player::{PlayerId, PlayerObservation};
 use matchlab_lua::convert;
 use matchlab_lua::data_requirements::DataRequirements;
 use matchlab_lua::vm::LuaVm;
-use mlua::Table;
+use mlua::{Table, Value};
 use std::collections::HashMap;
 use tracing;
 /// A rating system whose algorithm lives entirely in a Lua script.
@@ -51,29 +51,46 @@ fn state_from_table(t: &Table) -> RatingState {
 }
 impl RatingSystem for LuaRatingSystem {
     fn initialize(&self, player_id: PlayerId) -> RatingState {
-        let args = vec![mlua::Value::Integer(player_id.0 as mlua::Integer)];
+        let data_val: Value = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("player_id") {
+                    data.set("player_id", player_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build initialize data");
         let state_tbl: Table = self
             .vm
-            .call_with_context("initialize", &args)
+            .call_init("initialize", &[data_val])
             .expect("rating initialize failed");
         state_from_table(&state_tbl)
     }
     fn predict(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let (team_a_val, team_b_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
-                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
-                Ok((a, b))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let a =
+                        convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                    let b =
+                        convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
+                    data.set("team_a", a).map_err(|e| e.to_string())?;
+                    data.set("team_b", b).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build team tables");
+            .expect("build predict data");
         tracing::debug!(
             team_a_size = team_a.len(),
             team_b_size = team_b.len(),
             "rating predict called"
         );
         self.vm
-            .call_with_context("predict", &[team_a_val, team_b_val])
+            .call_with_context("predict", &[data_val])
             .expect("rating predict failed")
     }
     fn update(
@@ -86,26 +103,36 @@ impl RatingSystem for LuaRatingSystem {
             players = observations.len(),
             "rating update called"
         );
-        let (mr_val, obs_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let mr =
-                    convert::match_result_to_table_fair(lua, match_result, &self.data_requirements)
-                        .map(mlua::Value::Table)?;
-                let mut obs_list: Vec<(&PlayerId, &PlayerObservation)> =
-                    observations.iter().collect();
-                obs_list.sort_by_key(|(id, _)| id.0);
-                let obs = convert::observations_to_map_from_refs_fair(
-                    lua,
-                    &obs_list,
-                    &self.data_requirements,
-                )?;
-                Ok((mr, obs))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.match_result_fields.is_empty() {
+                    let mr = convert::match_result_to_table_fair(
+                        lua,
+                        match_result,
+                        &self.data_requirements,
+                    )
+                    .map(mlua::Value::Table)?;
+                    data.set("match_result", mr).map_err(|e| e.to_string())?;
+                }
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let mut obs_list: Vec<(&PlayerId, &PlayerObservation)> =
+                        observations.iter().collect();
+                    obs_list.sort_by_key(|(id, _)| id.0);
+                    let obs = convert::observations_to_map_from_refs_fair(
+                        lua,
+                        &obs_list,
+                        &self.data_requirements,
+                    )?;
+                    data.set("observations", obs).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build match result and observations tables");
+            .expect("build update data");
         let updates_tbl: Table = self
             .vm
-            .call_with_context("update", &[mr_val, obs_val])
+            .call_with_context("update", &[data_val])
             .expect("rating update failed");
         let mut updates = HashMap::new();
         for pair in updates_tbl.clone().pairs::<mlua::Value, Table>() {

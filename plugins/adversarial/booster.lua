@@ -4,9 +4,13 @@
 
 data_requirements = {
     behavior_fields = { "party_id", "win_rate" },
+    request_fields = { "player_id" },
 }
 
-function tick(player_id, behavior, observation, config, context)
+function tick(data, context)
+    local player_id = data.player_id
+    local behavior = data.behavior
+    local config = _matchlab_config
     local target = config.boost_target
     local boostee = config.boostee
     if not target or not boostee then return behavior, context end
@@ -18,6 +22,6 @@ function tick(player_id, behavior, observation, config, context)
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MaximizeRating" }
 end

@@ -6,6 +6,7 @@
 
 data_requirements = {
     observation_fields = { "player_id", "skill_overall", "rating", "recent_performances" },
+    request_fields = { "match_id" },
 }
 
 function base_skill(o)
@@ -43,15 +44,19 @@ function team_average(team, config)
     return sum / #team
 end
 
-function win_probability(team_a, team_b, config, context)
+function win_probability(data, context)
+    local team_a, team_b = data.team_a, data.team_b
+    local config = _matchlab_config
     local diff = team_average(team_a, config) - team_average(team_b, config)
     local beta = config.beta or 400.0
     if beta == 0.0 then return diff > 0 and 1.0 or (diff < 0 and 0.0 or 0.5) end
     return 1.0 / (1.0 + math.exp(-diff / beta))
 end
 
-function simulate(match_id, team_a, team_b, config, context)
-    local base_p = win_probability(team_a, team_b, config, context)
+function simulate(data, context)
+    local match_id, team_a, team_b = data.match_id, data.team_a, data.team_b
+    local config = _matchlab_config
+    local base_p = win_probability(data, context)
     local noise = matchlab.rng_range(-0.05, 0.05)
     local adjusted_p = math.max(0.01, math.min(0.99, base_p + noise))
     local team_a_wins = matchlab.rng_bool(adjusted_p)

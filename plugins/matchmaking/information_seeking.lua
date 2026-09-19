@@ -113,12 +113,17 @@ function batch_fallback(queue, teams, context)
     return matches, context
 end
 
-function find_matches(queue, teams, now_secs, config, context, completed)
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
+    local now_secs = data.now_secs
+    local completed = data.completed_matches
     local size_a = teams.a.size
     local size_b = teams.b.size
     local role_a = teams.a.role
     local role_b = teams.b.role
 
+    local config = _matchlab_config
     local info = config.information or {}
     local quality_cfg = config.quality or {}
     local constraints = config.constraints or {}

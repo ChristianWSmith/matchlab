@@ -116,14 +116,14 @@ no Rust code — just a script and a manifest reference.
 
 | Layer | Directory | Contract |
 |-------|-----------|----------|
-| Rating system | `plugins/rating/` | `data_requirements`, `initialize`, `predict`, `update` |
-| Outcome model | `plugins/game/` | `win_probability`, `simulate` |
-| Matchmaker | `plugins/matchmaking/` | `find_matches` |
-| Metric collector | `plugins/metrics/` | `name`, `on_record`, `compute` |
-| Detection system | `plugins/detection/` | `observe`, `evaluate`, `recommend_action` |
-| Rank mapper | `plugins/ranking/` | `rating_to_rank`, `rank_to_rating_range` |
-| Adversarial agent | `plugins/adversarial/` | `tick`, `objective` |
-| Satisfaction model | `plugins/utility/` | `satisfaction`, `retention_probability`, `rematch_probability` |
+| Rating system | `plugins/rating/` | `data_requirements`, `initialize(data, config, context)`, `predict(data, context)`, `update(data, context)` |
+| Outcome model | `plugins/game/` | `win_probability(data, context)`, `simulate(data, context)` |
+| Matchmaker | `plugins/matchmaking/` | `find_matches(data, context)` |
+| Metric collector | `plugins/metrics/` | `name`, `on_record(data, context)`, `compute(data, context)` |
+| Detection system | `plugins/detection/` | `observe(data, context)`, `evaluate(data, context)`, `recommend_action(data, context)` |
+| Rank mapper | `plugins/ranking/` | `rating_to_rank(data, context)`, `rank_to_rating_range(data, context)` |
+| Adversarial agent | `plugins/adversarial/` | `tick(data, context)`, `objective(context)` |
+| Satisfaction model | `plugins/utility/` | `satisfaction(data, context)`, `retention_probability(data, context)`, `rematch_probability(data, context)` |
 
 ### Step 2: Write the script
 
@@ -138,23 +138,30 @@ M.name = "my_system"
 M.data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 
-function M.initialize(player_id)
+function M.initialize(data, config, context)
+    -- data.initial_rating contains the player's starting rating from config/archetype
     return {
-        rating = 1000,
+        rating = config.initial_rating or 1000,
         rating_deviation = 350,
         volatility = 0.06,
         games_played = 0,
     }
 end
 
-function M.predict(team_a, team_b)
+function M.predict(data, context)
+    -- data.team_a, data.team_b are arrays of observation tables
     -- compute win probability for team_a
     return 0.5
 end
 
-function M.update(match_result, observations)
+function M.update(data, context)
+    -- data.match_result contains the match outcome
+    -- data.observations is a map of player_id → observation table
+    local match_result = data.match_result
+    local observations = data.observations
     local states = {}
     for _, participant in ipairs(match_result.participants) do
         local obs = observations[participant.player_id]
@@ -212,17 +219,15 @@ M.name = "my_metric"
 -- Optional: include full population snapshot (not just match participants)
 -- M.data_requirements = { population_fields = { "rating" } }
 
-function M.on_record(match, world)
+function M.on_record(data, context)
+    -- data.match_result, data.snapshot available
     -- Accumulate samples in the context table
-    local ctx = matchlab.context or {}
-    ctx.samples = ctx.samples or {}
-    table.insert(ctx.samples, match.quality_score or 0)
-    matchlab.context = ctx
+    context.samples = context.samples or {}
+    table.insert(context.samples, data.match_result.quality_score or 0)
 end
 
-function M.compute()
-    local ctx = matchlab.context or {}
-    local samples = ctx.samples or {}
+function M.compute(data, context)
+    local samples = context.samples or {}
     if #samples == 0 then
         return { type = "scalar", value = 0 }
     end
@@ -460,12 +465,16 @@ Reviewers will check:
 
 ### Script contract
 
-Every Lua script receives:
+Every Lua script uses the **unified data envelope** pattern:
 
-1. **`config`** — a table populated from the `params:` key in the manifest.
-2. **`context`** — a persistent table stored on the Rust model and threaded
-   through every call. Scripts may read/write arbitrary state here.
-3. **`matchlab.rng_*`** — deterministic randomness functions. Never use
+1. **`(data, context)`** — every function (except `initialize`) receives a `data`
+   table and a persistent `context` table. The `data` table contains all
+   inputs for that call; extract what you need with `data.key`.
+2. **`initialize(data, config, context)`** — the only function that receives
+   `config` directly as a parameter.
+3. **`_matchlab_config`** — after `initialize`, other functions access config
+   via the `_matchlab_config` global (set automatically by the adapter).
+4. **`matchlab.rng_*`** — deterministic randomness functions. Never use
    `math.random`.
 
 ### Available RNG functions
@@ -499,23 +508,46 @@ Rating systems declare what data they need via `data_requirements`:
 M.data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 
 -- Score-aware: also needs team scores
 M.data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 
 -- Full: all match data
 M.data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b", "team_a_score", "team_b_score", "duration_secs", "performances" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 ```
 
-The loop only serializes the fields you request. Scripts that declare `match_result_fields = { "winner", "team_a", "team_b" }` but try to read score data will see `nil`.
-receive zeroed scores.
+The `request_fields` category specifies identifier/scalar fields passed through
+the data envelope (e.g. `"player_id"` for `initialize`). The loop only
+serializes the fields you request. Scripts that declare
+`match_result_fields = { "winner", "team_a", "team_b" }` but try to read score
+data will see `nil` or receive zeroed scores.
+
+### Config access
+
+Config is passed to `initialize(data, config, context)` directly. All other
+functions access config via the `_matchlab_config` global:
+
+```lua
+function M.initialize(data, config, context)
+    -- config is the params table from the manifest
+    return { rating = config.initial_rating or 1000.0 }
+end
+
+function M.update(data, context)
+    local k = _matchlab_config.k_factor or 32.0
+    -- ... use k ...
+end
+```
 
 ### Testing scripts
 

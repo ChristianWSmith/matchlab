@@ -9,6 +9,7 @@
 data_requirements = {
     observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
     match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
 }
 
 local SQRT_2PI = 2.5066282746310002
@@ -64,7 +65,8 @@ function loss_factors(t, u)
     return -m, m * (m + beta)
 end
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     return {
         rating = config.initial_mean or config.initial_rating or 1500.0,
         rating_deviation = math.sqrt(config.initial_variance or 62500.0),
@@ -73,9 +75,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
     local beta = config.beta or 400.0
     if beta == 0.0 then return 0.5 end
     return 1.0 / (1.0 + math.exp(-(avg_a - avg_b) / beta))
@@ -90,7 +93,10 @@ function team_average(team)
     return sum / #team
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local team_a_won = match_result.winner == "A"
     local dynamics = config.dynamics or 0.0
     local beta = config.beta or 400.0

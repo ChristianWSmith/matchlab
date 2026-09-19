@@ -135,15 +135,25 @@ fn bench_lua_call_overhead() {
     let mut rng = SimRng::from_seed(42);
     for _ in 0..100 {
         vm.with_rng(&mut rng, |vm| {
+            let data = vm.with_lua(|lua| {
+                let t = lua.create_table().unwrap();
+                t.set("player_id", 1u64).unwrap();
+                Ok(mlua::Value::Table(t))
+            }).unwrap();
             let _: mlua::Table = vm
-                .call_with_context("initialize", &[mlua::Value::Integer(1)])
+                .call_init("initialize", &[data])
                 .unwrap();
         });
     }
     bench("lua_call_overhead", ITERS, || {
         vm.with_rng(&mut rng, |vm| {
+            let data = vm.with_lua(|lua| {
+                let t = lua.create_table().unwrap();
+                t.set("player_id", 1u64).unwrap();
+                Ok(mlua::Value::Table(t))
+            }).unwrap();
             let _: mlua::Table = vm
-                .call_with_context("initialize", &[mlua::Value::Integer(1)])
+                .call_init("initialize", &[data])
                 .unwrap();
         });
     });

@@ -8,7 +8,10 @@ data_requirements = {
     queue_fields = { "player_id" },
 }
 
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
+    local now_secs = data.now_secs
     local size_a = teams.a.size
     local size_b = teams.b.size
     local pool = {}

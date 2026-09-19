@@ -50,9 +50,10 @@ genuinely new system is a single `.lua` file.
 
 Rust handles the heavy lifting (the simulation engine, time, events, worlds,
 statistics) and calls into Lua where decisions are made. Scripts are pure and
-deterministic: they receive a config table and a persistent state table, and all
-randomness comes from the simulation's seeded RNG (via `matchlab.rng_*`
-helpers). The same seed always reproduces the same experiment, byte for byte.
+deterministic: they receive a `data` table of inputs and a persistent `context`
+table, and all randomness comes from the simulation's seeded RNG (via
+`matchlab.rng_*` helpers). The same seed always reproduces the same experiment,
+byte for byte.
 
 ### Deterministic and reproducible
 
@@ -568,18 +569,23 @@ A rating-system script's contract is four functions plus a global:
 data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }                                              -- what data this system needs from the core
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
     -- Return the player's initial { rating, rating_deviation, volatility, games_played }.
+    -- `config` is the params table from the manifest.
     -- `context` is your persistent state table; keep per-player state here.
 end
 
-function predict(team_a, team_b, config, context)
+function predict(data, context)
+    -- data.team_a, data.team_b: arrays of observation tables
     -- Expected P(team_a wins), 0..1, from observations only.
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    -- data.match_result: the match outcome
+    -- data.observations: map of player_id → observation table
     -- Return { player_id = new_rating_state, ... }.
 end
 ```

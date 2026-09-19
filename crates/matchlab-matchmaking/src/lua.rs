@@ -186,25 +186,34 @@ impl Matchmaker for LuaMatchmaker {
         tracing::debug!(queue_len = queue.len(), "matchmaker called");
         let has_completed =
             !self.data_requirements.completed_match_fields.is_empty() && !completed.is_empty();
-        let (queue_val, teams_val, completed_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let q = queue_to_table_fair(lua, queue, now, &self.data_requirements)?;
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.queue_fields.is_empty() {
+                    let q = queue_to_table_fair(lua, queue, now, &self.data_requirements)?;
+                    data.set("queue", q).map_err(|e| e.to_string())?;
+                }
                 let t = teams_to_table(lua, teams)?;
-                let c = if has_completed {
-                    convert::completed_matches_to_table(lua, completed, &self.data_requirements)?
-                } else {
-                    Value::Nil
-                };
-                Ok((q, t, c))
+                data.set("teams", t).map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("now_secs") {
+                    data.set("now_secs", now.as_secs_f64())
+                        .map_err(|e| e.to_string())?;
+                }
+                if has_completed && !self.data_requirements.completed_match_fields.is_empty() {
+                    let c = convert::completed_matches_to_table(
+                        lua,
+                        completed,
+                        &self.data_requirements,
+                    )?;
+                    data.set("completed_matches", c)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build queue and teams tables");
-        let mut args = vec![queue_val, teams_val, Value::Number(now.as_secs_f64())];
-        if has_completed {
-            args.push(completed_val);
-        }
+            .expect("build data");
         let matches_tbl: Table = self.vm.with_rng(rng, |vm| {
-            vm.call_with_context("find_matches", &args)
+            vm.call_with_context("find_matches", &[data_val])
                 .expect("matchmaker find_matches failed")
         });
         let mut matches = Vec::new();

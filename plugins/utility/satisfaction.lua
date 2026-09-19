@@ -3,9 +3,13 @@
 -- config: match_quality, queue_time_penalty, win_bonus, loss_streak_penalty,
 --         rank_progression_bonus, fairness_sensitivity, rematch_bonus
 
-data_requirements = {}
+data_requirements = {
+    request_fields = { "experience", "satisfaction" },
+}
 
-function satisfaction(experience, config, context)
+function satisfaction(data, context)
+    local experience = data.experience
+    local config = _matchlab_config
     local mq = config.match_quality or 1.0
     local qtp = config.queue_time_penalty or -0.01
     local wb = config.win_bonus or 0.5
@@ -37,12 +41,14 @@ function satisfaction(experience, config, context)
         + rb * experience.rematch_rate
 end
 
-function retention_probability(satisfaction, config, context)
-    return 1.0 / (1.0 + math.exp(-satisfaction))
+function retention_probability(data, context)
+    local sat = data.satisfaction
+    return 1.0 / (1.0 + math.exp(-sat))
 end
 
-function rematch_probability(satisfaction, config, context)
-    return 1.0 / (1.0 + math.exp(-0.5 * (satisfaction - 2.0)))
+function rematch_probability(data, context)
+    local sat = data.satisfaction
+    return 1.0 / (1.0 + math.exp(-0.5 * (sat - 2.0)))
 end
 
 function mean_or(values, default)

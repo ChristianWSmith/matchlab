@@ -9,8 +9,9 @@ data_requirements = {
     population_fields = { "rating", "skill_overall", "true_skill" },
 }
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
     context.samples = context.samples or {}
+    local snapshot = data.snapshot
     if snapshot.population == nil then
         return context
     end
@@ -24,7 +25,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local samples = context.samples or {}
     if #samples == 0 then
         return { kind = "scalar", value = 0.0 }

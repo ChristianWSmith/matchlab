@@ -9,9 +9,11 @@ data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
 }
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
     context.prev = context.prev or {}
     context.responses = context.responses or {}
+    local match_result = data.match_result
+    local snapshot = data.snapshot
     local winner_is_a = match_result.winner == "A"
     for _, p in ipairs(snapshot.players) do
         local prev = context.prev[p.player_id]
@@ -29,7 +31,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local responses = context.responses or {}
     if #responses == 0 then
         return { kind = "scalar", value = 0.0 }

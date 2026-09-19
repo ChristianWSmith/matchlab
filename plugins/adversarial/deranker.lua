@@ -8,7 +8,10 @@ data_requirements = {
     observation_fields = { "player_id", "rating" },
 }
 
-function tick(player_id, behavior, observation, config, context)
+function tick(data, context)
+    local behavior = data.behavior
+    local observation = data.observation
+    local config = _matchlab_config
     local rating = observation and observation.rating or 0.0
     local target = config.target_rating or 500.0
     if rating > target then
@@ -18,6 +21,6 @@ function tick(player_id, behavior, observation, config, context)
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MaintainLowRating" }
 end

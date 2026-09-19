@@ -83,41 +83,59 @@ fn participant_observations(
 }
 impl DetectionSystem for LuaDetectionSystem {
     fn observe(&mut self, match_result: &MatchResult, world: &World) {
-        let (mr_val, obs_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let mr =
-                    convert::match_result_to_table_fair(lua, match_result, &self.data_requirements)
-                        .map(mlua::Value::Table)?;
-                let obs = participant_observations(world, match_result);
-                let obs = convert::observations_to_map_fair(lua, &obs, &self.data_requirements)?;
-                Ok((mr, obs))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.match_result_fields.is_empty() {
+                    let mr = convert::match_result_to_table_fair(
+                        lua,
+                        match_result,
+                        &self.data_requirements,
+                    )
+                    .map(mlua::Value::Table)?;
+                    data.set("match_result", mr).map_err(|e| e.to_string())?;
+                }
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let obs = participant_observations(world, match_result);
+                    let obs =
+                        convert::observations_to_map_fair(lua, &obs, &self.data_requirements)?;
+                    data.set("observations", obs).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build match result and observations tables");
+            .expect("build data");
         let _: Value = self
             .vm
-            .call_with_context("observe", &[mr_val, obs_val])
+            .call_with_context("observe", &[data_val])
             .expect("detection observe failed");
     }
     fn evaluate(&self, player_id: PlayerId, world: &World) -> DetectionResult {
-        let obs_val = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let list: Vec<matchlab_core::player::PlayerObservation> = world
-                    .observations
-                    .get(&player_id)
-                    .cloned()
-                    .into_iter()
-                    .collect();
-                convert::observations_to_map_fair(lua, &list, &self.data_requirements)
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("player_id") {
+                    data.set("player_id", player_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let list: Vec<matchlab_core::player::PlayerObservation> = world
+                        .observations
+                        .get(&player_id)
+                        .cloned()
+                        .into_iter()
+                        .collect();
+                    let obs =
+                        convert::observations_to_map_fair(lua, &list, &self.data_requirements)?;
+                    data.set("observations", obs).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build observation table");
+            .expect("build data");
         let result_tbl: Table = self
             .vm
-            .call_with_context(
-                "evaluate",
-                &[Value::Integer(player_id.0 as mlua::Integer), obs_val],
-            )
+            .call_with_context("evaluate", &[data_val])
             .expect("detection evaluate failed");
         let result = result_from_table(&result_tbl, player_id);
         tracing::debug!(
@@ -129,27 +147,31 @@ impl DetectionSystem for LuaDetectionSystem {
         result
     }
     fn recommend_action(&self, result: &DetectionResult) -> InterventionAction {
-        let result_tbl = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let t = lua.create_table().map_err(|e| e.to_string())?;
-                t.set("player_id", result.player_id.0)
-                    .map_err(|e| e.to_string())?;
-                t.set("probability_of_anomaly", result.probability_of_anomaly)
-                    .map_err(|e| e.to_string())?;
-                t.set("confidence", result.confidence)
-                    .map_err(|e| e.to_string())?;
-                let evidence = lua.create_table().map_err(|e| e.to_string())?;
-                for (i, s) in result.evidence.iter().enumerate() {
-                    evidence.set(i + 1, s.as_str()).map_err(|e| e.to_string())?;
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("detection_result") {
+                    let t = lua.create_table().map_err(|e| e.to_string())?;
+                    t.set("player_id", result.player_id.0)
+                        .map_err(|e| e.to_string())?;
+                    t.set("probability_of_anomaly", result.probability_of_anomaly)
+                        .map_err(|e| e.to_string())?;
+                    t.set("confidence", result.confidence)
+                        .map_err(|e| e.to_string())?;
+                    let evidence = lua.create_table().map_err(|e| e.to_string())?;
+                    for (i, e) in result.evidence.iter().enumerate() {
+                        evidence.set(i + 1, e.as_str()).map_err(|e| e.to_string())?;
+                    }
+                    t.set("evidence", evidence).map_err(|e| e.to_string())?;
+                    data.set("detection_result", t).map_err(|e| e.to_string())?;
                 }
-                t.set("evidence", evidence).map_err(|e| e.to_string())?;
-                Ok(Value::Table(t))
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build detection result table");
+            .expect("build data");
         let action: String = self
             .vm
-            .call_with_context("recommend_action", &[result_tbl])
+            .call_with_context("recommend_action", &[data_val])
             .expect("detection recommend_action failed");
         let intervention = action_from_str(&action).unwrap_or(InterventionAction::None);
         tracing::debug!(

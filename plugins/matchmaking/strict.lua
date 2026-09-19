@@ -10,11 +10,15 @@ data_requirements = {
     queue_fields = { "rating", "player_id", "role" },
 }
 
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
+    local now_secs = data.now_secs
     local size_a = teams.a.size
     local size_b = teams.b.size
     local role_a = teams.a.role
     local role_b = teams.b.role
+    local config = _matchlab_config
     local max_diff = config.max_skill_diff or math.huge
 
     local function matches_role(entry, role)

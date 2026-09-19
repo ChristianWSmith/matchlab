@@ -10,6 +10,7 @@
 data_requirements = {
     match_result_fields = { "team_a", "team_b", "performances" },
     observation_fields = { "player_id", "rating" },
+    request_fields = { "player_id", "detection_result" },
 }
 
 local DEFAULT_LADDER = {
@@ -22,7 +23,10 @@ local DEFAULT_LADDER = {
     { 0.99, "Ban" },
 }
 
-function observe(match_result, observations, config, context)
+function observe(data, context)
+    local match_result = data.match_result
+    local observations = data.observations
+    local config = _matchlab_config
     local sigma_threshold = config.sigma_threshold or 3.0
     for _, pid in ipairs(match_result.team_a) do
         record_player(pid, match_result, observations, context, sigma_threshold)
@@ -79,7 +83,9 @@ function find_perf(performances, pid)
     return nil
 end
 
-function evaluate(player_id, observations, config, context)
+function evaluate(data, context)
+    local player_id = data.player_id
+    local config = _matchlab_config
     local key = tostring(player_id)
     local state = context[key]
     if not state then
@@ -114,7 +120,9 @@ function evaluate(player_id, observations, config, context)
     }, context
 end
 
-function recommend_action(result, config, context)
+function recommend_action(data, context)
+    local result = data.detection_result
+    local config = _matchlab_config
     local key = tostring(result.player_id)
     local state = context[key]
     local games = state and state.games or 0

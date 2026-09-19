@@ -29,9 +29,11 @@ Your script must declare these globals and functions:
 data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    -- data.initial_rating contains the player's starting rating from config/archetype
     -- Return a rating state table and the (possibly updated) context.
     return {
         rating = config.initial_rating,
@@ -41,13 +43,15 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
+function predict(data, context)
+    -- data.team_a, data.team_b are arrays of observation tables.
     -- Return the probability that team_a wins.
-    -- team_a and team_b are arrays of observation tables.
     return 0.5
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    -- data.match_result contains the match outcome.
+    -- data.observations is a map of player_id → observation table.
     -- Return an array of rating update tables and the (possibly updated) context.
     -- Each update: { player_id, rating, rating_deviation, volatility, games_played }
     return updates, context
@@ -61,6 +65,7 @@ The `data_requirements` table declares what data your script needs from the Rust
 Key fields:
 - `match_result_fields` — fields from `MatchResult`: `"winner"`, `"team_a"`, `"team_b"`, `"team_a_score"`, `"team_b_score"`, `"duration_secs"`, `"performances"`
 - `observation_fields` — fields from `PlayerObservation`: `"player_id"`, `"rating"`, `"rating_deviation"`, `"volatility"`, `"games_played"`, etc.
+- `request_fields` — identifier/scalar fields passed through the data envelope (e.g. `"player_id"` for `initialize`)
 
 ### Step-by-Step: Elo
 
@@ -68,9 +73,10 @@ Key fields:
 data_requirements = {
     match_result_fields = { "winner", "team_a", "team_b" },
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
+    request_fields = { "player_id" },
 }
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
     return {
         rating = config.initial_rating,    -- e.g. 1000.0
         rating_deviation = 350.0,
@@ -79,25 +85,27 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local avg_a = team_average(team_a)
-    local avg_b = team_average(team_b)
-    return expected_score(avg_a, avg_b, config.beta)
+function predict(data, context)
+    local avg_a = team_average(data.team_a)
+    local avg_b = team_average(data.team_b)
+    return expected_score(avg_a, avg_b, _matchlab_config.beta)
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local match_result = data.match_result
+    local observations = data.observations
     local team_a = match_result.team_a
     local team_b = match_result.team_b
     local avg_a = team_average_ratings(team_a, observations)
     local avg_b = team_average_ratings(team_b, observations)
-    local expected_a = expected_score(avg_a, avg_b, config.beta)
+    local expected_a = expected_score(avg_a, avg_b, _matchlab_config.beta)
     local expected_b = 1.0 - expected_a
     local actual_a = match_result.winner == "A" and 1.0 or 0.0
     local actual_b = 1.0 - actual_a
 
     local updates = {}
-    update_team(updates, team_a, observations, config.k_factor, actual_a, expected_a)
-    update_team(updates, team_b, observations, config.k_factor, actual_b, expected_b)
+    update_team(updates, team_a, observations, _matchlab_config.k_factor, actual_a, expected_a)
+    update_team(updates, team_b, observations, _matchlab_config.k_factor, actual_b, expected_b)
     return updates, context
 end
 ```
@@ -105,7 +113,7 @@ end
 Key points:
 - `team_a` / `team_b` in `match_result` are arrays of **player IDs**, not observation objects. Look up observations via `observations[id]`.
 - The `observations` table is keyed by player ID (integer).
-- `config` comes from the YAML `params:` block under your rating system entry.
+- Config is accessed via `_matchlab_config` global after `initialize`.
 - The divisor `beta * ln(10)` keeps Elo on the same log10 scale as the logistic game model.
 
 ### Helper Pattern: team average
@@ -145,13 +153,15 @@ An outcome model decides who wins each match and generates match results. Refere
 ### Contract
 
 ```lua
-function win_probability(team_a, team_b, config, context)
-    -- team_a and team_b are arrays of observation tables.
+function win_probability(data, context)
+    -- data.team_a, data.team_b are arrays of observation tables.
     -- Return a probability in [0, 1] that team_a wins.
     return 0.5
 end
 
-function simulate(match_id, team_a, team_b, config, context)
+function simulate(data, context)
+    -- data.match_id: integer
+    -- data.team_a, data.team_b: arrays of observation tables
     -- Decide the winner and build a full MatchResult.
     -- Return the result table and the (possibly updated) context.
     return result, context
@@ -194,18 +204,18 @@ end
 ### Step-by-Step: Logistic
 
 ```lua
-function win_probability(team_a, team_b, config, context)
-    local diff = team_average(team_a) - team_average(team_b)
-    return 1.0 / (1.0 + math.exp(-diff / config.beta))
+function win_probability(data, context)
+    local diff = team_average(data.team_a) - team_average(data.team_b)
+    return 1.0 / (1.0 + math.exp(-diff / _matchlab_config.beta))
 end
 
-function simulate(match_id, team_a, team_b, config, context)
-    local base_p = win_probability(team_a, team_b, config, context)
+function simulate(data, context)
+    local base_p = win_probability(data, context)
 
     -- Add noise (skip when noise == 0 for deterministic outcomes)
     local noise = 0.0
-    if config.noise and config.noise > 0.0 then
-        noise = matchlab.rng_range(-config.noise, config.noise)
+    if _matchlab_config.noise and _matchlab_config.noise > 0.0 then
+        noise = matchlab.rng_range(-_matchlab_config.noise, _matchlab_config.noise)
     end
     local adjusted_p = math.max(0.01, math.min(0.99, base_p + noise))
     local team_a_wins = matchlab.rng_bool(adjusted_p)
@@ -240,10 +250,10 @@ A matchmaker pairs players from the queue into matches. Reference: `plugins/matc
 ### Contract
 
 ```lua
-function find_matches(queue, teams, now_secs, config, context, completed)
-    -- queue: array of queue entry tables
-    -- teams: { a = { size, role }, b = { size, role } }
-    -- now_secs: current simulation time in seconds
+function find_matches(data, context)
+    -- data.queue: array of queue entry tables
+    -- data.teams: { a = { size, role }, b = { size, role } }
+    -- data.now_secs: current simulation time in seconds
     -- Return an array of proposed matches and the context.
     return matches, context
 end
@@ -286,7 +296,9 @@ Queue entries carry **only** observation fields. Never access `skill_vector`, `s
 ### Step-by-Step: Batch (Rating-Balanced)
 
 ```lua
-function find_matches(queue, teams, now_secs, config, context, completed)
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
     local size_a = teams.a.size
     local size_b = teams.b.size
 
@@ -393,13 +405,14 @@ A metric collector records data from each match and computes a summary. Referenc
 ```lua
 name = "my_metric"  -- REQUIRED global
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
+    -- data.match_result: the match outcome
+    -- data.snapshot: snapshot table with tick, time_secs, players, population
     -- Called after each match. Accumulate data in context.
-    -- Return the (possibly updated) context.
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     -- Return a result table describing the metric.
     return { kind = "summary", values = context.samples or {} }
 end
@@ -455,8 +468,11 @@ When `time_buckets` is present, the engine automatically generates a `{name}_by_
 ```lua
 name = "match_quality"
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
     context.samples = context.samples or {}
+
+    local match_result = data.match_result
+    local snapshot = data.snapshot
 
     -- Index ratings from the snapshot
     local ratings = {}
@@ -475,7 +491,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     return { kind = "summary", values = context.samples or {} }
 end
 ```
@@ -505,23 +521,28 @@ A detection system identifies anomalous players (e.g., smurfs) and recommends in
 ### Contract
 
 ```lua
-function observe(match_result, observations, config, context)
+function observe(data, context)
+    -- data.match_result: match outcome
+    -- data.observations: map of player_id → observation table
     -- Called after each match. Update per-player evidence in context.
     -- Return the (possibly updated) context.
     return context
 end
 
-function evaluate(player_id, observations, config, context)
+function evaluate(data, context)
+    -- data.player_id: player to assess
+    -- data.observations: map of player_id → observation table
     -- Return a detection result and the context.
     return {
-        player_id = player_id,
+        player_id = data.player_id,
         probability_of_anomaly = 0.8,
         confidence = 0.9,
         evidence = { "consecutive_anomalous=5", "min_required=5" },
     }, context
 end
 
-function recommend_action(result, config, context)
+function recommend_action(data, context)
+    -- data.result: detection result from evaluate
     -- Return an action string and the context.
     return "RestrictQueue", context
 end
@@ -546,12 +567,12 @@ Valid actions returned by `recommend_action`:
 The `context` table persists across `observe` calls. Use it to accumulate per-player evidence:
 
 ```lua
-function observe(match_result, observations, config, context)
-    for _, pid in ipairs(match_result.team_a) do
-        record_player(pid, match_result, observations, context)
+function observe(data, context)
+    for _, pid in ipairs(data.match_result.team_a) do
+        record_player(pid, data.match_result, data.observations, context)
     end
-    for _, pid in ipairs(match_result.team_b) do
-        record_player(pid, match_result, observations, context)
+    for _, pid in ipairs(data.match_result.team_b) do
+        record_player(pid, data.match_result, data.observations, context)
     end
     return context
 end
@@ -587,13 +608,15 @@ An adversarial agent simulates disruptive player behavior (AFK, deranking, etc.)
 ### Contract
 
 ```lua
-function tick(player_id, behavior, observation, config, context)
+function tick(data, context)
+    -- data.player_id: player identifier
+    -- data.behavior: read/write table (quit_probability, party_id, tilt_level, win_rate, is_online)
+    -- data.observation: read-only observation table
     -- Modify the behavior table and return it plus the context.
-    -- The behavior table has: quit_probability, party_id, tilt_level, win_rate, is_online
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     -- Return the agent's objective.
     return { kind = "MinimizeGamesPlayed" }
 end
@@ -625,14 +648,14 @@ The `behavior` table is read-write:
 ### Step-by-Step: AFK Agent
 
 ```lua
-function tick(player_id, behavior, observation, config, context)
-    if matchlab.rng_bool(config.go_afk_probability) then
-        behavior.quit_probability = 1.0
+function tick(data, context)
+    if matchlab.rng_bool(_matchlab_config.go_afk_probability) then
+        data.behavior.quit_probability = 1.0
     end
-    return behavior, context
+    return data.behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MinimizeGamesPlayed" }
 end
 ```
@@ -642,16 +665,16 @@ This is the simplest agent -- it just has a probability of quitting each tick.
 ### Step-by-Step: Deranker
 
 ```lua
-function tick(player_id, behavior, observation, config, context)
-    local target = config.target_rating or 800.0
-    if observation.rating > target then
-        behavior.quit_probability = 0.9
-        behavior.tilt_level = 1.0
+function tick(data, context)
+    local target = _matchlab_config.target_rating or 800.0
+    if data.observation.rating > target then
+        data.behavior.quit_probability = 0.9
+        data.behavior.tilt_level = 1.0
     end
-    return behavior, context
+    return data.behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MaintainLowRating" }
 end
 ```
@@ -676,17 +699,20 @@ A satisfaction model computes player satisfaction and retention probability. Ref
 ### Contract
 
 ```lua
-function satisfaction(experience, config, context)
+function satisfaction(data, context)
+    -- data.experience: experience table
     -- Return a satisfaction score (higher = more satisfied).
     return 0.5
 end
 
-function retention_probability(satisfaction, config, context)
+function retention_probability(data, context)
+    -- data.satisfaction: satisfaction score
     -- Return probability in [0, 1] that the player stays.
     return 0.8
 end
 
-function rematch_probability(satisfaction, config, context)
+function rematch_probability(data, context)
+    -- data.satisfaction: satisfaction score
     -- Return probability in [0, 1] that the player re-queues.
     return 0.6
 end
@@ -709,7 +735,8 @@ The `experience` table contains:
 ### Step-by-Step: Weighted Sum
 
 ```lua
-function satisfaction(experience, config, context)
+function satisfaction(data, context)
+    local experience = data.experience
     local avg_quality = mean_or(experience.recent_match_qualities, 0.5)
     local avg_queue = mean_or(experience.recent_queue_times, 30.0)
 
@@ -725,21 +752,22 @@ function satisfaction(experience, config, context)
         streak_penalty = -0.3 * (math.abs(experience.current_streak) - 3.0)
     end
 
-    return (config.match_quality or 1.0) * avg_quality
-        + (config.queue_time_penalty or -0.01) * avg_queue
-        + (config.win_bonus or 0.5) * win_rate
+    local cfg = _matchlab_config
+    return (cfg.match_quality or 1.0) * avg_quality
+        + (cfg.queue_time_penalty or -0.01) * avg_queue
+        + (cfg.win_bonus or 0.5) * win_rate
         + streak_penalty
-        + (config.rank_progression_bonus or 0.2) * experience.rank_change
-        + (config.fairness_sensitivity or -0.8) * (1.0 - experience.perceived_fairness)
-        + (config.rematch_bonus or 0.1) * experience.rematch_rate
+        + (cfg.rank_progression_bonus or 0.2) * experience.rank_change
+        + (cfg.fairness_sensitivity or -0.8) * (1.0 - experience.perceived_fairness)
+        + (cfg.rematch_bonus or 0.1) * experience.rematch_rate
 end
 
-function retention_probability(satisfaction, config, context)
-    return 1.0 / (1.0 + math.exp(-satisfaction))
+function retention_probability(data, context)
+    return 1.0 / (1.0 + math.exp(-data.satisfaction))
 end
 
-function rematch_probability(satisfaction, config, context)
-    return 1.0 / (1.0 + math.exp(-0.5 * (satisfaction - 2.0)))
+function rematch_probability(data, context)
+    return 1.0 / (1.0 + math.exp(-0.5 * (data.satisfaction - 2.0)))
 end
 ```
 
@@ -773,22 +801,30 @@ Calling `matchlab.rng_*` outside a guarded region produces an error. This is int
 
 ### Config Reading
 
-Your `config` table comes from the YAML `params:` block:
+Config is passed to `initialize(data, config, context)` directly. All other
+functions access config via the `_matchlab_config` global:
 
 ```yaml
 rating:
   systems:
     - script: plugins/rating/elo.lua
-      k_factor: 32.0          -- becomes config.k_factor
-      initial_rating: 1000.0  -- becomes config.initial_rating
-      beta: 400.0             -- becomes config.beta
+      k_factor: 32.0          -- becomes config.k_factor in initialize
+      initial_rating: 1000.0  -- becomes config.initial_rating in initialize
+      beta: 400.0             -- becomes _matchlab_config.beta elsewhere
 ```
 
 Use `config.key or default_value` for optional parameters:
 
 ```lua
-local k = config.k_factor or 32.0
-local threshold = config.sigma_threshold or 3.0
+function initialize(data, config, context)
+    local k = config.k_factor or 32.0
+    -- ...
+end
+
+function update(data, context)
+    local k = _matchlab_config.k_factor or 32.0
+    -- ...
+end
 ```
 
 ### Context Threading
@@ -796,10 +832,10 @@ local threshold = config.sigma_threshold or 3.0
 The `context` is an opaque Lua table persisted on the Rust side. Every call receives it and must return it (possibly mutated):
 
 ```lua
-function my_func(args, config, context)
+function my_func(data, context)
     context.counter = (context.counter or 0) + 1
     context.samples = context.samples or {}
-    table.insert(context.samples, compute_value(args))
+    table.insert(context.samples, compute_value(data))
     return result, context
 end
 ```
@@ -844,8 +880,8 @@ The outcome model and metrics additionally see:
 Lua `print()` output goes to stderr during simulation runs:
 
 ```lua
-function update(match_result, observations, config, context)
-    print("DEBUG: match " .. match_result.match_id .. " winner=" .. match_result.winner)
+function update(data, context)
+    print("DEBUG: match " .. data.match_result.match_id .. " winner=" .. data.match_result.winner)
     return updates, context
 end
 ```

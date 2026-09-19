@@ -108,21 +108,28 @@ fn parse_result(t: &Table) -> MatchResult {
 }
 impl OutcomeModel for LuaOutcomeModel {
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
-        let (a_val, b_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
-                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
-                Ok((a, b))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let a =
+                        convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                    let b =
+                        convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
+                    data.set("team_a", a).map_err(|e| e.to_string())?;
+                    data.set("team_b", b).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build team tables");
+            .expect("build data");
         tracing::debug!(
             team_a_size = team_a.len(),
             team_b_size = team_b.len(),
             "win probability called"
         );
         self.vm
-            .call_with_context("win_probability", &[a_val, b_val])
+            .call_with_context("win_probability", &[data_val])
             .expect("outcome win_probability failed")
     }
     fn simulate(
@@ -138,24 +145,28 @@ impl OutcomeModel for LuaOutcomeModel {
             team_b_size = team_b.len(),
             "match simulation started"
         );
-        let (a_val, b_val) = self
+        let data_val = self
             .vm
             .with_lua(|lua| {
-                let a = convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
-                let b = convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
-                Ok((a, b))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if !self.data_requirements.observation_fields.is_empty() {
+                    let a =
+                        convert::observations_to_value_fair(lua, team_a, &self.data_requirements)?;
+                    let b =
+                        convert::observations_to_value_fair(lua, team_b, &self.data_requirements)?;
+                    data.set("team_a", a).map_err(|e| e.to_string())?;
+                    data.set("team_b", b).map_err(|e| e.to_string())?;
+                }
+                if self.data_requirements.has_request_field("match_id") {
+                    data.set("match_id", match_id.0)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build team tables");
+            .expect("build data");
         let result_tbl: Table = self.vm.with_rng(rng, |vm| {
-            vm.call_with_context(
-                "simulate",
-                &[
-                    mlua::Value::Integer(match_id.0 as mlua::Integer),
-                    a_val,
-                    b_val,
-                ],
-            )
-            .expect("outcome simulate failed")
+            vm.call_with_context("simulate", &[data_val])
+                .expect("outcome simulate failed")
         });
         let mut result = parse_result(&result_tbl);
         result.match_id = match_id;

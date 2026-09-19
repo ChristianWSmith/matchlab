@@ -12,7 +12,6 @@ use tracing;
 /// A satisfaction model whose algorithm lives entirely in a Lua script.
 pub struct LuaSatisfactionModel {
     vm: LuaVm,
-    #[allow(dead_code)]
     data_requirements: DataRequirements,
 }
 impl LuaSatisfactionModel {
@@ -70,22 +69,51 @@ fn experience_to_table(exp: &PlayerExperience, lua: &mlua::Lua) -> Result<Table,
 }
 impl SatisfactionModel for LuaSatisfactionModel {
     fn satisfaction(&self, exp: &PlayerExperience) -> f64 {
-        let exp_val = self
+        let data_val: Value = self
             .vm
-            .with_lua(|lua| experience_to_table(exp, lua).map(Value::Table))
-            .expect("build experience table");
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("experience") {
+                    let exp_tbl = experience_to_table(exp, lua)?;
+                    data.set("experience", exp_tbl).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         self.vm
-            .call_with_context("satisfaction", &[exp_val])
+            .call_with_context("satisfaction", &[data_val])
             .expect("satisfaction failed")
     }
     fn retention_probability(&self, satisfaction: f64) -> f64 {
+        let data_val: Value = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("satisfaction") {
+                    data.set("satisfaction", satisfaction)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         self.vm
-            .call_with_context("retention_probability", &[Value::Number(satisfaction)])
+            .call_with_context("retention_probability", &[data_val])
             .expect("retention_probability failed")
     }
     fn rematch_probability(&self, satisfaction: f64) -> f64 {
+        let data_val: Value = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("satisfaction") {
+                    data.set("satisfaction", satisfaction)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         self.vm
-            .call_with_context("rematch_probability", &[Value::Number(satisfaction)])
+            .call_with_context("rematch_probability", &[data_val])
             .expect("rematch_probability failed")
     }
 }

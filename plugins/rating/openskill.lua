@@ -7,6 +7,7 @@
 data_requirements = {
     observation_fields = { "rating", "rating_deviation", "volatility", "games_played" },
     match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
 }
 
 local SQRT_2PI = 2.5066282746310002
@@ -31,7 +32,8 @@ function normal_cdf(x)
     end
 end
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
+    local player_id = data.player_id
     local sigma_sq = config.initial_variance or 62500.0
     return {
         rating = config.initial_mean or config.initial_rating,
@@ -41,9 +43,10 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    local mu_a, var_a = team_stats(team_a)
-    local mu_b, var_b = team_stats(team_b)
+function predict(data, context)
+    local config = _matchlab_config
+    local mu_a, var_a = team_stats(data.team_a)
+    local mu_b, var_b = team_stats(data.team_b)
     local c = math.sqrt(var_a + var_b + config.beta * config.beta)
     if c == 0.0 then return 0.5 end
     return normal_cdf((mu_a - mu_b) / c)
@@ -75,7 +78,10 @@ function loss_factors(t)
     return -m, m * (m - t)
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local config = _matchlab_config
+    local match_result = data.match_result
+    local observations = data.observations
     local team_a_won = match_result.winner == "A"
     local beta = config.beta
     local dynamics = config.dynamics or 0.0

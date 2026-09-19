@@ -9,7 +9,8 @@ data_requirements = {
     population_fields = { "rating" },
 }
 
-function on_record(match_result, snapshot, config, context)
+function on_record(data, context)
+    local snapshot = data.snapshot
     if snapshot.population == nil then
         return context
     end
@@ -28,7 +29,7 @@ function on_record(match_result, snapshot, config, context)
     return context
 end
 
-function compute(config, context)
+function compute(data, context)
     local snapshots = context.snapshots or {}
     if #snapshots == 0 or context.latest == nil then
         return { kind = "scalar", value = 0.0 }

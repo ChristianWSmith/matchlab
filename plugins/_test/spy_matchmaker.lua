@@ -8,9 +8,12 @@
 
 data_requirements = {
     queue_fields = { "player_id", "rating" },
+    request_fields = { "now_secs" },
 }
 
-function find_matches(queue, teams, now_secs, config, context)
+function find_matches(data, context)
+    local queue = data.queue
+    local teams = data.teams
     local forbidden = {
         skill_vector = true,
         skill_overall = true,

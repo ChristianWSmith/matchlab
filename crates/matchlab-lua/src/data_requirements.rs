@@ -70,6 +70,18 @@ const KNOWN_BEHAVIOR_FIELDS: &[&str] = &[
 
 const KNOWN_COMPLETED_MATCH_FIELDS: &[&str] = &["id", "winner", "team_a", "team_b", "time"];
 
+const KNOWN_REQUEST_FIELDS: &[&str] = &[
+    "player_id",
+    "match_id",
+    "now_secs",
+    "teams",
+    "rating",
+    "rank",
+    "satisfaction",
+    "experience",
+    "detection_result",
+];
+
 fn warn_unknown_fields(fields: &[String], known: &[&str], category: &str) {
     for field in fields {
         if !known.contains(&field.as_str()) {
@@ -88,6 +100,7 @@ pub struct DataRequirements {
     pub reality_fields: Vec<String>,
     pub behavior_fields: Vec<String>,
     pub completed_match_fields: Vec<String>,
+    pub request_fields: Vec<String>,
 }
 
 impl DataRequirements {
@@ -135,6 +148,11 @@ impl DataRequirements {
                 req.completed_match_fields = string_array(v)?;
             }
         }
+        if let Ok(v) = table.get::<LuaValue>("request_fields") {
+            if !v.is_nil() {
+                req.request_fields = string_array(v)?;
+            }
+        }
 
         warn_unknown_fields(&req.queue_fields, KNOWN_QUEUE_FIELDS, "queue_fields");
         warn_unknown_fields(
@@ -168,6 +186,7 @@ impl DataRequirements {
             KNOWN_COMPLETED_MATCH_FIELDS,
             "completed_match_fields",
         );
+        warn_unknown_fields(&req.request_fields, KNOWN_REQUEST_FIELDS, "request_fields");
 
         Ok(req)
     }
@@ -202,6 +221,10 @@ impl DataRequirements {
 
     pub fn has_completed_match_field(&self, field: &str) -> bool {
         self.completed_match_fields.iter().any(|f| f == field)
+    }
+
+    pub fn has_request_field(&self, field: &str) -> bool {
+        self.request_fields.iter().any(|f| f == field)
     }
 }
 

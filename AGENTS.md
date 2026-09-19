@@ -104,6 +104,12 @@ script under `plugins/` (there are no inherent Rust algorithms):
 - `DetectionSystem` (trait) — `plugins/detection/` (smurf)
 - `AdversarialAgent` / `SatisfactionModel` / `RankMapper` — the same model.
 
+All plugins use the **unified data envelope** pattern: every function receives
+`(data, context)` where `data` is a table of inputs. `initialize` is the only
+function that receives `config` as a direct parameter; all other functions
+access config via the `_matchlab_config` global. `data_requirements` declares
+which data the core serializes into `data`.
+
 Swapping implementations is a one-line `script:` change in the manifest.
 
 ### 3. Reproducibility
@@ -222,11 +228,15 @@ The minimal v0.1 manifest is at `experiments/v0_1_basic.yaml`.
   trait adapters (`*::lua::Lua*System`); there are **no inherent Rust
   algorithms**. Manifests reference systems by `script:` — bare names like
   `elo` resolve via filesystem to `plugins/rating/elo.lua`; full paths also
-  work. Scripts receive `config` (YAML params) + a persistent `context` table
-  (passed by reference, stored in the VM) and may draw deterministically via
-  `matchlab.rng_*`. **Every script must declare a `data_requirements` table**
-  specifying exactly which data it needs from the Rust core — the sole source
-  of truth for what crosses the Rust–Lua boundary.
+  work. All plugins use the **unified data envelope** pattern: every function
+  receives `(data, context)` where `data` is a table of inputs. `initialize`
+  is the only function that receives `config` as a direct parameter; all other
+  functions access config via the `_matchlab_config` global. Scripts may draw
+  deterministically via `matchlab.rng_*`. **Every script must declare a
+  `data_requirements` table** specifying exactly which data it needs from the
+  Rust core — the sole source of truth for what crosses the Rust–Lua boundary.
+  The `request_fields` category declares identifier/scalar fields passed
+  through the data envelope.
 - **Lua scripts are pure.** No `math.random` — all randomness comes from `SimRng`
   via `matchlab.rng_*`. Scripts receive only observable data, never
   `PlayerReality` (the outcome model and metric scripts get the ground-truth

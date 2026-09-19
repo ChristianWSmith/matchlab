@@ -8,9 +8,10 @@
 data_requirements = {
     observation_fields = { "player_id", "rating", "rating_deviation", "volatility", "games_played" },
     match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "player_id" },
 }
 
-function initialize(player_id, config, context)
+function initialize(data, config, context)
     return {
         rating = config.initial_rating,
         rating_deviation = 350.0,
@@ -19,8 +20,9 @@ function initialize(player_id, config, context)
     }, context
 end
 
-function predict(team_a, team_b, config, context)
-    return expected_score(team_average(team_a), team_average(team_b), config.beta)
+function predict(data, context)
+    local config = _matchlab_config
+    return expected_score(team_average(data.team_a), team_average(data.team_b), config.beta)
 end
 
 function expected_score(rating_a, rating_b, beta)
@@ -37,7 +39,10 @@ function team_average(team)
     return sum / #team
 end
 
-function update(match_result, observations, config, context)
+function update(data, context)
+    local match_result = data.match_result
+    local observations = data.observations
+    local config = _matchlab_config
     if match_result.team_a_score ~= nil then
         error("budget leak: team_a_score present")
     end

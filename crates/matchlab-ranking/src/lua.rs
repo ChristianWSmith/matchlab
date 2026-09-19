@@ -10,7 +10,6 @@ use mlua::{Table, Value};
 /// A rank mapper whose algorithm lives entirely in a Lua script.
 pub struct LuaRankMapper {
     vm: LuaVm,
-    #[allow(dead_code)]
     data_requirements: DataRequirements,
 }
 impl LuaRankMapper {
@@ -39,27 +38,41 @@ fn rank_from_table(t: &Table) -> Rank {
 }
 impl RankMapper for LuaRankMapper {
     fn rating_to_rank(&self, rating: f64) -> Rank {
+        let data_val: Value = self
+            .vm
+            .with_lua(|lua| {
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("rating") {
+                    data.set("rating", rating).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
+            })
+            .expect("build data");
         let rank_tbl: Table = self
             .vm
-            .call_with_context("rating_to_rank", &[Value::Number(rating)])
+            .call_with_context("rating_to_rank", &[data_val])
             .expect("rating_to_rank failed");
         rank_from_table(&rank_tbl)
     }
     fn rank_to_rating_range(&self, rank: &Rank) -> (f64, f64) {
-        let rank_val = self
+        let data_val: Value = self
             .vm
             .with_lua(|lua| {
-                let t = lua.create_table().map_err(|e| e.to_string())?;
-                t.set("tier", rank.tier.as_str())
-                    .map_err(|e| e.to_string())?;
-                t.set("division", rank.division)
-                    .map_err(|e| e.to_string())?;
-                Ok(Value::Table(t))
+                let data = lua.create_table().map_err(|e| e.to_string())?;
+                if self.data_requirements.has_request_field("rank") {
+                    let t = lua.create_table().map_err(|e| e.to_string())?;
+                    t.set("tier", rank.tier.as_str())
+                        .map_err(|e| e.to_string())?;
+                    t.set("division", rank.division)
+                        .map_err(|e| e.to_string())?;
+                    data.set("rank", t).map_err(|e| e.to_string())?;
+                }
+                Ok(mlua::Value::Table(data))
             })
-            .expect("build rank table");
+            .expect("build data");
         let range: Table = self
             .vm
-            .call_with_context("rank_to_rating_range", &[rank_val])
+            .call_with_context("rank_to_rating_range", &[data_val])
             .expect("rank_to_rating_range failed");
         (
             range.get::<f64>("min").unwrap_or(0.0),

@@ -4,10 +4,14 @@
 -- config: partner, alternating
 
 data_requirements = {
+    request_fields = { "player_id" },
     behavior_fields = { "party_id" },
 }
 
-function tick(player_id, behavior, observation, config, context)
+function tick(data, context)
+    local behavior = data.behavior
+    local player_id = data.player_id
+    local config = _matchlab_config
     local partner = config.partner
     if not partner then return behavior, context end
     local party = (player_id * 65537 + math.floor(partner)) % 2147483647
@@ -15,6 +19,6 @@ function tick(player_id, behavior, observation, config, context)
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "WinTrade" }
 end

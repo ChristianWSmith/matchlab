@@ -7,7 +7,9 @@ data_requirements = {
     behavior_fields = { "quit_probability", "is_online" },
 }
 
-function tick(player_id, behavior, observation, config, context)
+function tick(data, context)
+    local behavior = data.behavior
+    local config = _matchlab_config
     local prob = config.quit_probability or 0.0
     if matchlab.rng_bool(prob) then
         behavior.quit_probability = 1.0
@@ -16,6 +18,6 @@ function tick(player_id, behavior, observation, config, context)
     return behavior, context
 end
 
-function objective(config, context)
+function objective(context)
     return { kind = "MaximizeWinRate" }
 end
