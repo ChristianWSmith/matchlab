@@ -1,6 +1,6 @@
 # API Stability Policy
 
-This document defines the stability guarantees for MatchLab's public APIs as of v1.0.
+This document defines the stability guarantees for MatchLab's public APIs as of v3.0.0.
 
 ## Stable Public APIs
 

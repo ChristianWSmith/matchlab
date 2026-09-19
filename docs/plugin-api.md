@@ -190,6 +190,20 @@ Performance row: `{player_id, stats: {key: value, ...}, variance}` — `stats` i
 
 Outcome models are the **only** subsystem that reads ground-truth skill. The observation tables carry `skill_overall` and `skill_vector` so match winners are decided by true skill, not by ratings.
 
+### Data Requirements
+
+Outcome models declare which observation and match-result fields they need:
+
+```lua
+data_requirements = {
+    observation_fields = { "player_id", "rating", "skill_overall", "skill_vector" },
+    match_result_fields = { "winner", "team_a", "team_b" },
+    request_fields = { "match_id" },
+}
+```
+
+Skill fields (`skill_overall`, `skill_vector`) are available only because outcome models are the legitimate ground-truth reader.
+
 ### Worked Example: Logistic
 
 ```lua
@@ -245,9 +259,23 @@ function find_matches(data, context)
     -- data.queue: array of queue entry tables
     -- data.teams: {a = {size, role?}, b = {size, role?}}
     -- data.now_secs: current simulation time in seconds
+    -- data.completed_matches: array of recent completed matches (if declared in data_requirements)
     -- Returns: array of {team_a, team_b, quality_score?}
 end
 ```
+
+### Data Requirements
+
+Matchmakers can declare `completed_match_fields` to receive recent match history:
+
+```lua
+data_requirements = {
+    queue_fields = { "player_id", "rating", "rating_deviation", "wait_secs", "role", "idx" },
+    completed_match_fields = { "id", "winner", "team_a", "team_b", "time" },
+}
+```
+
+Each completed match entry contains: `id` (match id), `winner` (`"a"` or `"b"`), `team_a`/`team_b` (arrays of `{id, rating, rd}`), and `time` (seconds). When no `completed_match_fields` is declared, `data.completed_matches` is absent.
 
 ### Queue Entry Table
 
@@ -459,6 +487,18 @@ end
 
 Detection systems receive **observations only** — never `PlayerReality`. Smurf status must be inferred from behavior, never from ground-truth skill.
 
+### Data Requirements
+
+Detection systems declare which fields they need:
+
+```lua
+data_requirements = {
+    match_result_fields = { "team_a", "team_b", "performances" },
+    observation_fields = { "player_id", "rating" },
+    request_fields = { "player_id", "detection_result" },
+}
+```
+
 ---
 
 ## Adversarial Agent
@@ -495,6 +535,18 @@ end
 ### Objective Kinds
 
 `"MaximizeRating"`, `"MinimizeGamesPlayed"`, `"MaximizeWinRate"`, `"MaintainLowRating"`, `"Derate"`, `"WinTrade"`
+
+### Data Requirements
+
+Adversarial agents declare which behavior and observation fields they need:
+
+```lua
+data_requirements = {
+    behavior_fields = { "quit_probability", "tilt_level", "is_online" },
+    observation_fields = { "player_id", "rating" },
+    request_fields = { "player_id" },
+}
+```
 
 ### Worked Example: AFK
 
@@ -559,6 +611,16 @@ end
 1. `satisfaction(data)` — called per-player after match end
 2. `retention_probability(data)` — called with the satisfaction score
 3. If retention is below threshold, the loop schedules `PlayerQuit` instead of re-queue
+
+### Data Requirements
+
+Satisfaction models declare which request fields they need:
+
+```lua
+data_requirements = {
+    request_fields = { "experience", "satisfaction" },
+}
+```
 
 ### Worked Example: Weighted Sum
 

@@ -14,7 +14,7 @@ use matchlab_core::rng::{SimRng, StreamSeeds};
 use matchlab_core::time::SimTime;
 use matchlab_game::outcome::OutcomeModel;
 use matchlab_loop::{LoopConfig, MatchLoop};
-use matchlab_lua::GlobalSubscription;
+use matchlab_lua::{DataRequirements, GlobalSubscription};
 use matchlab_matchmaking::matchmaker::Matchmaker;
 use matchlab_metrics::{MetricResult, MetricsEngine};
 use matchlab_objective::utility::{ObjectiveFunction, ObjectiveWeights};
@@ -94,6 +94,25 @@ impl ExperimentRunner {
         let ranker = build_ranker(config.experiment.ranking.as_ref())?;
         let adversarial_agents = build_adversarial_agents(config.experiment.adversarial.as_ref())?;
         let satisfaction_model = build_satisfaction_model(config.experiment.satisfaction.as_ref())?;
+        let mut reqs: Vec<DataRequirements> = vec![
+            rating_system.data_requirements(),
+            outcome_model.data_requirements(),
+            matchmaker.data_requirements(),
+            metrics.data_requirements(),
+        ];
+        if let Some(ref d) = detection_system {
+            reqs.push(d.data_requirements());
+        }
+        if let Some(ref r) = ranker {
+            reqs.push(r.data_requirements());
+        }
+        for a in adversarial_agents.values() {
+            reqs.push(a.data_requirements());
+        }
+        if let Some(ref s) = satisfaction_model {
+            reqs.push(s.data_requirements());
+        }
+        let subscription = GlobalSubscription::aggregate(&reqs.iter().collect::<Vec<_>>());
         let mut loop_ = MatchLoop::with_extras(
             population,
             rating_system,
@@ -105,7 +124,7 @@ impl ExperimentRunner {
             ranker,
             adversarial_agents,
             satisfaction_model,
-            GlobalSubscription::default(),
+            subscription,
         );
         let until = SimTime::from_secs(config.experiment.duration.max_time);
         loop_.run_until(until);

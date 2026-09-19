@@ -37,6 +37,9 @@ fn rank_from_table(t: &Table) -> Rank {
     }
 }
 impl RankMapper for LuaRankMapper {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn rating_to_rank(&self, rating: f64) -> Rank {
         let data_val: Value = self
             .vm

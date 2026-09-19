@@ -174,6 +174,9 @@ fn ids_from_table(t: &Table) -> Vec<PlayerId> {
         .collect()
 }
 impl Matchmaker for LuaMatchmaker {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn find_matches(
         &self,
         queue: &Queue,

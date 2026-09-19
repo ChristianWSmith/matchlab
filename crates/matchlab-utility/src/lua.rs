@@ -68,6 +68,9 @@ fn experience_to_table(exp: &PlayerExperience, lua: &mlua::Lua) -> Result<Table,
     Ok(t)
 }
 impl SatisfactionModel for LuaSatisfactionModel {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn satisfaction(&self, exp: &PlayerExperience) -> f64 {
         let data_val: Value = self
             .vm

@@ -107,6 +107,9 @@ fn parse_result(t: &Table) -> MatchResult {
     }
 }
 impl OutcomeModel for LuaOutcomeModel {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64 {
         let data_val = self
             .vm

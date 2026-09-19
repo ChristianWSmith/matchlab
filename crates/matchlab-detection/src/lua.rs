@@ -82,6 +82,9 @@ fn participant_observations(
     out
 }
 impl DetectionSystem for LuaDetectionSystem {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn observe(&mut self, match_result: &MatchResult, world: &World) {
         let data_val = self
             .vm

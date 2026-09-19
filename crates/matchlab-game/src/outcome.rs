@@ -6,6 +6,7 @@
 use matchlab_core::match_::{MatchId, MatchResult};
 use matchlab_core::player::PlayerObservation;
 use matchlab_core::rng::SimRng;
+use matchlab_lua::DataRequirements;
 pub trait OutcomeModel: Send + Sync {
     fn win_probability(&self, team_a: &[PlayerObservation], team_b: &[PlayerObservation]) -> f64;
     fn simulate(
@@ -15,4 +16,7 @@ pub trait OutcomeModel: Send + Sync {
         team_b: &[PlayerObservation],
         rng: &mut SimRng,
     ) -> MatchResult;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }

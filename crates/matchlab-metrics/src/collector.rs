@@ -1,5 +1,6 @@
 use matchlab_core::match_::MatchResult;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 /// A per-metric recorder that aggregates data across every match it is shown
 /// (spec §11.2).
 pub trait MetricCollector: Send + Sync {
@@ -11,6 +12,9 @@ pub trait MetricCollector: Send + Sync {
     /// a `{name}_by_time` metric.
     fn time_buckets(&self) -> Option<Vec<f64>> {
         None
+    }
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
     }
 }
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

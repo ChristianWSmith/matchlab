@@ -50,6 +50,9 @@ fn state_from_table(t: &Table) -> RatingState {
     }
 }
 impl RatingSystem for LuaRatingSystem {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn initialize(&self, player_id: PlayerId) -> RatingState {
         let data_val: Value = self
             .vm

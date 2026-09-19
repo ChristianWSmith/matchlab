@@ -4,10 +4,14 @@
 use matchlab_core::player::{PlayerId, Region};
 use matchlab_core::rng::SimRng;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 /// Legacy adversarial agent trait (kept for backward compat).
 pub trait AdversarialAgent: Send + Sync {
     fn tick(&mut self, player_id: PlayerId, rng: &mut SimRng, world: &mut World);
     fn objective(&self) -> AdversarialObjective;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdversarialObjective {

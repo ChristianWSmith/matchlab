@@ -2,11 +2,15 @@ use crate::intervention::{EcosystemIntervention, InterventionAction};
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::PlayerId;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 /// Legacy detection system trait (kept for backward compat).
 pub trait DetectionSystem: Send + Sync {
     fn observe(&mut self, match_result: &MatchResult, world: &World);
     fn evaluate(&self, player_id: PlayerId, world: &World) -> DetectionResult;
     fn recommend_action(&self, result: &DetectionResult) -> InterventionAction;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }
 #[derive(Debug, Clone)]
 pub struct DetectionResult {

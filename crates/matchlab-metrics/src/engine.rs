@@ -1,6 +1,7 @@
 use crate::collector::{MetricCollector, MetricResult};
 use matchlab_core::match_::MatchResult;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 use std::collections::HashMap;
 use tracing;
 /// Aggregates registered collectors over the course of a run, then folds each
@@ -42,6 +43,31 @@ impl MetricsEngine {
     }
     pub fn results(&self) -> &HashMap<String, MetricResult> {
         &self.results
+    }
+    pub fn data_requirements(&self) -> DataRequirements {
+        let mut combined = DataRequirements::default();
+        for collector in &self.collectors {
+            let req = collector.data_requirements();
+            combined.observation_fields.extend(req.observation_fields);
+            combined.match_result_fields.extend(req.match_result_fields);
+            combined.snapshot_fields.extend(req.snapshot_fields);
+            combined.population_fields.extend(req.population_fields);
+            combined.reality_fields.extend(req.reality_fields);
+            combined.request_fields.extend(req.request_fields);
+        }
+        combined.observation_fields.sort();
+        combined.observation_fields.dedup();
+        combined.match_result_fields.sort();
+        combined.match_result_fields.dedup();
+        combined.snapshot_fields.sort();
+        combined.snapshot_fields.dedup();
+        combined.population_fields.sort();
+        combined.population_fields.dedup();
+        combined.reality_fields.sort();
+        combined.reality_fields.dedup();
+        combined.request_fields.sort();
+        combined.request_fields.dedup();
+        combined
     }
 }
 #[cfg(test)]

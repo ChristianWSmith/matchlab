@@ -117,13 +117,13 @@ no Rust code — just a script and a manifest reference.
 | Layer | Directory | Contract |
 |-------|-----------|----------|
 | Rating system | `plugins/rating/` | `data_requirements`, `initialize(data, config, context)`, `predict(data, context)`, `update(data, context)` |
-| Outcome model | `plugins/game/` | `win_probability(data, context)`, `simulate(data, context)` |
-| Matchmaker | `plugins/matchmaking/` | `find_matches(data, context)` |
-| Metric collector | `plugins/metrics/` | `name`, `on_record(data, context)`, `compute(data, context)` |
-| Detection system | `plugins/detection/` | `observe(data, context)`, `evaluate(data, context)`, `recommend_action(data, context)` |
-| Rank mapper | `plugins/ranking/` | `rating_to_rank(data, context)`, `rank_to_rating_range(data, context)` |
-| Adversarial agent | `plugins/adversarial/` | `tick(data, context)`, `objective(context)` |
-| Satisfaction model | `plugins/utility/` | `satisfaction(data, context)`, `retention_probability(data, context)`, `rematch_probability(data, context)` |
+| Outcome model | `plugins/game/` | `data_requirements`, `win_probability(data, context)`, `simulate(data, context)` |
+| Matchmaker | `plugins/matchmaking/` | `data_requirements`, `find_matches(data, context)` |
+| Metric collector | `plugins/metrics/` | `data_requirements`, `name`, `on_record(data, context)`, `compute(data, context)` |
+| Detection system | `plugins/detection/` | `data_requirements`, `observe(data, context)`, `evaluate(data, context)`, `recommend_action(data, context)` |
+| Rank mapper | `plugins/ranking/` | `data_requirements`, `rating_to_rank(data, context)`, `rank_to_rating_range(data, context)` |
+| Adversarial agent | `plugins/adversarial/` | `data_requirements`, `tick(data, context)`, `objective(context)` |
+| Satisfaction model | `plugins/utility/` | `data_requirements`, `satisfaction(data, context)`, `retention_probability(data, context)`, `rematch_probability(data, context)` |
 
 ### Step 2: Write the script
 
@@ -295,7 +295,7 @@ cargo test -p matchlab-validation
 | Integration tests | `crates/*/tests/` | Cross-module behavior |
 | Validation tests | `crates/matchlab-validation/tests/` | Analytical baselines |
 | Metamorphic tests | `crates/matchlab-validation/tests/metamorphic.rs` | Property-based invariants |
-| Info-budget tests | `crates/matchlab-validation/tests/info_budget.rs` | Truth-separation enforcement |
+| Info-budget tests | `crates/matchlab-validation/tests/info_budget.rs` | Data-requirements field-gating enforcement |
 
 ---
 
@@ -359,9 +359,6 @@ All four must pass for a PR to merge.
 
 We follow SemVer. Breaking changes bump the major version. Non-breaking
 additions bump the minor version. Bug fixes bump the patch version.
-
-Until 1.0, minor version bumps may include breaking changes with a migration
-guide in the changelog.
 
 ---
 

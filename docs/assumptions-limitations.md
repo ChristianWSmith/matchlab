@@ -130,7 +130,7 @@ The default team model is additive — team strength is the sum of member skills
 - Real team performance depends on role balance, communication, synergy, and coordination — none of which are modeled in the additive case.
 - The complementary model adds a synergy bonus for diverse skill profiles, but the formula is researcher-specified.
 
-### Information Budget
+### Data Requirements (Field Gating)
 
 Rating systems declare a `data_requirements` table specifying which fields they need from match results and observations. The loop sanitizes `MatchResult` before calling `update`, stripping fields not in the declared `match_result_fields`.
 

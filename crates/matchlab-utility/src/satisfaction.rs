@@ -1,3 +1,4 @@
+use matchlab_lua::DataRequirements;
 pub trait SatisfactionModel: Send + Sync {
     /// Compute satisfaction score from experience history.
     fn satisfaction(&self, exp: &PlayerExperience) -> f64;
@@ -5,6 +6,9 @@ pub trait SatisfactionModel: Send + Sync {
     fn retention_probability(&self, satisfaction: f64) -> f64;
     /// Probability the player requeues for another match (rematch).
     fn rematch_probability(&self, satisfaction: f64) -> f64;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }
 pub struct PlayerExperience {
     pub recent_match_qualities: Vec<f64>,

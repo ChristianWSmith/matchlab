@@ -85,6 +85,9 @@ fn parse_result(t: &Table) -> MetricResult {
     }
 }
 impl MetricCollector for LuaMetricCollector {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn name(&self) -> &str {
         &self.metric_name
     }

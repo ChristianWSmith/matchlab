@@ -4,6 +4,7 @@ use matchlab_core::player::PlayerId;
 use matchlab_core::rng::SimRng;
 use matchlab_core::time::SimTime;
 use matchlab_core::world::World;
+use matchlab_lua::DataRequirements;
 use matchlab_lua::convert::CompletedMatch;
 pub trait Matchmaker: Send + Sync {
     fn find_matches(
@@ -15,6 +16,9 @@ pub trait Matchmaker: Send + Sync {
         rng: &mut SimRng,
         completed: &[CompletedMatch],
     ) -> Vec<ProposedMatch>;
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
+    }
 }
 #[derive(Debug, Clone)]
 pub struct ProposedMatch {

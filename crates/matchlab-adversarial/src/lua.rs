@@ -145,6 +145,9 @@ fn write_behavior(world: &mut World, player_id: PlayerId, behavior: &Table) -> R
     Ok(())
 }
 impl AdversarialAgent for LuaAdversarialAgent {
+    fn data_requirements(&self) -> DataRequirements {
+        self.data_requirements.clone()
+    }
     fn tick(&mut self, player_id: PlayerId, rng: &mut SimRng, world: &mut World) {
         let data_val: Value = self
             .vm

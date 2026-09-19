@@ -1,5 +1,6 @@
 use matchlab_core::match_::MatchResult;
 use matchlab_core::player::{PlayerId, PlayerObservation};
+use matchlab_lua::DataRequirements;
 use std::collections::HashMap;
 pub trait RatingSystem: Send + Sync {
     fn initialize(&self, player_id: PlayerId) -> RatingState;
@@ -14,6 +15,9 @@ pub trait RatingSystem: Send + Sync {
     }
     fn uncertainty(&self, state: &RatingState) -> f64 {
         state.rating_deviation
+    }
+    fn data_requirements(&self) -> DataRequirements {
+        DataRequirements::default()
     }
 }
 #[derive(Debug, Clone)]
